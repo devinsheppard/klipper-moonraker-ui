@@ -1,7 +1,16 @@
-import { defineConfig } from 'vite'
-import vue from '@vitejs/plugin-vue'
+import { defineConfig } from "vite";
+import vue from "@vitejs/plugin-vue";
 
-// https://vite.dev/config/
 export default defineConfig({
   plugins: [vue()],
-})
+  server: {
+    proxy: {
+      "/moonraker": {
+        target: "http://klipper.local:7125",
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path.replace(/^\/moonraker/, ""),
+      },
+    },
+  },
+});
