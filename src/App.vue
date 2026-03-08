@@ -14,6 +14,12 @@ type MacroItem = {
   command: string;
 };
 
+type FileItem = {
+  path: string;
+  size?: number;
+  modified?: number;
+};
+
 const activeView = ref<ViewName>("dashboard");
 const moonrakerUrl = ref("/moonraker");
 const connectionState = ref("Disconnected");
@@ -32,6 +38,11 @@ const isSendingCommand = ref(false);
 const macros = ref<MacroItem[]>([]);
 const isLoadingMacros = ref(false);
 const runningMacro = ref<string | null>(null);
+
+const files = ref<FileItem[]>([]);
+const isLoadingFiles = ref(false);
+const fileActionPath = ref<string | null>(null);
+const jobAction = ref<"pause" | "resume" | "cancel" | null>(null);
 
 let statusPollTimer: number | undefined;
 let consolePollTimer: number | undefined;
@@ -56,9 +67,25 @@ async function fetchJson(path: string, init?: RequestInit) {
   const res = await fetch(`${moonrakerUrl.value}${path}`, init);
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`HTTP ${res.status}: ${text.slice(0, 160)}`);
+    throw new Error(`HTTP ${res.status}: ${text.slice(0, 200)}`);
   }
   return res.json();
+}
+
+function formatBytes(bytes?: number): string {
+  if (typeof bytes !== "number" || bytes < 0) return "--";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatDate(epochSeconds?: number): string {
+  if (typeof epochSeconds !== "number") return "--";
+  return new Date(epochSeconds * 1000).toLocaleString();
+}
+
+function withGcodesPrefix(path: string): string {
+  return path.startsWith("gcodes/") ? path : `gcodes/${path}`;
 }
 
 async function fetchPrinterStatus() {
@@ -125,6 +152,28 @@ async function fetchMacros() {
   }
 }
 
+async function fetchFiles() {
+  if (connectionState.value !== "Connected" && connectionState.value !== "Connecting...") return;
+
+  isLoadingFiles.value = true;
+  try {
+    const data = await fetchJson("/server/files/list?root=gcodes");
+    const list = data?.result;
+    if (!Array.isArray(list)) {
+      files.value = [];
+      return;
+    }
+
+    files.value = list
+      .filter((item): item is FileItem => typeof item?.path === "string")
+      .sort((a, b) => a.path.localeCompare(b.path));
+  } catch (err) {
+    lastError.value = err instanceof Error ? err.message : String(err);
+  } finally {
+    isLoadingFiles.value = false;
+  }
+}
+
 async function runMacro(macro: MacroItem) {
   if (connectionState.value !== "Connected") return;
 
@@ -146,6 +195,102 @@ async function runMacro(macro: MacroItem) {
   }
 }
 
+async function runJobAction(action: "pause" | "resume" | "cancel") {
+  if (connectionState.value !== "Connected") return;
+
+  jobAction.value = action;
+  lastError.value = "";
+
+  const script = action === "pause" ? "PAUSE" : action === "resume" ? "RESUME" : "CANCEL_PRINT";
+
+  try {
+    await fetchJson("/printer/gcode/script", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ script }),
+    });
+
+    await Promise.all([fetchPrinterStatus(), fetchConsoleStore()]);
+  } catch (err) {
+    lastError.value = err instanceof Error ? err.message : String(err);
+  } finally {
+    jobAction.value = null;
+  }
+}
+
+async function startPrint(file: FileItem) {
+  if (connectionState.value !== "Connected") return;
+
+  fileActionPath.value = file.path;
+  lastError.value = "";
+
+  try {
+    await fetchJson(`/printer/print/start?filename=${encodeURIComponent(file.path)}`, {
+      method: "POST",
+    });
+
+    await Promise.all([fetchPrinterStatus(), fetchConsoleStore()]);
+  } catch (err) {
+    lastError.value = err instanceof Error ? err.message : String(err);
+  } finally {
+    fileActionPath.value = null;
+  }
+}
+
+async function deleteFile(file: FileItem) {
+  if (connectionState.value !== "Connected") return;
+
+  const confirmed = window.confirm(`Delete file '${file.path}'?`);
+  if (!confirmed) return;
+
+  fileActionPath.value = file.path;
+  lastError.value = "";
+
+  const relativePath = file.path.startsWith("gcodes/") ? file.path.slice(7) : file.path;
+  const prefixedPath = withGcodesPrefix(relativePath);
+  const encodedRelativePath = relativePath
+    .split("/")
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+
+  const attempts: Array<() => Promise<unknown>> = [
+    () => fetchJson(`/server/files/gcodes/${encodedRelativePath}`, { method: "DELETE" }),
+    () => fetchJson(`/server/files/gcodes/${encodedRelativePath}`, { method: "POST" }),
+    () => fetchJson(`/server/files/delete_file?path=${encodeURIComponent(relativePath)}`, { method: "DELETE" }),
+    () => fetchJson(`/server/files/delete_file?path=${encodeURIComponent(prefixedPath)}`, { method: "DELETE" }),
+    () => fetchJson(`/server/files/delete?path=${encodeURIComponent(relativePath)}`, { method: "DELETE" }),
+    () => fetchJson(`/server/files/delete?path=${encodeURIComponent(prefixedPath)}`, { method: "DELETE" }),
+    () => fetchJson(`/server/files/delete_file?path=${encodeURIComponent(relativePath)}`, { method: "POST" }),
+    () => fetchJson(`/server/files/delete_file?path=${encodeURIComponent(prefixedPath)}`, { method: "POST" }),
+    () => fetchJson(`/server/files/delete?path=${encodeURIComponent(relativePath)}`, { method: "POST" }),
+    () => fetchJson(`/server/files/delete?path=${encodeURIComponent(prefixedPath)}`, { method: "POST" }),
+  ];
+
+  let deleted = false;
+  let lastDeleteError: unknown = null;
+
+  for (const attempt of attempts) {
+    try {
+      await attempt();
+      deleted = true;
+      break;
+    } catch (err) {
+      lastDeleteError = err;
+    }
+  }
+
+  try {
+    if (!deleted) {
+      throw (lastDeleteError instanceof Error ? lastDeleteError : new Error("Delete failed on all endpoints"));
+    }
+
+    await fetchFiles();
+  } catch (err) {
+    lastError.value = err instanceof Error ? err.message : String(err);
+  } finally {
+    fileActionPath.value = null;
+  }
+}
 async function sendGcode() {
   const script = consoleInput.value.trim();
   if (!script || connectionState.value !== "Connected") return;
@@ -206,7 +351,7 @@ async function testConnection() {
     if (!data?.result) throw new Error("Unexpected response payload");
 
     connectionState.value = "Connected";
-    await Promise.all([fetchPrinterStatus(), fetchConsoleStore(), fetchMacros()]);
+    await Promise.all([fetchPrinterStatus(), fetchConsoleStore(), fetchMacros(), fetchFiles()]);
     startPolling();
   } catch (err) {
     connectionState.value = "Disconnected";
@@ -320,7 +465,47 @@ onUnmounted(() => {
 
       <section v-else-if="activeView === 'files'" class="card">
         <h3>Files</h3>
-        <p>File manager will go here.</p>
+        <p class="muted">G-code files from Moonraker virtual SD.</p>
+        <div class="file-actions">
+          <button type="button" @click="fetchFiles" :disabled="connectionState !== 'Connected' || isLoadingFiles">
+            {{ isLoadingFiles ? "Refreshing..." : "Refresh Files" }}
+          </button>
+          <button type="button" :disabled="connectionState !== 'Connected' || jobAction === 'pause'" @click="runJobAction('pause')">
+            {{ jobAction === "pause" ? "Pausing..." : "Pause" }}
+          </button>
+          <button type="button" :disabled="connectionState !== 'Connected' || jobAction === 'resume'" @click="runJobAction('resume')">
+            {{ jobAction === "resume" ? "Resuming..." : "Resume" }}
+          </button>
+          <button type="button" class="danger-btn" :disabled="connectionState !== 'Connected' || jobAction === 'cancel'" @click="runJobAction('cancel')">
+            {{ jobAction === "cancel" ? "Canceling..." : "Cancel" }}
+          </button>
+        </div>
+        <div v-if="isLoadingFiles" class="muted">Loading files...</div>
+        <div v-else-if="!files.length" class="muted">No files found.</div>
+        <div v-else class="file-grid">
+          <article v-for="file in files" :key="file.path" class="file-card">
+            <p class="file-path">{{ file.path }}</p>
+            <p class="muted">{{ formatBytes(file.size) }} · {{ formatDate(file.modified) }}</p>
+            <div class="file-row-actions">
+              <button
+                type="button"
+                :disabled="connectionState !== 'Connected' || fileActionPath === file.path"
+                @click="startPrint(file)"
+              >
+                {{ fileActionPath === file.path ? "Working..." : "Print" }}
+              </button>
+              <button
+                type="button"
+                class="danger-btn"
+                :disabled="connectionState !== 'Connected' || fileActionPath === file.path"
+                @click="deleteFile(file)"
+              >
+                Delete
+              </button>
+            </div>
+          </article>
+        </div>
+        <p v-if="lastError" class="error-text">{{ lastError }}</p>
       </section>
 
       <section v-else class="card">
@@ -403,6 +588,41 @@ onUnmounted(() => {
   text-align: left;
 }
 
+.file-actions {
+  margin-bottom: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.file-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.file-card {
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 12px;
+  padding: 10px;
+  background: rgba(4, 10, 24, 0.46);
+}
+
+.file-path {
+  margin: 0 0 4px;
+  font-weight: 600;
+  word-break: break-all;
+}
+
+.file-row-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.danger-btn {
+  border-color: rgba(248, 113, 113, 0.65);
+}
+
 .settings-input {
   width: 100%;
   margin-bottom: 10px;
@@ -434,5 +654,10 @@ onUnmounted(() => {
   .macro-grid {
     grid-template-columns: 1fr;
   }
+
+  .file-grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>
+
