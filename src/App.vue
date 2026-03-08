@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 
 type ViewName = "dashboard" | "console" | "macros" | "files" | "settings";
 
@@ -20,8 +20,64 @@ type FileItem = {
   modified?: number;
 };
 
+type SettingsState = {
+  autoConnect: boolean;
+  confirmFileDelete: boolean;
+  statusPollMs: number;
+  consolePollMs: number;
+  consoleLineLimit: number;
+  consoleAutoRefresh: boolean;
+  autoRefreshFiles: boolean;
+  filesSortMode: "name_asc" | "name_desc" | "date_desc";
+  showDashboardProgress: boolean;
+  showDashboardTemps: boolean;
+  showDashboardState: boolean;
+  compactLayout: boolean;
+  uiAnimations: boolean;
+  notifyOnActions: boolean;
+  cameraEnabled: boolean;
+  cameraUrl: string;
+  showHiddenFiles: boolean;
+};
+
+const SETTINGS_KEY = "forge_settings_v1";
+const MOONRAKER_URL_KEY = "forge_moonraker_url";
+
+const defaultSettings: SettingsState = {
+  autoConnect: true,
+  confirmFileDelete: true,
+  statusPollMs: 2000,
+  consolePollMs: 2500,
+  consoleLineLimit: 200,
+  consoleAutoRefresh: true,
+  autoRefreshFiles: false,
+  filesSortMode: "name_asc",
+  showDashboardProgress: true,
+  showDashboardTemps: true,
+  showDashboardState: true,
+  compactLayout: false,
+  uiAnimations: true,
+  notifyOnActions: false,
+  cameraEnabled: false,
+  cameraUrl: "",
+  showHiddenFiles: false,
+};
+
+function loadSettings(): SettingsState {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (!raw) return { ...defaultSettings };
+    const parsed = JSON.parse(raw) as Partial<SettingsState>;
+    return { ...defaultSettings, ...parsed };
+  } catch {
+    return { ...defaultSettings };
+  }
+}
+
 const activeView = ref<ViewName>("dashboard");
-const moonrakerUrl = ref("/moonraker");
+const moonrakerUrl = ref(localStorage.getItem(MOONRAKER_URL_KEY) ?? "/moonraker");
+const settings = ref<SettingsState>(loadSettings());
+
 const connectionState = ref("Disconnected");
 const lastError = ref("");
 
@@ -46,6 +102,7 @@ const jobAction = ref<"pause" | "resume" | "cancel" | null>(null);
 
 let statusPollTimer: number | undefined;
 let consolePollTimer: number | undefined;
+let filePollTimer: number | undefined;
 
 const navItems: { key: ViewName; label: string }[] = [
   { key: "dashboard", label: "Dashboard" },
@@ -62,6 +119,41 @@ const viewTitle: Record<ViewName, string> = {
   files: "Files",
   settings: "Settings",
 };
+
+const statusIntervalMs = computed(() => Math.max(750, settings.value.statusPollMs));
+const consoleIntervalMs = computed(() => Math.max(750, settings.value.consolePollMs));
+const consoleLineLimit = computed(() => Math.min(500, Math.max(25, settings.value.consoleLineLimit)));
+
+watch(moonrakerUrl, (value) => {
+  localStorage.setItem(MOONRAKER_URL_KEY, value);
+});
+
+watch(
+  settings,
+  (value) => {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(value));
+  },
+  { deep: true },
+);
+
+watch(
+  () => [
+    statusIntervalMs.value,
+    consoleIntervalMs.value,
+    settings.value.consoleAutoRefresh,
+    settings.value.autoRefreshFiles,
+  ],
+  () => {
+    if (connectionState.value === "Connected") startPolling();
+  },
+);
+
+function notify(message: string) {
+  if (!settings.value.notifyOnActions) return;
+  window.setTimeout(() => {
+    window.alert(message);
+  }, 0);
+}
 
 async function fetchJson(path: string, init?: RequestInit) {
   const res = await fetch(`${moonrakerUrl.value}${path}`, init);
@@ -86,6 +178,26 @@ function formatDate(epochSeconds?: number): string {
 
 function withGcodesPrefix(path: string): string {
   return path.startsWith("gcodes/") ? path : `gcodes/${path}`;
+}
+
+function sortedFiles(input: FileItem[]): FileItem[] {
+  const list = [...input];
+
+  if (settings.value.showHiddenFiles === false) {
+    const filtered = list.filter((item) => !item.path.split("/").some((part) => part.startsWith(".")));
+    list.length = 0;
+    list.push(...filtered);
+  }
+
+  if (settings.value.filesSortMode === "name_desc") {
+    return list.sort((a, b) => b.path.localeCompare(a.path));
+  }
+
+  if (settings.value.filesSortMode === "date_desc") {
+    return list.sort((a, b) => (b.modified ?? 0) - (a.modified ?? 0));
+  }
+
+  return list.sort((a, b) => a.path.localeCompare(b.path));
 }
 
 async function fetchPrinterStatus() {
@@ -117,7 +229,7 @@ function formatConsoleLine(entry: GcodeStoreEntry): string {
 
 async function fetchConsoleStore() {
   try {
-    const data = await fetchJson("/server/gcode_store?count=200");
+    const data = await fetchJson(`/server/gcode_store?count=${consoleLineLimit.value}`);
     const store = data?.result?.gcode_store;
     if (!Array.isArray(store)) return;
 
@@ -164,9 +276,7 @@ async function fetchFiles() {
       return;
     }
 
-    files.value = list
-      .filter((item): item is FileItem => typeof item?.path === "string")
-      .sort((a, b) => a.path.localeCompare(b.path));
+    files.value = sortedFiles(list.filter((item): item is FileItem => typeof item?.path === "string"));
   } catch (err) {
     lastError.value = err instanceof Error ? err.message : String(err);
   } finally {
@@ -188,6 +298,7 @@ async function runMacro(macro: MacroItem) {
     });
 
     await fetchConsoleStore();
+    notify(`Macro '${macro.name}' executed.`);
   } catch (err) {
     lastError.value = err instanceof Error ? err.message : String(err);
   } finally {
@@ -211,6 +322,7 @@ async function runJobAction(action: "pause" | "resume" | "cancel") {
     });
 
     await Promise.all([fetchPrinterStatus(), fetchConsoleStore()]);
+    notify(`Print ${action} requested.`);
   } catch (err) {
     lastError.value = err instanceof Error ? err.message : String(err);
   } finally {
@@ -230,6 +342,7 @@ async function startPrint(file: FileItem) {
     });
 
     await Promise.all([fetchPrinterStatus(), fetchConsoleStore()]);
+    notify(`Print started: ${file.path}`);
   } catch (err) {
     lastError.value = err instanceof Error ? err.message : String(err);
   } finally {
@@ -240,8 +353,10 @@ async function startPrint(file: FileItem) {
 async function deleteFile(file: FileItem) {
   if (connectionState.value !== "Connected") return;
 
-  const confirmed = window.confirm(`Delete file '${file.path}'?`);
-  if (!confirmed) return;
+  if (settings.value.confirmFileDelete) {
+    const confirmed = window.confirm(`Delete file '${file.path}'?`);
+    if (!confirmed) return;
+  }
 
   fileActionPath.value = file.path;
   lastError.value = "";
@@ -285,12 +400,14 @@ async function deleteFile(file: FileItem) {
     }
 
     await fetchFiles();
+    notify(`File deleted: ${file.path}`);
   } catch (err) {
     lastError.value = err instanceof Error ? err.message : String(err);
   } finally {
     fileActionPath.value = null;
   }
 }
+
 async function sendGcode() {
   const script = consoleInput.value.trim();
   if (!script || connectionState.value !== "Connected") return;
@@ -319,11 +436,19 @@ function startPolling() {
 
   statusPollTimer = window.setInterval(() => {
     void fetchPrinterStatus();
-  }, 2000);
+  }, statusIntervalMs.value);
 
-  consolePollTimer = window.setInterval(() => {
-    void fetchConsoleStore();
-  }, 2500);
+  if (settings.value.consoleAutoRefresh) {
+    consolePollTimer = window.setInterval(() => {
+      void fetchConsoleStore();
+    }, consoleIntervalMs.value);
+  }
+
+  if (settings.value.autoRefreshFiles) {
+    filePollTimer = window.setInterval(() => {
+      void fetchFiles();
+    }, 8000);
+  }
 }
 
 function stopPolling() {
@@ -335,6 +460,11 @@ function stopPolling() {
   if (consolePollTimer) {
     window.clearInterval(consolePollTimer);
     consolePollTimer = undefined;
+  }
+
+  if (filePollTimer) {
+    window.clearInterval(filePollTimer);
+    filePollTimer = undefined;
   }
 }
 
@@ -360,8 +490,17 @@ async function testConnection() {
   }
 }
 
+function resetSettings() {
+  const confirmed = window.confirm("Reset Forge UI settings to defaults?");
+  if (!confirmed) return;
+
+  settings.value = { ...defaultSettings };
+}
+
 onMounted(() => {
-  void testConnection();
+  if (settings.value.autoConnect) {
+    void testConnection();
+  }
 });
 
 onUnmounted(() => {
@@ -390,20 +529,20 @@ onUnmounted(() => {
       </nav>
     </aside>
 
-    <main class="content">
+    <main class="content" :class="{ compact: settings.compactLayout, noanim: !settings.uiAnimations }">
       <header class="topbar">
         <h2>{{ viewTitle[activeView] }}</h2>
         <div class="status-chip">{{ connectionState }}</div>
       </header>
 
       <section v-if="activeView === 'dashboard'" class="dashboard-grid">
-        <article class="card">
+        <article v-if="settings.showDashboardState" class="card">
           <h3>Printer State</h3>
           <p class="big">{{ printerState }}</p>
           <p class="muted">{{ fileName }}</p>
         </article>
 
-        <article class="card">
+        <article v-if="settings.showDashboardProgress" class="card">
           <h3>Progress</h3>
           <div class="bar-wrap">
             <div class="bar-fill" :style="{ width: `${progressPct}%` }"></div>
@@ -411,7 +550,7 @@ onUnmounted(() => {
           <p class="big">{{ progressPct }}%</p>
         </article>
 
-        <article class="card">
+        <article v-if="settings.showDashboardTemps" class="card">
           <h3>Temperatures</h3>
           <p>Hotend: <strong>{{ hotendTemp !== null ? `${hotendTemp.toFixed(1)} C` : "--" }}</strong></p>
           <p>Bed: <strong>{{ bedTemp !== null ? `${bedTemp.toFixed(1)} C` : "--" }}</strong></p>
@@ -470,13 +609,26 @@ onUnmounted(() => {
           <button type="button" @click="fetchFiles" :disabled="connectionState !== 'Connected' || isLoadingFiles">
             {{ isLoadingFiles ? "Refreshing..." : "Refresh Files" }}
           </button>
-          <button type="button" :disabled="connectionState !== 'Connected' || jobAction === 'pause'" @click="runJobAction('pause')">
+          <button
+            type="button"
+            :disabled="connectionState !== 'Connected' || jobAction === 'pause'"
+            @click="runJobAction('pause')"
+          >
             {{ jobAction === "pause" ? "Pausing..." : "Pause" }}
           </button>
-          <button type="button" :disabled="connectionState !== 'Connected' || jobAction === 'resume'" @click="runJobAction('resume')">
+          <button
+            type="button"
+            :disabled="connectionState !== 'Connected' || jobAction === 'resume'"
+            @click="runJobAction('resume')"
+          >
             {{ jobAction === "resume" ? "Resuming..." : "Resume" }}
           </button>
-          <button type="button" class="danger-btn" :disabled="connectionState !== 'Connected' || jobAction === 'cancel'" @click="runJobAction('cancel')">
+          <button
+            type="button"
+            class="danger-btn"
+            :disabled="connectionState !== 'Connected' || jobAction === 'cancel'"
+            @click="runJobAction('cancel')"
+          >
             {{ jobAction === "cancel" ? "Canceling..." : "Cancel" }}
           </button>
         </div>
@@ -508,15 +660,124 @@ onUnmounted(() => {
         <p v-if="lastError" class="error-text">{{ lastError }}</p>
       </section>
 
-      <section v-else class="card">
-        <h3>Settings</h3>
-        <p class="muted">Moonraker Base URL (proxy mode)</p>
-        <input v-model="moonrakerUrl" type="text" class="settings-input" />
-        <div class="settings-actions">
-          <button @click="testConnection">Test Connection</button>
-        </div>
-        <p class="muted settings-note">Use <code>/moonraker</code> when Vite proxy is enabled.</p>
-        <p v-if="lastError" class="error-text">{{ lastError }}</p>
+      <section v-else class="settings-layout">
+        <article class="card">
+          <h3>Connection</h3>
+          <label class="setting-row">
+            <span>Moonraker Base URL</span>
+            <input v-model="moonrakerUrl" type="text" class="settings-input" />
+          </label>
+          <label class="setting-row checkbox-row">
+            <span>Auto-connect on startup</span>
+            <input v-model="settings.autoConnect" type="checkbox" />
+          </label>
+          <div class="settings-actions">
+            <button @click="testConnection">Test Connection</button>
+          </div>
+        </article>
+
+        <article class="card">
+          <h3>Interface</h3>
+          <label class="setting-row checkbox-row">
+            <span>Compact layout</span>
+            <input v-model="settings.compactLayout" type="checkbox" />
+          </label>
+          <label class="setting-row checkbox-row">
+            <span>Enable UI animations</span>
+            <input v-model="settings.uiAnimations" type="checkbox" />
+          </label>
+          <p class="muted">Fluidd-like interface toggles can be expanded later (theme, language, panels).</p>
+        </article>
+
+        <article class="card">
+          <h3>Dashboard</h3>
+          <label class="setting-row checkbox-row">
+            <span>Show Printer State card</span>
+            <input v-model="settings.showDashboardState" type="checkbox" />
+          </label>
+          <label class="setting-row checkbox-row">
+            <span>Show Progress card</span>
+            <input v-model="settings.showDashboardProgress" type="checkbox" />
+          </label>
+          <label class="setting-row checkbox-row">
+            <span>Show Temperatures card</span>
+            <input v-model="settings.showDashboardTemps" type="checkbox" />
+          </label>
+        </article>
+
+        <article class="card">
+          <h3>Console</h3>
+          <label class="setting-row checkbox-row">
+            <span>Auto-refresh console</span>
+            <input v-model="settings.consoleAutoRefresh" type="checkbox" />
+          </label>
+          <label class="setting-row">
+            <span>Console poll interval (ms)</span>
+            <input v-model.number="settings.consolePollMs" type="number" min="750" step="250" />
+          </label>
+          <label class="setting-row">
+            <span>Stored console lines</span>
+            <input v-model.number="settings.consoleLineLimit" type="number" min="25" max="500" step="25" />
+          </label>
+        </article>
+
+        <article class="card">
+          <h3>G-Code Files</h3>
+          <label class="setting-row checkbox-row">
+            <span>Confirm before delete</span>
+            <input v-model="settings.confirmFileDelete" type="checkbox" />
+          </label>
+          <label class="setting-row checkbox-row">
+            <span>Auto-refresh files list</span>
+            <input v-model="settings.autoRefreshFiles" type="checkbox" />
+          </label>
+          <label class="setting-row checkbox-row">
+            <span>Show hidden files</span>
+            <input v-model="settings.showHiddenFiles" type="checkbox" />
+          </label>
+          <label class="setting-row">
+            <span>Sort mode</span>
+            <select v-model="settings.filesSortMode">
+              <option value="name_asc">Name (A-Z)</option>
+              <option value="name_desc">Name (Z-A)</option>
+              <option value="date_desc">Date (Newest)</option>
+            </select>
+          </label>
+        </article>
+
+        <article class="card">
+          <h3>Camera</h3>
+          <label class="setting-row checkbox-row">
+            <span>Enable camera panel</span>
+            <input v-model="settings.cameraEnabled" type="checkbox" />
+          </label>
+          <label class="setting-row">
+            <span>Camera URL</span>
+            <input v-model="settings.cameraUrl" type="text" placeholder="http://.../stream" />
+          </label>
+          <p class="muted">Panel wiring will be added in the next camera milestone.</p>
+        </article>
+
+        <article class="card">
+          <h3>Notifications</h3>
+          <label class="setting-row checkbox-row">
+            <span>Notify on actions</span>
+            <input v-model="settings.notifyOnActions" type="checkbox" />
+          </label>
+        </article>
+
+        <article class="card">
+          <h3>Advanced</h3>
+          <label class="setting-row">
+            <span>Status poll interval (ms)</span>
+            <input v-model.number="settings.statusPollMs" type="number" min="750" step="250" />
+          </label>
+          <div class="settings-actions">
+            <button class="danger-btn" @click="resetSettings">Reset Settings</button>
+          </div>
+          <p class="muted">Settings are auto-saved locally in your browser.</p>
+          <p v-if="lastError" class="error-text">{{ lastError }}</p>
+        </article>
       </section>
     </main>
   </div>
@@ -619,13 +880,31 @@ onUnmounted(() => {
   gap: 8px;
 }
 
-.danger-btn {
-  border-color: rgba(248, 113, 113, 0.65);
+.settings-layout {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
 }
 
-.settings-input {
-  width: 100%;
+.setting-row {
+  display: grid;
+  gap: 6px;
   margin-bottom: 10px;
+}
+
+.checkbox-row {
+  grid-template-columns: 1fr auto;
+  align-items: center;
+}
+
+.settings-input,
+select {
+  width: 100%;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: rgba(4, 10, 24, 0.82);
+  color: #e2e8f0;
+  border-radius: 10px;
+  padding: 9px 10px;
 }
 
 .settings-actions {
@@ -633,13 +912,23 @@ onUnmounted(() => {
   gap: 8px;
 }
 
-.settings-note {
-  margin-top: 10px;
+.danger-btn {
+  border-color: rgba(248, 113, 113, 0.65);
 }
 
 .error-text {
   color: #fca5a5;
   margin-top: 8px;
+}
+
+.content.compact .card {
+  padding: 12px;
+  border-radius: 12px;
+}
+
+.content.noanim * {
+  transition: none !important;
+  animation: none !important;
 }
 
 @media (max-width: 980px) {
@@ -658,6 +947,9 @@ onUnmounted(() => {
   .file-grid {
     grid-template-columns: 1fr;
   }
+
+  .settings-layout {
+    grid-template-columns: 1fr;
+  }
 }
 </style>
-
