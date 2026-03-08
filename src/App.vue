@@ -37,6 +37,7 @@ type SettingsState = {
   notifyOnActions: boolean;
   cameraEnabled: boolean;
   cameraUrl: string;
+  cameraRenderMode: "image" | "iframe";
   showHiddenFiles: boolean;
 };
 
@@ -60,6 +61,7 @@ const defaultSettings: SettingsState = {
   notifyOnActions: false,
   cameraEnabled: false,
   cameraUrl: "",
+  cameraRenderMode: "image",
   showHiddenFiles: false,
 };
 
@@ -99,6 +101,8 @@ const files = ref<FileItem[]>([]);
 const isLoadingFiles = ref(false);
 const fileActionPath = ref<string | null>(null);
 const jobAction = ref<"pause" | "resume" | "cancel" | null>(null);
+const cameraLoadError = ref(false);
+const isCameraFullscreen = ref(false);
 
 let statusPollTimer: number | undefined;
 let consolePollTimer: number | undefined;
@@ -123,6 +127,7 @@ const viewTitle: Record<ViewName, string> = {
 const statusIntervalMs = computed(() => Math.max(750, settings.value.statusPollMs));
 const consoleIntervalMs = computed(() => Math.max(750, settings.value.consolePollMs));
 const consoleLineLimit = computed(() => Math.min(500, Math.max(25, settings.value.consoleLineLimit)));
+const cameraPreviewUrl = computed(() => settings.value.cameraUrl.trim());
 
 watch(moonrakerUrl, (value) => {
   localStorage.setItem(MOONRAKER_URL_KEY, value);
@@ -148,6 +153,27 @@ watch(
   },
 );
 
+watch(
+  () => [settings.value.cameraEnabled, settings.value.cameraUrl, settings.value.cameraRenderMode],
+  () => {
+    cameraLoadError.value = false;
+  },
+);
+
+function openCameraFullscreen() {
+  if (!cameraPreviewUrl.value) return;
+  isCameraFullscreen.value = true;
+}
+
+function closeCameraFullscreen() {
+  isCameraFullscreen.value = false;
+}
+
+function onGlobalKeydown(event: KeyboardEvent) {
+  if (event.key === "Escape") {
+    closeCameraFullscreen();
+  }
+}
 function notify(message: string) {
   if (!settings.value.notifyOnActions) return;
   window.setTimeout(() => {
@@ -498,12 +524,15 @@ function resetSettings() {
 }
 
 onMounted(() => {
+  window.addEventListener("keydown", onGlobalKeydown);
+
   if (settings.value.autoConnect) {
     void testConnection();
   }
 });
 
 onUnmounted(() => {
+  window.removeEventListener("keydown", onGlobalKeydown);
   stopPolling();
 });
 </script>
@@ -555,8 +584,53 @@ onUnmounted(() => {
           <p>Hotend: <strong>{{ hotendTemp !== null ? `${hotendTemp.toFixed(1)} C` : "--" }}</strong></p>
           <p>Bed: <strong>{{ bedTemp !== null ? `${bedTemp.toFixed(1)} C` : "--" }}</strong></p>
         </article>
+
+        <article v-if="settings.cameraEnabled" class="card camera-card">
+          <div class="camera-title-row"><h3>Camera</h3><button type="button" @click="openCameraFullscreen" :disabled="!cameraPreviewUrl">Fullscreen</button></div>
+          <p v-if="!cameraPreviewUrl" class="muted">Set a Camera URL in Settings to enable preview.</p>
+          <div v-else-if="settings.cameraRenderMode === 'iframe'" class="camera-iframe-wrap">
+            <iframe
+              class="camera-frame"
+              :src="cameraPreviewUrl"
+              title="Printer camera feed"
+              loading="lazy"
+              referrerpolicy="no-referrer"
+            />
+          </div>
+          <div v-else-if="cameraLoadError" class="camera-error-wrap">
+            <p class="muted">Camera stream could not be loaded.</p>
+            <a :href="cameraPreviewUrl" target="_blank" rel="noreferrer">Open Stream URL</a>
+            <button type="button" @click="cameraLoadError = false">Retry Preview</button>
+          </div>
+          <img
+            v-else
+            class="camera-preview"
+            :src="cameraPreviewUrl"
+            alt="Printer camera feed"
+            loading="lazy"
+            @error="cameraLoadError = true"
+          />
+        </article>
       </section>
 
+      <div v-if="isCameraFullscreen && cameraPreviewUrl" class="camera-modal-overlay" @click.self="closeCameraFullscreen">
+        <button type="button" class="camera-modal-close" @click="closeCameraFullscreen">Close</button>
+        <iframe
+          v-if="settings.cameraRenderMode === 'iframe'"
+          class="camera-modal-frame"
+          :src="cameraPreviewUrl"
+          title="Printer camera fullscreen feed"
+          loading="lazy"
+          referrerpolicy="no-referrer"
+        />
+        <img
+          v-else
+          class="camera-modal-image"
+          :src="cameraPreviewUrl"
+          alt="Printer camera fullscreen feed"
+          loading="lazy"
+        />
+      </div>
       <section v-else-if="activeView === 'console'" class="card">
         <h3>Console</h3>
         <div class="console-log" role="log" aria-live="polite">
@@ -637,7 +711,7 @@ onUnmounted(() => {
         <div v-else class="file-grid">
           <article v-for="file in files" :key="file.path" class="file-card">
             <p class="file-path">{{ file.path }}</p>
-            <p class="muted">{{ formatBytes(file.size) }} · {{ formatDate(file.modified) }}</p>
+            <p class="muted">{{ formatBytes(file.size) }} - {{ formatDate(file.modified) }}</p>
             <div class="file-row-actions">
               <button
                 type="button"
@@ -744,7 +818,6 @@ onUnmounted(() => {
             </select>
           </label>
         </article>
-
         <article class="card">
           <h3>Camera</h3>
           <label class="setting-row checkbox-row">
@@ -755,7 +828,14 @@ onUnmounted(() => {
             <span>Camera URL</span>
             <input v-model="settings.cameraUrl" type="text" placeholder="http://.../stream" />
           </label>
-          <p class="muted">Panel wiring will be added in the next camera milestone.</p>
+          <label class="setting-row">
+            <span>Renderer</span>
+            <select v-model="settings.cameraRenderMode">
+              <option value="image">Image (MJPEG/Snapshot)</option>
+              <option value="iframe">Iframe (Web UI stream)</option>
+            </select>
+          </label>
+          <p class="muted">If preview is black, switch renderer to Iframe.</p>
         </article>
 
         <article class="card">
@@ -787,7 +867,7 @@ onUnmounted(() => {
 .dashboard-grid {
   display: grid;
   gap: 14px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }
 
 .big {
@@ -841,7 +921,7 @@ onUnmounted(() => {
 
 .macro-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 8px;
 }
 
@@ -916,11 +996,63 @@ select {
   border-color: rgba(248, 113, 113, 0.65);
 }
 
-.error-text {
-  color: #fca5a5;
-  margin-top: 8px;
+
+.camera-card {
+  min-height: 260px;
 }
 
+.camera-preview {
+  width: 100%;
+  min-height: 200px;
+  max-height: 320px;
+  object-fit: cover;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: rgba(4, 10, 24, 0.72);
+}
+
+.camera-error-wrap {
+  display: grid;
+  gap: 6px;
+}
+
+.camera-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.camera-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: #000;
+}
+
+.camera-modal-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 61;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  background: rgba(2, 6, 23, 0.72);
+}
+
+.camera-modal-frame,
+.camera-modal-image {
+  width: 100vw;
+  height: 100vh;
+  border: 0;
+  border-radius: 0;
+  background: #000;
+  display: block;
+}
+
+.camera-modal-image {
+  object-fit: contain;
+}
 .content.compact .card {
   padding: 12px;
   border-radius: 12px;
@@ -951,5 +1083,17 @@ select {
   .settings-layout {
     grid-template-columns: 1fr;
   }
+}
+
+.camera-iframe-wrap {
+  width: 100%;
+}
+
+.camera-frame {
+  width: 100%;
+  min-height: 260px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 12px;
+  background: rgba(4, 10, 24, 0.72);
 }
 </style>
