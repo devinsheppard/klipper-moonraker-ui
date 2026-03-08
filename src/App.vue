@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { onMounted, onUnmounted, ref } from "vue";
 
 type ViewName = "dashboard" | "console" | "macros" | "files" | "settings";
 
@@ -8,6 +8,14 @@ const moonrakerUrl = ref("/moonraker");
 const connectionState = ref("Disconnected");
 const lastError = ref("");
 
+const printerState = ref("unknown");
+const progressPct = ref(0);
+const fileName = ref("No active file");
+const hotendTemp = ref<number | null>(null);
+const bedTemp = ref<number | null>(null);
+
+let pollTimer: number | undefined;
+
 const navItems: { key: ViewName; label: string }[] = [
   { key: "dashboard", label: "Dashboard" },
   { key: "console", label: "Console" },
@@ -15,6 +23,45 @@ const navItems: { key: ViewName; label: string }[] = [
   { key: "files", label: "Files" },
   { key: "settings", label: "Settings" },
 ];
+
+async function fetchPrinterStatus() {
+  try {
+    const res = await fetch(
+      `${moonrakerUrl.value}/printer/objects/query?print_stats&extruder&heater_bed`,
+    );
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    const data = await res.json();
+    const status = data?.result?.status;
+    if (!status) return;
+
+    const ps = status.print_stats ?? {};
+    const ex = status.extruder ?? {};
+    const bed = status.heater_bed ?? {};
+
+    printerState.value = ps.state ?? "unknown";
+    progressPct.value = Math.max(0, Math.min(100, Math.round((ps.progress ?? 0) * 100)));
+    fileName.value = ps.filename || "No active file";
+    hotendTemp.value = typeof ex.temperature === "number" ? ex.temperature : null;
+    bedTemp.value = typeof bed.temperature === "number" ? bed.temperature : null;
+  } catch (err) {
+    lastError.value = err instanceof Error ? err.message : String(err);
+  }
+}
+
+function startPolling() {
+  if (pollTimer) window.clearInterval(pollTimer);
+  pollTimer = window.setInterval(() => {
+    void fetchPrinterStatus();
+  }, 2000);
+}
+
+function stopPolling() {
+  if (pollTimer) {
+    window.clearInterval(pollTimer);
+    pollTimer = undefined;
+  }
+}
 
 async function testConnection() {
   connectionState.value = "Connecting...";
@@ -34,14 +81,21 @@ async function testConnection() {
     if (!data?.result) throw new Error("Unexpected response payload");
 
     connectionState.value = "Connected";
+    await fetchPrinterStatus();
+    startPolling();
   } catch (err) {
     connectionState.value = "Disconnected";
     lastError.value = err instanceof Error ? err.message : String(err);
+    stopPolling();
   }
 }
 
 onMounted(() => {
   void testConnection();
+});
+
+onUnmounted(() => {
+  stopPolling();
 });
 </script>
 
@@ -72,9 +126,26 @@ onMounted(() => {
         <div class="status-chip">{{ connectionState }}</div>
       </header>
 
-      <section v-if="activeView === 'dashboard'" class="card">
-        <h3>Dashboard</h3>
-        <p>Printer controls and live status will go here.</p>
+      <section v-if="activeView === 'dashboard'" class="dashboard-grid">
+        <article class="card">
+          <h3>Printer State</h3>
+          <p class="big">{{ printerState }}</p>
+          <p class="muted">{{ fileName }}</p>
+        </article>
+
+        <article class="card">
+          <h3>Progress</h3>
+          <div class="bar-wrap">
+            <div class="bar-fill" :style="{ width: `${progressPct}%` }"></div>
+          </div>
+          <p class="big">{{ progressPct }}%</p>
+        </article>
+
+        <article class="card">
+          <h3>Temperatures</h3>
+          <p>Hotend: <strong>{{ hotendTemp !== null ? `${hotendTemp.toFixed(1)} C` : "--" }}</strong></p>
+          <p>Bed: <strong>{{ bedTemp !== null ? `${bedTemp.toFixed(1)} C` : "--" }}</strong></p>
+        </article>
       </section>
 
       <section v-else-if="activeView === 'console'" class="card">
@@ -103,3 +174,32 @@ onMounted(() => {
     </main>
   </div>
 </template>
+
+<style scoped>
+.dashboard-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.big {
+  font-size: 1.4rem;
+  font-weight: 700;
+  margin: 8px 0;
+}
+.bar-wrap {
+  width: 100%;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.7);
+  overflow: hidden;
+}
+.bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #06b6d4, #22c55e);
+}
+@media (max-width: 980px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+}
+</style>
