@@ -432,6 +432,28 @@ select {
   margin-bottom: 10px;
 }
 
+.console-line {
+  padding: 2px 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.console-line-debug {
+  color: color-mix(in srgb, var(--muted) 85%, var(--text) 15%);
+}
+
+.console-line-info {
+  color: var(--text);
+}
+
+.console-line-warn {
+  color: color-mix(in srgb, #f59e0b 80%, var(--text) 20%);
+}
+
+.console-line-error {
+  color: color-mix(in srgb, var(--danger) 86%, #ffffff 14%);
+}
+
 .temp-grid {
   display: grid;
   gap: 10px;
@@ -762,6 +784,7 @@ select {
     grid-template-columns: 1fr;
   }
 }
+
 
 
 
