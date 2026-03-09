@@ -24,7 +24,7 @@ const DASHBOARD_LAYOUT_DEFAULT = {
 };
 
 const DASHBOARD_CARD_LABELS = {
-  "card-print-progress": "Print Progress",
+  "card-print-progress": "Status",
   "card-temperatures": "Temperatures",
   "card-motion": "Motion",
   "card-quick-commands": "Quick Commands",
@@ -81,6 +81,15 @@ const els = {
   printerState: document.getElementById("printer-state"),
   progressBar: document.getElementById("progress-bar"),
   progressText: document.getElementById("progress-text"),
+  statusFileName: document.getElementById("status-file-name"),
+  statusFileThumbWrap: document.getElementById("status-file-thumb-wrap"),
+  statusFileThumb: document.getElementById("status-file-thumb"),
+  statusEtp: document.getElementById("status-etp"),
+  statusFinish: document.getElementById("status-finish"),
+  statusTimeLeft: document.getElementById("status-time-left"),
+  statusSpeed: document.getElementById("status-speed"),
+  statusFlowrate: document.getElementById("status-flowrate"),
+  statusFilament: document.getElementById("status-filament"),
   tempHotend: document.getElementById("temp-hotend"),
   tempBed: document.getElementById("temp-bed"),
   tempHotendState: document.getElementById("temp-hotend-state"),
@@ -151,9 +160,6 @@ const els = {
   cameraDialog: document.getElementById("camera-fullscreen-dialog"),
   cameraDialogClose: document.getElementById("camera-fullscreen-close"),
   cameraDialogContent: document.getElementById("camera-fullscreen-content"),
-  pause: document.getElementById("btn-pause"),
-  resume: document.getElementById("btn-resume"),
-  cancel: document.getElementById("btn-cancel"),
   home: document.getElementById("btn-home"),
   jog: [...document.querySelectorAll("[data-jog]")],
   quickGcode: [...document.querySelectorAll("[data-gcode]")],
@@ -162,6 +168,7 @@ const els = {
 let layoutDraggedCardId = null;
 let layoutDraggedFromColumn = null;
 let temperaturePollTimer = null;
+let statusCountdownTimer = null;
 
 function loadStoredBool(key, fallback) {
   const raw = localStorage.getItem(key);
@@ -303,6 +310,18 @@ const state = {
       hoverIndex: null,
       layout: null,
     },
+  },
+  printStatus: {
+    filename: "",
+    thumbnailPath: "",
+    metadataByFile: new Map(),
+    metadataRequestId: 0,
+    lastPrintStats: {},
+    lastGcodeMove: {},
+    lastFilamentUsed: null,
+    lastVirtualSd: {},
+    lastMotionReport: {},
+    countdownTargetMs: null,
   },
 };
 
@@ -590,6 +609,7 @@ function setConnectionUi(status) {
       setPrinterState("ready");
     }
   } else {
+    updateStatusCountdown(null);
     els.connectionPill.style.borderColor = "rgba(148, 163, 184, 0.22)";
 
     if (status === "connecting") setPrinterState("connecting");
@@ -604,6 +624,349 @@ function setPrinterState(value) {
   els.printerState.dataset.state = normalized;
   els.printerState.textContent = meta.label;
   els.printerDot.style.background = meta.color;
+}
+
+function setStatusFilename(filename) {
+  const normalized = typeof filename === "string" ? filename.trim() : "";
+  const label = normalized || "No active file";
+  state.printStatus.filename = normalized;
+
+  if (!els.statusFileName) return;
+  els.statusFileName.textContent = label;
+  els.statusFileName.title = label;
+}
+
+function encodePathForUrl(path) {
+  return String(path || "")
+    .split("/")
+    .filter((segment) => segment.length > 0)
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+}
+
+function buildThumbnailUrl(relativePath) {
+  if (!relativePath) return "";
+  const encodedPath = encodePathForUrl(relativePath);
+  return `${state.moonrakerUrl}/server/files/gcodes/${encodedPath}`;
+}
+
+function setStatusThumbnail(relativePath) {
+  state.printStatus.thumbnailPath = relativePath || "";
+
+  if (!els.statusFileThumbWrap || !els.statusFileThumb) return;
+
+  if (!relativePath) {
+    els.statusFileThumbWrap.hidden = true;
+    els.statusFileThumb.removeAttribute("src");
+    return;
+  }
+
+  els.statusFileThumb.src = buildThumbnailUrl(relativePath);
+  els.statusFileThumbWrap.hidden = false;
+}
+
+function formatStatusDuration(seconds) {
+  if (!Number.isFinite(seconds) || seconds <= 0) return "--:--:--";
+
+  const totalSeconds = Math.max(0, Math.round(seconds));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const remainderSeconds = totalSeconds % 60;
+
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(remainderSeconds).padStart(2, "0")}`;
+}
+
+function formatStatusFinishTime(remainingSeconds) {
+  if (!Number.isFinite(remainingSeconds) || remainingSeconds < 0) return "--:--";
+
+  const finishDate = new Date(Date.now() + Math.round(remainingSeconds * 1000));
+  return finishDate.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
+function stopStatusCountdown() {
+  if (statusCountdownTimer) {
+    clearInterval(statusCountdownTimer);
+    statusCountdownTimer = null;
+  }
+}
+
+function renderStatusTimeLeftFromCountdown() {
+  if (!els.statusTimeLeft) return;
+
+  const targetMs = Number(state.printStatus.countdownTargetMs);
+  if (!Number.isFinite(targetMs)) {
+    els.statusTimeLeft.textContent = "--:--:--";
+    return;
+  }
+
+  const remainingSeconds = Math.max((targetMs - Date.now()) / 1000, 0);
+  els.statusTimeLeft.textContent = formatStatusDuration(remainingSeconds);
+
+  if (remainingSeconds <= 0) {
+    stopStatusCountdown();
+  }
+}
+
+function startStatusCountdown() {
+  if (statusCountdownTimer) return;
+  statusCountdownTimer = setInterval(renderStatusTimeLeftFromCountdown, 1000);
+}
+
+function updateStatusCountdown(remainingSeconds) {
+  if (!els.statusTimeLeft) return;
+
+  if (!Number.isFinite(remainingSeconds) || remainingSeconds < 0) {
+    state.printStatus.countdownTargetMs = null;
+    els.statusTimeLeft.textContent = "--:--:--";
+    stopStatusCountdown();
+    return;
+  }
+
+  state.printStatus.countdownTargetMs = Date.now() + Math.round(remainingSeconds * 1000);
+  renderStatusTimeLeftFromCountdown();
+  startStatusCountdown();
+}
+function readPrintElapsedSeconds(printStats) {
+  const printDuration = Number(printStats?.print_duration);
+  if (Number.isFinite(printDuration) && printDuration >= 0) return printDuration;
+
+  const totalDuration = Number(printStats?.total_duration);
+  if (Number.isFinite(totalDuration) && totalDuration >= 0) return totalDuration;
+
+  return 0;
+}
+
+function getStatusMetadataEntry(filename) {
+  const normalized = typeof filename === "string" ? filename.trim() : "";
+  if (!normalized) return null;
+
+  const entry = state.printStatus.metadataByFile.get(normalized);
+  return entry && typeof entry === "object" ? entry : null;
+}
+
+function deriveEstimatedTotalSeconds(printStats) {
+  const metadata = getStatusMetadataEntry(state.printStatus.filename);
+  const metadataEstimated = Number(metadata?.estimatedTime);
+
+  if (Number.isFinite(metadataEstimated) && metadataEstimated > 0) {
+    return metadataEstimated;
+  }
+
+  const progress = Number(state.printStatus.lastVirtualSd?.progress);
+  const elapsedSeconds = readPrintElapsedSeconds(printStats);
+
+  if (Number.isFinite(progress) && progress > 0 && elapsedSeconds > 0) {
+    return elapsedSeconds / progress;
+  }
+
+  return null;
+}
+
+function renderStatusTiming(printStats) {
+  if (!els.statusEtp || !els.statusFinish) return;
+
+  const estimatedTotalSeconds = deriveEstimatedTotalSeconds(printStats);
+  const elapsedSeconds = readPrintElapsedSeconds(printStats);
+  const remainingSeconds = Number.isFinite(estimatedTotalSeconds)
+    ? Math.max(estimatedTotalSeconds - elapsedSeconds, 0)
+    : null;
+
+  els.statusEtp.textContent = formatStatusDuration(estimatedTotalSeconds);
+  els.statusFinish.textContent = formatStatusFinishTime(remainingSeconds);
+  updateStatusCountdown(remainingSeconds);
+}
+
+function mergeVirtualSdSnapshot(virtualSd) {
+  const partial = virtualSd && typeof virtualSd === "object" ? virtualSd : {};
+  const previous = state.printStatus.lastVirtualSd || {};
+  const merged = { ...previous, ...partial };
+  state.printStatus.lastVirtualSd = merged;
+  return merged;
+}
+
+function renderStatusProgress(virtualSd) {
+  const progress = Number(virtualSd?.progress);
+  const pct = Number.isFinite(progress)
+    ? Math.max(0, Math.min(100, Math.round(progress * 100)))
+    : 0;
+
+  if (els.progressBar) {
+    els.progressBar.style.width = `${pct}%`;
+  }
+
+  if (els.progressText) {
+    els.progressText.textContent = `${pct}%`;
+  }
+}
+function mergePrintStatsSnapshot(printStats) {
+  const partial = printStats && typeof printStats === "object" ? printStats : {};
+  const previous = state.printStatus.lastPrintStats || {};
+  const merged = { ...previous, ...partial };
+  state.printStatus.lastPrintStats = merged;
+  return merged;
+}
+
+function updateStatusTiming(printStats) {
+  renderStatusTiming(printStats);
+}
+
+function formatStatusPercent(value) {
+  if (!Number.isFinite(value) || value < 0) return "--%";
+  return `${Math.round(value * 100)}%`;
+}
+
+function formatStatusFilament(mm) {
+  if (!Number.isFinite(mm) || mm < 0) return "--";
+
+  if (mm >= 1000) {
+    return `${(mm / 1000).toFixed(2)} m`;
+  }
+
+  return `${Math.round(mm)} mm`;
+}
+
+function formatStatusSpeedMmPerSec(mmPerSec) {
+  if (!Number.isFinite(mmPerSec) || mmPerSec < 0) return "-- mm/s";
+
+  if (mmPerSec >= 100) {
+    return `${Math.round(mmPerSec)} mm/s`;
+  }
+
+  return `${mmPerSec.toFixed(1)} mm/s`;
+}
+
+function updateStatusRatesAndFilament(printStats, gcodeMove = null, motionReport = null) {
+  if (gcodeMove && typeof gcodeMove === "object") {
+    state.printStatus.lastGcodeMove = {
+      ...state.printStatus.lastGcodeMove,
+      ...gcodeMove,
+    };
+  }
+
+  if (motionReport && typeof motionReport === "object") {
+    state.printStatus.lastMotionReport = {
+      ...state.printStatus.lastMotionReport,
+      ...motionReport,
+    };
+  }
+
+  const liveVelocity = Number(state.printStatus.lastMotionReport?.live_velocity);
+  const fallbackSpeed = Number(state.printStatus.lastGcodeMove?.speed);
+  const speedMmPerSec = Number.isFinite(liveVelocity) && liveVelocity >= 0 ? liveVelocity : fallbackSpeed;
+  const flowrateFactor = Number(state.printStatus.lastGcodeMove?.extrude_factor);
+  const filamentUsedIncoming = Number(printStats?.filament_used);
+
+  if (Number.isFinite(filamentUsedIncoming) && filamentUsedIncoming >= 0) {
+    state.printStatus.lastFilamentUsed = filamentUsedIncoming;
+  }
+
+  if (els.statusSpeed) {
+    els.statusSpeed.textContent = formatStatusSpeedMmPerSec(speedMmPerSec);
+  }
+
+  if (els.statusFlowrate) {
+    els.statusFlowrate.textContent = formatStatusPercent(flowrateFactor);
+  }
+
+  if (els.statusFilament) {
+    els.statusFilament.textContent = formatStatusFilament(state.printStatus.lastFilamentUsed);
+  }
+}
+function pickThumbnailPath(metadata) {
+  const thumbnails = Array.isArray(metadata?.thumbnails) ? metadata.thumbnails : [];
+  if (!thumbnails.length) return "";
+
+  const withPath = thumbnails.filter((thumb) => typeof thumb?.relative_path === "string" && thumb.relative_path);
+  if (!withPath.length) return "";
+
+  const scored = withPath
+    .map((thumb) => {
+      const width = Number(thumb.width);
+      const delta = Number.isFinite(width) ? Math.abs(width - 96) : 9999;
+      return { thumb, delta };
+    })
+    .sort((a, b) => a.delta - b.delta);
+
+  return scored[0]?.thumb?.relative_path || "";
+}
+
+async function syncStatusFileMetadata(filename) {
+  const normalized = typeof filename === "string" ? filename.trim() : "";
+
+  if (!normalized || !state.client) {
+    setStatusThumbnail("");
+    return;
+  }
+
+  if (state.printStatus.metadataByFile.has(normalized)) {
+    const cachedEntry = getStatusMetadataEntry(normalized);
+    setStatusThumbnail(cachedEntry?.thumbnailPath || "");
+    renderStatusTiming(state.printStatus.lastPrintStats);
+    return;
+  }
+
+  const requestId = ++state.printStatus.metadataRequestId;
+
+  try {
+    const response = await state.client.call(`/server/files/metadata?filename=${encodeURIComponent(normalized)}`);
+    const metadata = response?.result || {};
+    const thumbnailPath = pickThumbnailPath(metadata);
+    const estimatedTime = Number(metadata.estimated_time);
+
+    const metadataEntry = {
+      thumbnailPath,
+      estimatedTime: Number.isFinite(estimatedTime) && estimatedTime > 0 ? estimatedTime : null,
+    };
+
+    state.printStatus.metadataByFile.set(normalized, metadataEntry);
+
+    if (requestId !== state.printStatus.metadataRequestId) return;
+    if (state.printStatus.filename !== normalized) return;
+
+    setStatusThumbnail(metadataEntry.thumbnailPath || "");
+    renderStatusTiming(state.printStatus.lastPrintStats);
+  } catch (error) {
+    const message = error?.message || String(error);
+    log.debug("Print file metadata load skipped.", {
+      filename: normalized,
+      error: message,
+    });
+
+    state.printStatus.metadataByFile.set(normalized, {
+      thumbnailPath: "",
+      estimatedTime: null,
+    });
+
+    if (requestId !== state.printStatus.metadataRequestId) return;
+    if (state.printStatus.filename !== normalized) return;
+
+    setStatusThumbnail("");
+    renderStatusTiming(state.printStatus.lastPrintStats);
+  }
+}
+
+function updateStatusFileInfo(printStats, gcodeMove = null, motionReport = null) {
+  const stats = mergePrintStatsSnapshot(printStats);
+  const filename = typeof stats.filename === "string" ? stats.filename : "";
+  const normalized = filename.trim();
+  setStatusFilename(filename);
+  updateStatusTiming(stats);
+  updateStatusRatesAndFilament(stats, gcodeMove, motionReport);
+
+  if (!normalized) {
+    setStatusThumbnail("");
+    return;
+  }
+
+  if (!state.printStatus.metadataByFile.has(normalized)) {
+    setStatusThumbnail("");
+  }
+
+  void syncStatusFileMetadata(normalized);
 }
 
 function switchView(viewName) {
@@ -1496,12 +1859,10 @@ async function connectMoonraker() {
 
     const [status] = payload.params || [];
     const printStats = status?.print_stats || {};
+    const virtualSd = mergeVirtualSdSnapshot(status?.virtual_sdcard || null);
+    renderStatusProgress(virtualSd);
 
-    if (typeof printStats.progress === "number") {
-      const pct = Math.max(0, Math.min(100, Math.round(printStats.progress * 100)));
-      els.progressBar.style.width = `${pct}%`;
-      els.progressText.textContent = `${pct}%`;
-    }
+    updateStatusFileInfo(printStats, status?.gcode_move || null, status?.motion_report || null);
 
     updateTemperatureSnapshotFromStatus(status);
 
@@ -1515,7 +1876,7 @@ async function connectMoonraker() {
 
     log.debug("Status update received.", {
       printerState: reportedPrinterState || null,
-      progress: printStats.progress ?? null,
+      progress: state.printStatus.lastVirtualSd?.progress ?? null,
       hotend: extruder.temperature ?? null,
       hotendTarget: extruder.target ?? null,
       bed: bed.temperature ?? null,
@@ -1526,10 +1887,16 @@ async function connectMoonraker() {
   state.client.connectWebSocket();
 
   try {
-    const statusResponse = await state.client.call("/printer/objects/query?print_stats");
-    const printStats = statusResponse?.result?.status?.print_stats || {};
+    const statusResponse = await state.client.call("/printer/objects/query?print_stats&gcode_move&virtual_sdcard&motion_report");
+    const statusSnapshot = statusResponse?.result?.status || {};
+    const printStats = statusSnapshot.print_stats || {};
+    const gcodeMove = statusSnapshot.gcode_move || null;
+    const motionReport = statusSnapshot.motion_report || null;
+    const virtualSd = mergeVirtualSdSnapshot(statusSnapshot.virtual_sdcard || null);
+    renderStatusProgress(virtualSd);
     const printerState = printStats.state || printStats.status || "ready";
     setPrinterState(printerState);
+    updateStatusFileInfo(printStats, gcodeMove, motionReport);
     log.debug("Initial printer state loaded.", { printerState });
   } catch (error) {
     const message = error?.message || String(error);
@@ -1752,27 +2119,6 @@ function wireEvents() {
     });
   });
 
-  els.pause.addEventListener("click", async () => {
-    await executeGcodeAction("PAUSE", {
-      actionLabel: "Pause print",
-      successMessage: "Pause command sent.",
-    });
-  });
-
-  els.resume.addEventListener("click", async () => {
-    await executeGcodeAction("RESUME", {
-      actionLabel: "Resume print",
-      successMessage: "Resume command sent.",
-    });
-  });
-
-  els.cancel.addEventListener("click", async () => {
-    await executeGcodeAction("CANCEL_PRINT", {
-      actionLabel: "Cancel print",
-      successMessage: "Cancel command sent.",
-    });
-  });
-
   els.home.addEventListener("click", async () => {
     await executeGcodeAction("G28", {
       actionLabel: "Home axes",
@@ -1829,6 +2175,19 @@ function init() {
 }
 
 init();
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
