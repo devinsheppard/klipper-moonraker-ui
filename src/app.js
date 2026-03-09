@@ -51,7 +51,10 @@ const TEMPERATURE_PRESETS = {
 };
 const TEMPERATURE_HISTORY_LIMIT = 360;
 const TEMPERATURE_DEFAULT_MAX = 250;
-const TEMPERATURE_POLL_INTERVAL_MS = 2000;
+const TEMPERATURE_POLL_INTERVAL_MS = 800;
+const TEMPERATURE_HISTORY_SAMPLE_MS = 800;
+const TEMPERATURE_HISTORY_STORAGE_KEY = "temperature_history_v1";
+const TEMPERATURE_HISTORY_MAX_AGE_MS = 60 * 60 * 1000;
 const TEMPERATURE_COLORS = {
   hotend: "#ff4a3f",
   bed: "#2ea3ff",
@@ -168,6 +171,7 @@ const els = {
 let layoutDraggedCardId = null;
 let layoutDraggedFromColumn = null;
 let temperaturePollTimer = null;
+let temperatureHistorySaveTimer = null;
 let statusCountdownTimer = null;
 
 function loadStoredBool(key, fallback) {
@@ -270,6 +274,59 @@ function loadDashboardLayout() {
   return normalizeDashboardLayout(DASHBOARD_LAYOUT_DEFAULT);
 }
 
+function normalizeTemperatureSample(value, fallback = null) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : fallback;
+}
+
+function loadTemperatureHistory() {
+  const rawHistory = localStorage.getItem(TEMPERATURE_HISTORY_STORAGE_KEY);
+  if (!rawHistory) return [];
+
+  try {
+    const parsed = JSON.parse(rawHistory);
+    if (!Array.isArray(parsed)) return [];
+
+    const cutoff = Date.now() - TEMPERATURE_HISTORY_MAX_AGE_MS;
+    const sanitized = parsed
+      .map((point) => {
+        const time = normalizeTemperatureSample(point?.time, null);
+        if (!Number.isFinite(time)) return null;
+
+        return {
+          time,
+          hotendCurrent: normalizeTemperatureSample(point?.hotendCurrent, null),
+          hotendTarget: normalizeTemperatureSample(point?.hotendTarget, 0),
+          bedCurrent: normalizeTemperatureSample(point?.bedCurrent, null),
+          bedTarget: normalizeTemperatureSample(point?.bedTarget, 0),
+        };
+      })
+      .filter((point) => point && point.time >= cutoff)
+      .sort((a, b) => a.time - b.time);
+
+    if (sanitized.length <= TEMPERATURE_HISTORY_LIMIT) return sanitized;
+    return sanitized.slice(-TEMPERATURE_HISTORY_LIMIT);
+  } catch {
+    return [];
+  }
+}
+
+function persistTemperatureHistory() {
+  localStorage.setItem(TEMPERATURE_HISTORY_STORAGE_KEY, JSON.stringify(state.temperatures.history));
+}
+
+function scheduleTemperatureHistorySave() {
+  if (temperatureHistorySaveTimer) return;
+
+  temperatureHistorySaveTimer = setTimeout(() => {
+    temperatureHistorySaveTimer = null;
+    persistTemperatureHistory();
+  }, 250);
+}
+
+const initialTemperatureHistory = loadTemperatureHistory();
+const initialTemperatureSnapshot = initialTemperatureHistory[initialTemperatureHistory.length - 1] || null;
+
 const state = {
   client: null,
   moonrakerUrl: localStorage.getItem("moonraker_url") || "http://127.0.0.1:7125",
@@ -299,9 +356,15 @@ const state = {
     renderMode: loadStoredMode("toolhead_camera_render_mode", CAMERA_MODES.IMAGE),
   },
   temperatures: {
-    hotend: { current: null, target: 0 },
-    bed: { current: null, target: 0 },
-    history: [],
+    hotend: {
+      current: initialTemperatureSnapshot?.hotendCurrent ?? null,
+      target: initialTemperatureSnapshot?.hotendTarget ?? 0,
+    },
+    bed: {
+      current: initialTemperatureSnapshot?.bedCurrent ?? null,
+      target: initialTemperatureSnapshot?.bedTarget ?? 0,
+    },
+    history: initialTemperatureHistory,
     chart: {
       show: loadStoredBool("temperature_show_chart", true),
       hideHostSensors: loadStoredBool("temperature_hide_host_sensors", false),
@@ -1120,8 +1183,13 @@ function updateTemperatureSnapshotFromStatus(status, { recordHistory = true } = 
     const history = state.temperatures.history;
     const last = history[history.length - 1];
 
-    if (last && snapshot.time - last.time < 800) {
-      history[history.length - 1] = snapshot;
+    if (last && snapshot.time - last.time < TEMPERATURE_HISTORY_SAMPLE_MS) {
+      history[history.length - 1] = {
+        ...snapshot,
+        // Keep the original sample timestamp so rapid websocket updates
+        // still roll over into new points at a steady cadence.
+        time: last.time,
+      };
     } else {
       history.push(snapshot);
     }
@@ -1129,6 +1197,8 @@ function updateTemperatureSnapshotFromStatus(status, { recordHistory = true } = 
     if (history.length > TEMPERATURE_HISTORY_LIMIT) {
       history.splice(0, history.length - TEMPERATURE_HISTORY_LIMIT);
     }
+
+    scheduleTemperatureHistorySave();
   }
 
   renderTemperaturePanel();
@@ -2175,6 +2245,14 @@ function init() {
 }
 
 init();
+
+
+
+
+
+
+
+
 
 
 
