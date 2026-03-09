@@ -76,19 +76,20 @@
       </div>
     </aside>
 
-
     <main class="content">
       <header class="topbar">
         <h2 id="page-title">Dashboard</h2>
         <div class="printer-chip">
           <span class="dot" id="printer-dot"></span>
-          <span id="printer-state">unknown</span>
+          <span id="printer-state" data-state="disconnected">Disconnected</span>
         </div>
       </header>
 
       <section id="view-dashboard" class="view active">
-        <div class="grid two-col">
-          <article class="card">
+        <div class="dashboard-grid two-col" id="dashboard-cards">
+          <div class="dashboard-column" id="dashboard-col-left"></div>
+          <div class="dashboard-column" id="dashboard-col-right"></div>
+          <article class="card" id="card-print-progress">
             <h3>Print Progress</h3>
             <div class="progress-wrap">
               <div class="progress-bar" id="progress-bar"></div>
@@ -101,7 +102,7 @@
             </div>
           </article>
 
-          <article class="card">
+          <article class="card" id="card-temperatures">
             <h3>Temperatures</h3>
             <div class="temp-grid">
               <div class="temp-item">
@@ -114,10 +115,8 @@
               </div>
             </div>
           </article>
-        </div>
 
-        <div class="grid two-col">
-          <article class="card">
+          <article class="card" id="card-motion">
             <h3>Motion</h3>
             <div class="actions">
               <button data-jog="X+">X+</button>
@@ -130,7 +129,7 @@
             </div>
           </article>
 
-          <article class="card">
+          <article class="card" id="card-quick-commands">
             <h3>Quick Commands</h3>
             <div class="actions">
               <button data-gcode="FIRMWARE_RESTART">Firmware Restart</button>
@@ -138,9 +137,7 @@
               <button data-gcode="STATUS">Status</button>
             </div>
           </article>
-        </div>
 
-        <div class="grid two-col">
           <article class="card camera-card" id="camera-main-card">
             <div class="camera-card-head">
               <h3>Main Camera</h3>
@@ -247,6 +244,37 @@
                 <option value="compact">Compact</option>
               </select>
             </article>
+
+            <article class="card">
+              <h3>Dashboard Settings</h3>
+              <label class="checkbox-row" for="dash-show-print-progress">
+                <input id="dash-show-print-progress" type="checkbox" />
+                <span>Show Print Progress</span>
+              </label>
+              <label class="checkbox-row" for="dash-show-temperatures">
+                <input id="dash-show-temperatures" type="checkbox" />
+                <span>Show Temperatures</span>
+              </label>
+              <label class="checkbox-row" for="dash-show-motion">
+                <input id="dash-show-motion" type="checkbox" />
+                <span>Show Motion</span>
+              </label>
+              <label class="checkbox-row" for="dash-show-quick-commands">
+                <input id="dash-show-quick-commands" type="checkbox" />
+                <span>Show Quick Commands</span>
+              </label>
+              <label class="checkbox-row" for="dash-show-main-camera">
+                <input id="dash-show-main-camera" type="checkbox" />
+                <span>Show Main Camera</span>
+              </label>
+              <label class="checkbox-row" for="dash-show-toolhead-camera">
+                <input id="dash-show-toolhead-camera" type="checkbox" />
+                <span>Show Toolhead Cam</span>
+              </label>
+              <div class="actions">
+                <button type="button" id="open-dashboard-layout">Customize Layout</button>
+              </div>
+            </article>
           </div>
 
           <article class="card settings-actions">
@@ -257,6 +285,28 @@
     </main>
   </div>
 
+  <dialog id="dashboard-layout-dialog" class="layout-dialog">
+    <div class="layout-dialog-head">
+      <h3>Dashboard Layout</h3>
+      <button type="button" id="dashboard-layout-close">Close</button>
+    </div>
+    <p class="muted">Drag cards by the handle to change dashboard order and position.</p>
+    <div class="dashboard-layout-columns">
+      <section class="layout-column">
+        <h4>Left Column</h4>
+        <ul id="dashboard-layout-left" class="dashboard-layout-list"></ul>
+      </section>
+      <section class="layout-column">
+        <h4>Right Column</h4>
+        <ul id="dashboard-layout-right" class="dashboard-layout-list"></ul>
+      </section>
+    </div>
+    <div class="actions">
+      <button type="button" id="dashboard-layout-reset">Reset Default</button>
+      <button type="button" id="dashboard-layout-save">Save Layout</button>
+    </div>
+  </dialog>
+
   <dialog id="camera-fullscreen-dialog" class="camera-dialog">
     <button type="button" id="camera-fullscreen-close" class="camera-dialog-close">Close</button>
     <div id="camera-fullscreen-content" class="camera-dialog-content"></div>
@@ -265,5 +315,6 @@
   <script type="module" src="./src/app.js"></script>
 </body>
 </html>
+
 
 

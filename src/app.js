@@ -8,6 +8,40 @@ const CAMERA_MODES = {
 const INTERFACE_THEMES = ["ocean", "ember", "graphite"];
 const INTERFACE_DENSITIES = ["comfortable", "compact"];
 const CARD_COLLAPSE_KEY_PREFIX = "card_collapsed_";
+const DASHBOARD_CARD_IDS = [
+  "card-print-progress",
+  "card-temperatures",
+  "card-motion",
+  "card-quick-commands",
+  "camera-main-card",
+  "camera-toolhead-card",
+];
+
+const DASHBOARD_LAYOUT_DEFAULT = {
+  left: ["card-print-progress", "card-motion", "camera-main-card"],
+  right: ["card-temperatures", "card-quick-commands", "camera-toolhead-card"],
+};
+
+const DASHBOARD_CARD_LABELS = {
+  "card-print-progress": "Print Progress",
+  "card-temperatures": "Temperatures",
+  "card-motion": "Motion",
+  "card-quick-commands": "Quick Commands",
+  "camera-main-card": "Main Camera",
+  "camera-toolhead-card": "Toolhead Cam",
+};
+
+const PRINTER_STATE_META = {
+  unknown: { label: "Unknown", color: "#64748b" },
+  connecting: { label: "Connecting", color: "#f59e0b" },
+  disconnected: { label: "Disconnected", color: "#f97316" },
+  ready: { label: "Ready", color: "#22c55e" },
+  printing: { label: "Printing", color: "#16a34a" },
+  paused: { label: "Paused", color: "#f59e0b" },
+  complete: { label: "Complete", color: "#22d3ee" },
+  cancelled: { label: "Cancelled", color: "#94a3b8" },
+  error: { label: "Error", color: "#ef4444" },
+};
 
 const els = {
   navItems: [...document.querySelectorAll(".nav-item")],
@@ -33,6 +67,28 @@ const els = {
   interfaceTheme: document.getElementById("interface-theme"),
   interfaceCompact: document.getElementById("interface-compact"),
   interfaceDensity: document.getElementById("interface-density"),
+  dashShowPrintProgress: document.getElementById("dash-show-print-progress"),
+  dashShowTemperatures: document.getElementById("dash-show-temperatures"),
+  dashShowMotion: document.getElementById("dash-show-motion"),
+  dashShowQuickCommands: document.getElementById("dash-show-quick-commands"),
+  dashShowMainCamera: document.getElementById("dash-show-main-camera"),
+  dashShowToolheadCamera: document.getElementById("dash-show-toolhead-camera"),
+  openDashboardLayout: document.getElementById("open-dashboard-layout"),
+  dashboardLayoutDialog: document.getElementById("dashboard-layout-dialog"),
+  dashboardLayoutClose: document.getElementById("dashboard-layout-close"),
+  dashboardLayoutSave: document.getElementById("dashboard-layout-save"),
+  dashboardLayoutReset: document.getElementById("dashboard-layout-reset"),
+  dashboardLayoutLeft: document.getElementById("dashboard-layout-left"),
+  dashboardLayoutRight: document.getElementById("dashboard-layout-right"),
+  dashboardCards: document.getElementById("dashboard-cards"),
+  dashboardColLeft: document.getElementById("dashboard-col-left"),
+  dashboardColRight: document.getElementById("dashboard-col-right"),
+  cardPrintProgress: document.getElementById("card-print-progress"),
+  cardTemperatures: document.getElementById("card-temperatures"),
+  cardMotion: document.getElementById("card-motion"),
+  cardQuickCommands: document.getElementById("card-quick-commands"),
+  cardMainCamera: document.getElementById("camera-main-card"),
+  cardToolheadCamera: document.getElementById("camera-toolhead-card"),
   cameraEnabled: document.getElementById("camera-enabled"),
   cameraUrl: document.getElementById("camera-url"),
   cameraRenderMode: document.getElementById("camera-render-mode"),
@@ -53,6 +109,9 @@ const els = {
   jog: [...document.querySelectorAll("[data-jog]")],
   quickGcode: [...document.querySelectorAll("[data-gcode]")],
 };
+
+let layoutDraggedCardId = null;
+let layoutDraggedFromColumn = null;
 
 function loadStoredBool(key, fallback) {
   const raw = localStorage.getItem(key);
@@ -79,6 +138,81 @@ function slugify(value) {
     .replace(/^-+|-+$/g, "");
 }
 
+function normalizeDashboardCardIds(cardIdsCandidate) {
+  const candidate = Array.isArray(cardIdsCandidate) ? cardIdsCandidate : [];
+  const validKnown = candidate.filter((id) => DASHBOARD_CARD_IDS.includes(id));
+  return [...new Set(validKnown)];
+}
+
+function normalizeDashboardLayout(layoutCandidate) {
+  const candidate = layoutCandidate && typeof layoutCandidate === "object" ? layoutCandidate : {};
+
+  const left = normalizeDashboardCardIds(candidate.left);
+  const right = normalizeDashboardCardIds(candidate.right).filter((id) => !left.includes(id));
+
+  const used = new Set([...left, ...right]);
+  const missing = DASHBOARD_CARD_IDS.filter((id) => !used.has(id));
+
+  missing.forEach((id) => {
+    if (left.length <= right.length) {
+      left.push(id);
+    } else {
+      right.push(id);
+    }
+  });
+
+  return { left, right };
+}
+
+function convertOrderToLayout(orderCandidate) {
+  const order = normalizeDashboardCardIds(orderCandidate);
+  const layout = { left: [], right: [] };
+
+  order.forEach((id, index) => {
+    const column = index % 2 === 0 ? "left" : "right";
+    layout[column].push(id);
+  });
+
+  return normalizeDashboardLayout(layout);
+}
+
+function flattenDashboardLayout(layoutCandidate) {
+  const layout = normalizeDashboardLayout(layoutCandidate);
+  const maxLength = Math.max(layout.left.length, layout.right.length);
+  const flat = [];
+
+  for (let index = 0; index < maxLength; index += 1) {
+    if (layout.left[index]) flat.push(layout.left[index]);
+    if (layout.right[index]) flat.push(layout.right[index]);
+  }
+
+  return flat;
+}
+
+function loadDashboardLayout() {
+  const rawLayout = localStorage.getItem("dashboard_layout");
+  if (rawLayout) {
+    try {
+      const parsed = JSON.parse(rawLayout);
+      return normalizeDashboardLayout(parsed);
+    } catch {
+      // Fall through to legacy key/default.
+    }
+  }
+
+  const rawOrder = localStorage.getItem("dashboard_layout_order");
+  if (rawOrder) {
+    try {
+      const parsed = JSON.parse(rawOrder);
+      return convertOrderToLayout(parsed);
+    } catch {
+      // Fall through to default.
+    }
+  }
+
+  return normalizeDashboardLayout(DASHBOARD_LAYOUT_DEFAULT);
+}
+
 const state = {
   client: null,
   moonrakerUrl: localStorage.getItem("moonraker_url") || "http://127.0.0.1:7125",
@@ -87,6 +221,15 @@ const state = {
     compact: loadStoredBool("interface_compact", false),
     density: loadStoredChoice("interface_density", "comfortable", INTERFACE_DENSITIES),
     sidebarCollapsed: loadStoredBool("interface_sidebar_collapsed", false),
+  },
+  dashboard: {
+    showPrintProgress: loadStoredBool("dashboard_show_print_progress", true),
+    showTemperatures: loadStoredBool("dashboard_show_temperatures", true),
+    showMotion: loadStoredBool("dashboard_show_motion", true),
+    showQuickCommands: loadStoredBool("dashboard_show_quick_commands", true),
+    showMainCamera: loadStoredBool("dashboard_show_main_camera", true),
+    showToolheadCamera: loadStoredBool("dashboard_show_toolhead_camera", true),
+    layout: loadDashboardLayout(),
   },
   camera: {
     enabled: loadStoredBool("camera_enabled", true),
@@ -125,10 +268,250 @@ function applyInterfaceSettings() {
   updateSidebarToggleUi();
 }
 
+function applyDashboardLayout() {
+  if (!els.dashboardColLeft || !els.dashboardColRight) return;
+
+  state.dashboard.layout = normalizeDashboardLayout(state.dashboard.layout);
+
+  const leftFragment = document.createDocumentFragment();
+  state.dashboard.layout.left.forEach((cardId) => {
+    const card = document.getElementById(cardId);
+    if (card) leftFragment.appendChild(card);
+  });
+
+  const rightFragment = document.createDocumentFragment();
+  state.dashboard.layout.right.forEach((cardId) => {
+    const card = document.getElementById(cardId);
+    if (card) rightFragment.appendChild(card);
+  });
+
+  els.dashboardColLeft.appendChild(leftFragment);
+  els.dashboardColRight.appendChild(rightFragment);
+}
+
+function applyDashboardSettings() {
+  const visibilityMap = [
+    [els.cardPrintProgress, state.dashboard.showPrintProgress],
+    [els.cardTemperatures, state.dashboard.showTemperatures],
+    [els.cardMotion, state.dashboard.showMotion],
+    [els.cardQuickCommands, state.dashboard.showQuickCommands],
+    [els.cardMainCamera, state.dashboard.showMainCamera],
+    [els.cardToolheadCamera, state.dashboard.showToolheadCamera],
+  ];
+
+  visibilityMap.forEach(([card, visible]) => {
+    if (!card) return;
+    card.classList.toggle("card-hidden", !visible);
+  });
+}
+
+function clearDashboardLayoutDropTargets() {
+  [els.dashboardLayoutLeft, els.dashboardLayoutRight].forEach((list) => {
+    if (!list) return;
+    list.classList.remove("drop-target");
+    list.querySelectorAll(".drop-target").forEach((el) => el.classList.remove("drop-target"));
+  });
+}
+
+function removeDashboardCardFromLayout(cardId) {
+  state.dashboard.layout.left = state.dashboard.layout.left.filter((id) => id !== cardId);
+  state.dashboard.layout.right = state.dashboard.layout.right.filter((id) => id !== cardId);
+}
+
+function moveDashboardCard(cardId, toColumn, beforeCardId = null) {
+  if (!cardId || (toColumn !== "left" && toColumn !== "right")) return;
+
+  removeDashboardCardFromLayout(cardId);
+
+  const targetList = state.dashboard.layout[toColumn];
+  if (beforeCardId) {
+    const index = targetList.indexOf(beforeCardId);
+    if (index >= 0) {
+      targetList.splice(index, 0, cardId);
+    } else {
+      targetList.push(cardId);
+    }
+  } else {
+    targetList.push(cardId);
+  }
+
+  state.dashboard.layout = normalizeDashboardLayout(state.dashboard.layout);
+}
+
+function getDraggedDashboardCardId(event) {
+  if (layoutDraggedCardId) return layoutDraggedCardId;
+
+  const payload = event.dataTransfer?.getData("text/plain") || "";
+  const [cardId] = payload.split("|");
+  return DASHBOARD_CARD_IDS.includes(cardId) ? cardId : null;
+}
+
+function renderDashboardLayoutColumn(column, listEl) {
+  if (!listEl) return;
+
+  listEl.innerHTML = "";
+  const cards = state.dashboard.layout[column] || [];
+
+  cards.forEach((cardId) => {
+    const item = document.createElement("li");
+    item.className = "layout-item";
+    item.draggable = true;
+    item.dataset.cardId = cardId;
+    item.dataset.column = column;
+
+    const handle = document.createElement("span");
+    handle.className = "layout-handle";
+    handle.textContent = "::";
+
+    const label = document.createElement("span");
+    label.className = "layout-item-label";
+    label.textContent = DASHBOARD_CARD_LABELS[cardId] || cardId;
+
+    const moveButton = document.createElement("button");
+    moveButton.type = "button";
+    moveButton.className = "layout-move-column";
+    moveButton.textContent = column === "left" ? "->" : "<-";
+    moveButton.title = column === "left" ? "Move to right column" : "Move to left column";
+    moveButton.setAttribute("aria-label", moveButton.title);
+    moveButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const nextColumn = column === "left" ? "right" : "left";
+      moveDashboardCard(cardId, nextColumn);
+      renderDashboardLayoutLists();
+    });
+
+    const controls = document.createElement("div");
+    controls.className = "layout-item-controls";
+    controls.appendChild(moveButton);
+
+    item.append(handle, label, controls);
+
+    item.addEventListener("dragstart", (event) => {
+      layoutDraggedCardId = cardId;
+      layoutDraggedFromColumn = column;
+      item.classList.add("dragging");
+      if (event.dataTransfer) {
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("text/plain", `${cardId}|${column}`);
+      }
+    });
+
+    item.addEventListener("dragend", () => {
+      item.classList.remove("dragging");
+      layoutDraggedCardId = null;
+      layoutDraggedFromColumn = null;
+      clearDashboardLayoutDropTargets();
+    });
+
+    item.addEventListener("dragover", (event) => {
+      event.preventDefault();
+      item.classList.add("drop-target");
+      listEl.classList.add("drop-target");
+      if (event.dataTransfer) {
+        event.dataTransfer.dropEffect = "move";
+      }
+    });
+
+    item.addEventListener("dragleave", () => {
+      item.classList.remove("drop-target");
+    });
+
+    item.addEventListener("drop", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      item.classList.remove("drop-target");
+      listEl.classList.remove("drop-target");
+
+      const draggedCardId = getDraggedDashboardCardId(event);
+      if (!draggedCardId) return;
+
+      moveDashboardCard(draggedCardId, column, cardId);
+      renderDashboardLayoutLists();
+    });
+
+    listEl.appendChild(item);
+  });
+
+  listEl.ondragover = (event) => {
+    event.preventDefault();
+    listEl.classList.add("drop-target");
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = "move";
+    }
+  };
+
+  listEl.ondragleave = (event) => {
+    if (event.target === listEl) {
+      listEl.classList.remove("drop-target");
+    }
+  };
+
+  listEl.ondrop = (event) => {
+    event.preventDefault();
+    listEl.classList.remove("drop-target");
+
+    const draggedCardId = getDraggedDashboardCardId(event);
+    if (!draggedCardId) return;
+
+    moveDashboardCard(draggedCardId, column);
+    renderDashboardLayoutLists();
+  };
+}
+
+function renderDashboardLayoutLists() {
+  renderDashboardLayoutColumn("left", els.dashboardLayoutLeft);
+  renderDashboardLayoutColumn("right", els.dashboardLayoutRight);
+}
+
+function openDashboardLayoutDialog() {
+  renderDashboardLayoutLists();
+  if (typeof els.dashboardLayoutDialog?.showModal === "function") {
+    els.dashboardLayoutDialog.showModal();
+  }
+}
+
+function closeDashboardLayoutDialog() {
+  if (els.dashboardLayoutDialog?.open) {
+    els.dashboardLayoutDialog.close();
+  }
+}
+
+function saveDashboardLayout() {
+  state.dashboard.layout = normalizeDashboardLayout(state.dashboard.layout);
+  localStorage.setItem("dashboard_layout", JSON.stringify(state.dashboard.layout));
+  localStorage.setItem("dashboard_layout_order", JSON.stringify(flattenDashboardLayout(state.dashboard.layout)));
+  applyDashboardLayout();
+  applyDashboardSettings();
+  closeDashboardLayoutDialog();
+  appendConsole("Dashboard layout saved.");
+}
+
+function resetDashboardLayout() {
+  state.dashboard.layout = normalizeDashboardLayout(DASHBOARD_LAYOUT_DEFAULT);
+  renderDashboardLayoutLists();
+}
+
 function toggleSidebar() {
   state.interface.sidebarCollapsed = !state.interface.sidebarCollapsed;
   localStorage.setItem("interface_sidebar_collapsed", String(state.interface.sidebarCollapsed));
   applyInterfaceSettings();
+}
+
+function normalizePrinterState(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) return "unknown";
+
+  if (["standby", "ready", "idle", "operational"].includes(normalized)) return "ready";
+  if (normalized === "printing") return "printing";
+  if (normalized === "paused") return "paused";
+  if (["complete", "completed"].includes(normalized)) return "complete";
+  if (["cancelled", "canceled"].includes(normalized)) return "cancelled";
+  if (["error", "shutdown"].includes(normalized)) return "error";
+  if (["disconnected", "offline"].includes(normalized)) return "disconnected";
+  if (normalized === "connecting") return "connecting";
+
+  return "unknown";
 }
 
 function setConnectionUi(status) {
@@ -136,15 +519,26 @@ function setConnectionUi(status) {
   if (status === "connected") {
     els.connectionPill.style.borderColor = "rgba(34, 197, 94, 0.7)";
     els.connectionText.textContent = state.moonrakerUrl;
+
+    const currentState = els.printerState.dataset.state || "unknown";
+    if (["unknown", "connecting", "disconnected", "error"].includes(currentState)) {
+      setPrinterState("ready");
+    }
   } else {
     els.connectionPill.style.borderColor = "rgba(148, 163, 184, 0.22)";
+
+    if (status === "connecting") setPrinterState("connecting");
+    if (status === "disconnected") setPrinterState("disconnected");
+    if (status === "error") setPrinterState("error");
   }
 }
 
 function setPrinterState(value) {
-  const normalized = value || "unknown";
-  els.printerState.textContent = normalized;
-  els.printerDot.style.background = normalized === "printing" ? "#22c55e" : "#64748b";
+  const normalized = normalizePrinterState(value);
+  const meta = PRINTER_STATE_META[normalized] || PRINTER_STATE_META.unknown;
+  els.printerState.dataset.state = normalized;
+  els.printerState.textContent = meta.label;
+  els.printerDot.style.background = meta.color;
 }
 
 function switchView(viewName) {
@@ -277,13 +671,14 @@ function getCardBody(card, header) {
 
 function getCardStorageKey(card, index) {
   const viewId = card.closest(".view")?.id || "view";
+  const fallback = `card-${index + 1}`;
   const titleText =
     card.querySelector(":scope > .card-head > h2, :scope > .card-head > h3")?.textContent?.trim() ||
     card.querySelector(":scope h2, :scope h3")?.textContent?.trim() ||
-    card.id ||
-    `card-${index + 1}`;
+    fallback;
 
-  return `${CARD_COLLAPSE_KEY_PREFIX}${slugify(`${viewId}-${card.id || titleText}-${index}`)}`;
+  const base = card.id || titleText || fallback;
+  return `${CARD_COLLAPSE_KEY_PREFIX}${slugify(`${viewId}-${base}`)}`;
 }
 
 function updateCollapseButton(toggle, collapsed) {
@@ -366,10 +761,21 @@ async function connectMoonraker() {
       els.tempBed.textContent = `${bed.temperature.toFixed(1)} C`;
     }
 
-    setPrinterState(printStats.state);
+    const reportedPrinterState = printStats.state || printStats.status;
+    if (reportedPrinterState) {
+      setPrinterState(reportedPrinterState);
+    }
   });
 
   state.client.connectWebSocket();
+
+  try {
+    const statusResponse = await state.client.call("/printer/objects/query?print_stats");
+    const printStats = statusResponse?.result?.status?.print_stats || {};
+    setPrinterState(printStats.state || printStats.status || "ready");
+  } catch (error) {
+    appendConsole(`Printer state load failed: ${error.message}`);
+  }
 
   try {
     const macroResponse = await state.client.getMacros();
@@ -427,6 +833,16 @@ function wireEvents() {
   els.navItems.forEach((btn) => btn.addEventListener("click", () => switchView(btn.dataset.view)));
   els.sidebarToggle?.addEventListener("click", toggleSidebar);
 
+  els.openDashboardLayout?.addEventListener("click", openDashboardLayoutDialog);
+  els.dashboardLayoutClose?.addEventListener("click", closeDashboardLayoutDialog);
+  els.dashboardLayoutSave?.addEventListener("click", saveDashboardLayout);
+  els.dashboardLayoutReset?.addEventListener("click", resetDashboardLayout);
+  els.dashboardLayoutDialog?.addEventListener("click", (event) => {
+    if (event.target === els.dashboardLayoutDialog) {
+      closeDashboardLayoutDialog();
+    }
+  });
+
   els.settingsForm.addEventListener("submit", async (event) => {
     event.preventDefault();
 
@@ -437,6 +853,13 @@ function wireEvents() {
     state.interface.theme = INTERFACE_THEMES.includes(els.interfaceTheme.value) ? els.interfaceTheme.value : "ocean";
     state.interface.compact = els.interfaceCompact.checked;
     state.interface.density = INTERFACE_DENSITIES.includes(els.interfaceDensity.value) ? els.interfaceDensity.value : "comfortable";
+
+    state.dashboard.showPrintProgress = els.dashShowPrintProgress.checked;
+    state.dashboard.showTemperatures = els.dashShowTemperatures.checked;
+    state.dashboard.showMotion = els.dashShowMotion.checked;
+    state.dashboard.showQuickCommands = els.dashShowQuickCommands.checked;
+    state.dashboard.showMainCamera = els.dashShowMainCamera.checked;
+    state.dashboard.showToolheadCamera = els.dashShowToolheadCamera.checked;
 
     state.camera.enabled = els.cameraEnabled.checked;
     state.camera.url = els.cameraUrl.value.trim();
@@ -451,6 +874,14 @@ function wireEvents() {
     localStorage.setItem("interface_compact", String(state.interface.compact));
     localStorage.setItem("interface_density", state.interface.density);
     localStorage.setItem("interface_sidebar_collapsed", String(state.interface.sidebarCollapsed));
+    localStorage.setItem("dashboard_show_print_progress", String(state.dashboard.showPrintProgress));
+    localStorage.setItem("dashboard_show_temperatures", String(state.dashboard.showTemperatures));
+    localStorage.setItem("dashboard_show_motion", String(state.dashboard.showMotion));
+    localStorage.setItem("dashboard_show_quick_commands", String(state.dashboard.showQuickCommands));
+    localStorage.setItem("dashboard_show_main_camera", String(state.dashboard.showMainCamera));
+    localStorage.setItem("dashboard_show_toolhead_camera", String(state.dashboard.showToolheadCamera));
+    localStorage.setItem("dashboard_layout", JSON.stringify(state.dashboard.layout));
+    localStorage.setItem("dashboard_layout_order", JSON.stringify(flattenDashboardLayout(state.dashboard.layout)));
     localStorage.setItem("camera_enabled", String(state.camera.enabled));
     localStorage.setItem("camera_url", state.camera.url);
     localStorage.setItem("camera_render_mode", state.camera.renderMode);
@@ -459,6 +890,8 @@ function wireEvents() {
     localStorage.setItem("toolhead_camera_render_mode", state.toolheadCamera.renderMode);
 
     applyInterfaceSettings();
+    applyDashboardLayout();
+    applyDashboardSettings();
     renderCameraCards();
     appendConsole("Settings saved.");
     await connectMoonraker();
@@ -528,6 +961,13 @@ function init() {
   els.interfaceCompact.checked = state.interface.compact;
   els.interfaceDensity.value = state.interface.density;
 
+  els.dashShowPrintProgress.checked = state.dashboard.showPrintProgress;
+  els.dashShowTemperatures.checked = state.dashboard.showTemperatures;
+  els.dashShowMotion.checked = state.dashboard.showMotion;
+  els.dashShowQuickCommands.checked = state.dashboard.showQuickCommands;
+  els.dashShowMainCamera.checked = state.dashboard.showMainCamera;
+  els.dashShowToolheadCamera.checked = state.dashboard.showToolheadCamera;
+
   els.cameraEnabled.checked = state.camera.enabled;
   els.cameraUrl.value = state.camera.url;
   els.cameraRenderMode.value = state.camera.renderMode;
@@ -536,8 +976,10 @@ function init() {
   els.toolheadCameraUrl.value = state.toolheadCamera.url;
   els.toolheadCameraRenderMode.value = state.toolheadCamera.renderMode;
 
+  applyDashboardLayout();
   setupCollapsibleCards();
   applyInterfaceSettings();
+  applyDashboardSettings();
   renderCameraCards();
   wireEvents();
 
@@ -548,3 +990,7 @@ function init() {
 }
 
 init();
+
+
+
+
