@@ -49,12 +49,15 @@ const TEMPERATURE_PRESETS = {
   hotend: [0, 170, 200, 215, 240, 260],
   bed: [0, 45, 60, 80, 100],
 };
-const TEMPERATURE_HISTORY_LIMIT = 360;
 const TEMPERATURE_DEFAULT_MAX = 250;
 const TEMPERATURE_POLL_INTERVAL_MS = 800;
 const TEMPERATURE_HISTORY_SAMPLE_MS = 800;
-const TEMPERATURE_HISTORY_STORAGE_KEY = "temperature_history_v1";
-const TEMPERATURE_HISTORY_MAX_AGE_MS = 60 * 60 * 1000;
+const TEMPERATURE_CHART_WINDOW_MS = 10 * 60 * 1000;
+const TEMPERATURE_CHART_SCROLL_STEP_RATIO = 0.18;
+const TEMPERATURE_HISTORY_SESSION_KEY = "temperature_history_session_v1";
+const TEMPERATURE_HISTORY_DB_NAME = "forge_ui_temperature_history";
+const TEMPERATURE_HISTORY_DB_VERSION = 1;
+const TEMPERATURE_HISTORY_STORE = "temperature_samples";
 const TEMPERATURE_COLORS = {
   hotend: "#ff4a3f",
   bed: "#2ea3ff",
@@ -172,7 +175,8 @@ const els = {
 let layoutDraggedCardId = null;
 let layoutDraggedFromColumn = null;
 let temperaturePollTimer = null;
-let temperatureHistorySaveTimer = null;
+let temperatureHistorySessionId = null;
+let temperatureHistoryDbPromise = null;
 let statusCountdownTimer = null;
 
 function loadStoredBool(key, fallback) {
@@ -280,52 +284,146 @@ function normalizeTemperatureSample(value, fallback = null) {
   return Number.isFinite(numeric) ? numeric : fallback;
 }
 
-function loadTemperatureHistory() {
-  const rawHistory = localStorage.getItem(TEMPERATURE_HISTORY_STORAGE_KEY);
-  if (!rawHistory) return [];
+function normalizeTemperatureHistoryPoint(point) {
+  const time = normalizeTemperatureSample(point?.time, null);
+  if (!Number.isFinite(time)) return null;
+
+  return {
+    time,
+    hotendCurrent: normalizeTemperatureSample(point?.hotendCurrent, null),
+    hotendTarget: normalizeTemperatureSample(point?.hotendTarget, 0),
+    bedCurrent: normalizeTemperatureSample(point?.bedCurrent, null),
+    bedTarget: normalizeTemperatureSample(point?.bedTarget, 0),
+  };
+}
+
+function ensureTemperatureHistorySessionId() {
+  if (temperatureHistorySessionId) return temperatureHistorySessionId;
+
+  let sessionId = null;
 
   try {
-    const parsed = JSON.parse(rawHistory);
-    if (!Array.isArray(parsed)) return [];
+    sessionId = sessionStorage.getItem(TEMPERATURE_HISTORY_SESSION_KEY);
 
-    const cutoff = Date.now() - TEMPERATURE_HISTORY_MAX_AGE_MS;
-    const sanitized = parsed
-      .map((point) => {
-        const time = normalizeTemperatureSample(point?.time, null);
-        if (!Number.isFinite(time)) return null;
-
-        return {
-          time,
-          hotendCurrent: normalizeTemperatureSample(point?.hotendCurrent, null),
-          hotendTarget: normalizeTemperatureSample(point?.hotendTarget, 0),
-          bedCurrent: normalizeTemperatureSample(point?.bedCurrent, null),
-          bedTarget: normalizeTemperatureSample(point?.bedTarget, 0),
-        };
-      })
-      .filter((point) => point && point.time >= cutoff)
-      .sort((a, b) => a.time - b.time);
-
-    if (sanitized.length <= TEMPERATURE_HISTORY_LIMIT) return sanitized;
-    return sanitized.slice(-TEMPERATURE_HISTORY_LIMIT);
+    if (!sessionId) {
+      sessionId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+      sessionStorage.setItem(TEMPERATURE_HISTORY_SESSION_KEY, sessionId);
+    }
   } catch {
+    // Fall back to an in-memory session id if sessionStorage is unavailable.
+  }
+
+  if (!sessionId) {
+    sessionId = `volatile-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  }
+
+  temperatureHistorySessionId = sessionId;
+  return sessionId;
+}
+
+function openTemperatureHistoryDatabase() {
+  if (temperatureHistoryDbPromise) return temperatureHistoryDbPromise;
+
+  temperatureHistoryDbPromise = new Promise((resolve, reject) => {
+    if (typeof indexedDB === "undefined") {
+      resolve(null);
+      return;
+    }
+
+    const request = indexedDB.open(TEMPERATURE_HISTORY_DB_NAME, TEMPERATURE_HISTORY_DB_VERSION);
+
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(TEMPERATURE_HISTORY_STORE)) {
+        db.createObjectStore(TEMPERATURE_HISTORY_STORE, { keyPath: ["sessionId", "time"] });
+      }
+    };
+
+    request.onsuccess = () => {
+      resolve(request.result);
+    };
+
+    request.onerror = () => {
+      reject(request.error || new Error("Failed to open temperature history database."));
+    };
+  });
+
+  return temperatureHistoryDbPromise;
+}
+
+async function loadTemperatureHistoryForSession() {
+  try {
+    const db = await openTemperatureHistoryDatabase();
+    if (!db) return [];
+
+    const sessionId = ensureTemperatureHistorySessionId();
+
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(TEMPERATURE_HISTORY_STORE, "readonly");
+      const store = tx.objectStore(TEMPERATURE_HISTORY_STORE);
+      const range = IDBKeyRange.bound([sessionId, 0], [sessionId, Number.MAX_SAFE_INTEGER]);
+      const request = store.getAll(range);
+
+      request.onsuccess = () => {
+        const history = (request.result || [])
+          .map((entry) => normalizeTemperatureHistoryPoint(entry))
+          .filter(Boolean)
+          .sort((a, b) => a.time - b.time);
+        resolve(history);
+      };
+
+      request.onerror = () => {
+        reject(request.error || new Error("Failed to read temperature history."));
+      };
+    });
+  } catch (error) {
+    log.debug("Temperature history load failed.", { error: error?.message || String(error) });
     return [];
   }
 }
 
-function persistTemperatureHistory() {
-  localStorage.setItem(TEMPERATURE_HISTORY_STORAGE_KEY, JSON.stringify(state.temperatures.history));
+async function persistTemperatureHistoryPoint(point) {
+  const normalizedPoint = normalizeTemperatureHistoryPoint(point);
+  if (!normalizedPoint) return;
+
+  try {
+    const db = await openTemperatureHistoryDatabase();
+    if (!db) return;
+
+    const sessionId = ensureTemperatureHistorySessionId();
+
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(TEMPERATURE_HISTORY_STORE, "readwrite");
+      const store = tx.objectStore(TEMPERATURE_HISTORY_STORE);
+
+      store.put({
+        sessionId,
+        ...normalizedPoint,
+      });
+
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error || new Error("Failed to persist temperature sample."));
+      tx.onabort = () => reject(tx.error || new Error("Temperature sample transaction aborted."));
+    });
+  } catch (error) {
+    log.debug("Temperature history persist failed.", { error: error?.message || String(error) });
+  }
 }
 
-function scheduleTemperatureHistorySave() {
-  if (temperatureHistorySaveTimer) return;
+async function restoreTemperatureHistoryForSession() {
+  const restoredHistory = await loadTemperatureHistoryForSession();
+  if (!restoredHistory.length) return;
 
-  temperatureHistorySaveTimer = setTimeout(() => {
-    temperatureHistorySaveTimer = null;
-    persistTemperatureHistory();
-  }, 250);
+  state.temperatures.history = restoredHistory;
+
+  const latest = restoredHistory[restoredHistory.length - 1];
+  state.temperatures.hotend.current = latest.hotendCurrent;
+  state.temperatures.hotend.target = latest.hotendTarget;
+  state.temperatures.bed.current = latest.bedCurrent;
+  state.temperatures.bed.target = latest.bedTarget;
 }
 
-const initialTemperatureHistory = loadTemperatureHistory();
+const initialTemperatureHistory = [];
 const initialTemperatureSnapshot = initialTemperatureHistory[initialTemperatureHistory.length - 1] || null;
 
 const state = {
@@ -371,6 +469,7 @@ const state = {
       hideHostSensors: loadStoredBool("temperature_hide_host_sensors", false),
       hideMonitors: loadStoredBool("temperature_hide_monitors", false),
       autoscale: loadStoredBool("temperature_autoscale_chart", false),
+      offsetMs: 0,
       hoverIndex: null,
       layout: null,
     },
@@ -1303,11 +1402,8 @@ function updateTemperatureSnapshotFromStatus(status, { recordHistory = true } = 
       history.push(snapshot);
     }
 
-    if (history.length > TEMPERATURE_HISTORY_LIMIT) {
-      history.splice(0, history.length - TEMPERATURE_HISTORY_LIMIT);
-    }
-
-    scheduleTemperatureHistorySave();
+    const latestSample = history[history.length - 1];
+    void persistTemperatureHistoryPoint(latestSample);
   }
 
   renderTemperaturePanel();
@@ -1495,7 +1591,11 @@ function drawTemperatureLine(ctx, layout, history, currentKey, color) {
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
 
-    let started = false;
+  ctx.beginPath();
+  ctx.rect(layout.left, layout.top, layout.width, layout.height);
+  ctx.clip();
+
+  let started = false;
   let pointsPlotted = 0;
   let lastPoint = null;
 
@@ -1561,11 +1661,77 @@ function updateTemperatureTooltip(layout) {
   els.temperatureChartTooltip.style.top = `${Math.max(8, layout.top + 10)}px`;
 }
 
+function findFirstTemperatureHistoryIndex(history, timestamp) {
+  let low = 0;
+  let high = history.length;
+
+  while (low < high) {
+    const mid = Math.floor((low + high) / 2);
+    if (history[mid].time < timestamp) {
+      low = mid + 1;
+    } else {
+      high = mid;
+    }
+  }
+
+  return low;
+}
+
+function findLastTemperatureHistoryIndex(history, timestamp) {
+  let low = 0;
+  let high = history.length;
+
+  while (low < high) {
+    const mid = Math.floor((low + high) / 2);
+    if (history[mid].time <= timestamp) {
+      low = mid + 1;
+    } else {
+      high = mid;
+    }
+  }
+
+  return low - 1;
+}
+
+function sliceVisibleTemperatureHistory(history, startTime, endTime) {
+  if (!history.length) return [];
+
+  let startIndex = findFirstTemperatureHistoryIndex(history, startTime);
+  let endIndex = findLastTemperatureHistoryIndex(history, endTime);
+
+  if (startIndex > 0) startIndex -= 1;
+  if (endIndex < history.length - 1) endIndex += 1;
+
+  if (startIndex < 0) startIndex = 0;
+  if (endIndex >= history.length) endIndex = history.length - 1;
+  if (endIndex < startIndex) return [];
+
+  return history.slice(startIndex, endIndex + 1);
+}
+
 function renderTemperatureChart() {
   const canvas = els.temperatureChart;
   if (!canvas || !state.temperatures.chart.show) return;
 
-  const history = state.temperatures.history.slice(-TEMPERATURE_HISTORY_LIMIT);
+  const fullHistory = state.temperatures.history;
+  const chartState = state.temperatures.chart;
+  const windowMs = TEMPERATURE_CHART_WINDOW_MS;
+
+  const lastTimestamp = fullHistory[fullHistory.length - 1]?.time || Date.now();
+  const firstTimestamp = fullHistory[0]?.time || lastTimestamp - windowMs;
+  const fullSpanMs = Math.max(0, lastTimestamp - firstTimestamp);
+  const maxOffsetMs = Math.max(0, fullSpanMs - windowMs);
+  const clampedOffsetMs = Math.max(0, Math.min(chartState.offsetMs || 0, maxOffsetMs));
+
+  if (clampedOffsetMs !== chartState.offsetMs) {
+    chartState.offsetMs = clampedOffsetMs;
+  }
+
+  const requestedEndTime = lastTimestamp - clampedOffsetMs;
+  const startTime = Math.max(firstTimestamp, requestedEndTime - windowMs);
+  const endTime = Math.max(requestedEndTime, startTime + windowMs);
+  const history = sliceVisibleTemperatureHistory(fullHistory, startTime, endTime);
+
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
 
@@ -1591,12 +1757,6 @@ function renderTemperatureChart() {
   const width = Math.max(16, canvasWidth - left - right);
   const height = Math.max(16, canvasHeight - top - bottom);
 
-  const lastTimestamp = history[history.length - 1]?.time || Date.now();
-  const firstTimestamp = history[0]?.time || lastTimestamp - 10 * 60 * 1000;
-  const minimumWindow = 10 * 60 * 1000;
-  const startTime = Math.min(firstTimestamp, lastTimestamp - minimumWindow);
-  const endTime = Math.max(lastTimestamp, startTime + minimumWindow);
-
   const peak = history.reduce((max, point) => {
     const pointMax = Math.max(
       Number.isFinite(point.hotendCurrent) ? point.hotendCurrent : 0,
@@ -1607,7 +1767,7 @@ function renderTemperatureChart() {
     return Math.max(max, pointMax);
   }, 0);
 
-  const yMax = state.temperatures.chart.autoscale
+  const yMax = chartState.autoscale
     ? Math.max(60, Math.ceil((peak + 12) / 10) * 10)
     : TEMPERATURE_DEFAULT_MAX;
 
@@ -1622,6 +1782,8 @@ function renderTemperatureChart() {
     endTime,
     yMax,
     history,
+    windowMs,
+    maxOffsetMs,
   };
 
   drawTemperatureChartGrid(ctx, layout);
@@ -1629,9 +1791,13 @@ function renderTemperatureChart() {
   drawTemperatureLine(ctx, layout, history, "hotendCurrent", temperatureColors.hotend);
   drawTemperatureLine(ctx, layout, history, "bedCurrent", temperatureColors.bed);
 
-  const hovered = Number.isInteger(state.temperatures.chart.hoverIndex)
-    ? history[state.temperatures.chart.hoverIndex]
+  const hovered = Number.isInteger(chartState.hoverIndex)
+    ? history[chartState.hoverIndex]
     : null;
+
+  if (!hovered && chartState.hoverIndex !== null) {
+    chartState.hoverIndex = null;
+  }
 
   if (hovered) {
     const x = toChartX(layout, hovered.time);
@@ -1663,7 +1829,7 @@ function renderTemperatureChart() {
     ctx.restore();
   }
 
-  state.temperatures.chart.layout = layout;
+  chartState.layout = layout;
   updateTemperatureTooltip(layout);
 }
 
@@ -1709,6 +1875,35 @@ function handleTemperatureChartPointer(event) {
     state.temperatures.chart.hoverIndex = closestIndex;
     renderTemperatureChart();
   }
+}
+
+function handleTemperatureChartWheel(event) {
+  const layout = state.temperatures.chart.layout;
+  if (!layout || layout.maxOffsetMs <= 0) return;
+
+  const primaryDelta = Math.abs(event.deltaX) > Math.abs(event.deltaY)
+    ? event.deltaX
+    : event.deltaY;
+
+  if (!Number.isFinite(primaryDelta) || primaryDelta === 0) return;
+
+  event.preventDefault();
+
+  const baseStepMs = Math.max(15 * 1000, Math.round(layout.windowMs * TEMPERATURE_CHART_SCROLL_STEP_RATIO));
+  const deltaUnits = Math.min(12, Math.max(1, Math.abs(primaryDelta) / 100));
+  const speedMultiplier = event.shiftKey ? 8 : 1;
+  const deltaOffsetMs = Math.round(baseStepMs * deltaUnits * speedMultiplier);
+
+  const nextOffsetMs = Math.max(
+    0,
+    Math.min(layout.maxOffsetMs, state.temperatures.chart.offsetMs + Math.sign(primaryDelta) * deltaOffsetMs),
+  );
+
+  if (nextOffsetMs === state.temperatures.chart.offsetMs) return;
+
+  state.temperatures.chart.offsetMs = nextOffsetMs;
+  state.temperatures.chart.hoverIndex = null;
+  renderTemperatureChart();
 }
 
 function handleTemperatureChartLeave() {
@@ -1835,6 +2030,7 @@ function initializeTemperaturePanel() {
 
   els.temperatureChart?.addEventListener("mousemove", handleTemperatureChartPointer);
   els.temperatureChart?.addEventListener("mouseleave", handleTemperatureChartLeave);
+  els.temperatureChart?.addEventListener("wheel", handleTemperatureChartWheel, { passive: false });
 
   window.addEventListener("resize", () => {
     renderTemperatureChart();
@@ -2315,7 +2511,7 @@ function wireEvents() {
   });
 }
 
-function init() {
+async function init() {
   els.moonrakerUrl.value = state.moonrakerUrl;
 
   els.interfaceTheme.value = state.interface.theme;
@@ -2339,6 +2535,13 @@ function init() {
 
   applyDashboardLayout();
   setupCollapsibleCards();
+
+  try {
+    await restoreTemperatureHistoryForSession();
+  } catch (error) {
+    log.debug("Temperature history restore failed.", { error: error?.message || String(error) });
+  }
+
   initializeTemperaturePanel();
   applyInterfaceSettings();
   applyDashboardSettings();
@@ -2353,7 +2556,10 @@ function init() {
   });
 }
 
-init();
-
-
+init().catch((error) => {
+  const message = error?.message || String(error);
+  log.error("App init failed.", { error: message });
+  setConnectionUi("error");
+  appendConsole(`Init failed: ${message}`, "error");
+});
 
