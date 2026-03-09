@@ -14,12 +14,13 @@ const DASHBOARD_CARD_IDS = [
   "card-temperatures",
   "card-motion",
   "card-quick-commands",
+  "card-macros",
   "camera-main-card",
   "camera-toolhead-card",
 ];
 
 const DASHBOARD_LAYOUT_DEFAULT = {
-  left: ["card-print-progress", "card-motion", "camera-main-card"],
+  left: ["card-print-progress", "card-motion", "camera-main-card", "card-macros"],
   right: ["card-temperatures", "card-quick-commands", "camera-toolhead-card"],
 };
 
@@ -28,6 +29,7 @@ const DASHBOARD_CARD_LABELS = {
   "card-temperatures": "Temperatures",
   "card-motion": "Motion",
   "card-quick-commands": "Quick Commands",
+  "card-macros": "Macros",
   "camera-main-card": "Main Camera",
   "camera-toolhead-card": "Toolhead Cam",
 };
@@ -126,6 +128,7 @@ const els = {
   consoleForm: document.getElementById("console-form"),
   consoleInput: document.getElementById("console-input"),
   macroList: document.getElementById("macro-list"),
+  dashboardMacroList: document.getElementById("dashboard-macro-list"),
   fileList: document.getElementById("file-list"),
   settingsForm: document.getElementById("settings-form"),
   moonrakerUrl: document.getElementById("moonraker-url"),
@@ -136,6 +139,7 @@ const els = {
   dashShowTemperatures: document.getElementById("dash-show-temperatures"),
   dashShowMotion: document.getElementById("dash-show-motion"),
   dashShowQuickCommands: document.getElementById("dash-show-quick-commands"),
+  dashShowMacros: document.getElementById("dash-show-macros"),
   dashShowMainCamera: document.getElementById("dash-show-main-camera"),
   dashShowToolheadCamera: document.getElementById("dash-show-toolhead-camera"),
   openDashboardLayout: document.getElementById("open-dashboard-layout"),
@@ -152,6 +156,7 @@ const els = {
   cardTemperatures: document.getElementById("card-temperatures"),
   cardMotion: document.getElementById("card-motion"),
   cardQuickCommands: document.getElementById("card-quick-commands"),
+  cardMacros: document.getElementById("card-macros"),
   cardMainCamera: document.getElementById("camera-main-card"),
   cardToolheadCamera: document.getElementById("camera-toolhead-card"),
   cameraEnabled: document.getElementById("camera-enabled"),
@@ -440,6 +445,7 @@ const state = {
     showTemperatures: loadStoredBool("dashboard_show_temperatures", true),
     showMotion: loadStoredBool("dashboard_show_motion", true),
     showQuickCommands: loadStoredBool("dashboard_show_quick_commands", true),
+    showMacros: loadStoredBool("dashboard_show_macros", true),
     showMainCamera: loadStoredBool("dashboard_show_main_camera", true),
     showToolheadCamera: loadStoredBool("dashboard_show_toolhead_camera", true),
     layout: loadDashboardLayout(),
@@ -542,6 +548,7 @@ function applyDashboardSettings() {
     [els.cardTemperatures, state.dashboard.showTemperatures],
     [els.cardMotion, state.dashboard.showMotion],
     [els.cardQuickCommands, state.dashboard.showQuickCommands],
+    [els.cardMacros, state.dashboard.showMacros],
     [els.cardMainCamera, state.dashboard.showMainCamera],
     [els.cardToolheadCamera, state.dashboard.showToolheadCamera],
   ];
@@ -2313,25 +2320,38 @@ async function connectMoonraker() {
   }
 }
 
-function renderMacros(macroKeys) {
-  els.macroList.innerHTML = "";
+function renderMacroButtons(container, macroKeys) {
+  if (!container) return;
+
+  container.innerHTML = "";
   if (!macroKeys.length) {
-    els.macroList.textContent = "No macros found.";
+    const empty = document.createElement("p");
+    empty.className = "muted";
+    empty.textContent = "No macros found.";
+    container.appendChild(empty);
     return;
   }
 
   macroKeys.forEach((macro) => {
     const name = macro.replace("gcode_macro ", "");
     const button = document.createElement("button");
+    button.type = "button";
+    button.className = "macro-action-btn";
     button.textContent = name;
+    button.title = name;
     button.addEventListener("click", async () => {
       await executeGcodeAction(name, {
         actionLabel: `Macro ${name}`,
         successMessage: `Macro executed: ${name}`,
       });
     });
-    els.macroList.appendChild(button);
+    container.appendChild(button);
   });
+}
+
+function renderMacros(macroKeys) {
+  renderMacroButtons(els.macroList, macroKeys);
+  renderMacroButtons(els.dashboardMacroList, macroKeys);
 }
 
 function renderFiles(files) {
@@ -2412,6 +2432,7 @@ function wireEvents() {
     state.dashboard.showTemperatures = els.dashShowTemperatures.checked;
     state.dashboard.showMotion = els.dashShowMotion.checked;
     state.dashboard.showQuickCommands = els.dashShowQuickCommands.checked;
+    state.dashboard.showMacros = els.dashShowMacros.checked;
     state.dashboard.showMainCamera = els.dashShowMainCamera.checked;
     state.dashboard.showToolheadCamera = els.dashShowToolheadCamera.checked;
 
@@ -2432,6 +2453,7 @@ function wireEvents() {
     localStorage.setItem("dashboard_show_temperatures", String(state.dashboard.showTemperatures));
     localStorage.setItem("dashboard_show_motion", String(state.dashboard.showMotion));
     localStorage.setItem("dashboard_show_quick_commands", String(state.dashboard.showQuickCommands));
+    localStorage.setItem("dashboard_show_macros", String(state.dashboard.showMacros));
     localStorage.setItem("dashboard_show_main_camera", String(state.dashboard.showMainCamera));
     localStorage.setItem("dashboard_show_toolhead_camera", String(state.dashboard.showToolheadCamera));
     localStorage.setItem("dashboard_layout", JSON.stringify(state.dashboard.layout));
@@ -2522,6 +2544,7 @@ async function init() {
   els.dashShowTemperatures.checked = state.dashboard.showTemperatures;
   els.dashShowMotion.checked = state.dashboard.showMotion;
   els.dashShowQuickCommands.checked = state.dashboard.showQuickCommands;
+  els.dashShowMacros.checked = state.dashboard.showMacros;
   els.dashShowMainCamera.checked = state.dashboard.showMainCamera;
   els.dashShowToolheadCamera.checked = state.dashboard.showToolheadCamera;
 

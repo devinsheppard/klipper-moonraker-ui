@@ -339,6 +339,42 @@ p {
   gap: 8px;
 }
 
+.macro-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.macro-list .muted {
+  margin: 0;
+  grid-column: 1 / -1;
+}
+
+.macro-action-btn {
+  display: block;
+  width: 100%;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line) 55%);
+  background: linear-gradient(
+    120deg,
+    color-mix(in srgb, var(--accent) 30%, var(--bg-soft) 70%),
+    color-mix(in srgb, var(--accent-2) 24%, var(--bg-soft) 76%)
+  );
+  color: color-mix(in srgb, var(--text) 94%, #ffffff 6%);
+}
+
+.macro-action-btn:hover {
+  border-color: color-mix(in srgb, var(--accent) 78%, white 22%);
+  background: linear-gradient(
+    120deg,
+    color-mix(in srgb, var(--accent) 40%, var(--bg-soft) 60%),
+    color-mix(in srgb, var(--accent-2) 34%, var(--bg-soft) 66%)
+  );
+}
+
 button,
 input,
 select {

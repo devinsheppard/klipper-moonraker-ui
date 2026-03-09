@@ -262,6 +262,11 @@
               <button data-gcode="STATUS">Status</button>
             </div>
           </article>
+          <article class="card" id="card-macros">
+            <h3>Macros</h3>
+            <p class="muted">Loaded from Moonraker configuration.</p>
+            <div id="dashboard-macro-list" class="macro-list"></div>
+          </article>
 
           <article class="card camera-card" id="camera-main-card">
             <div class="camera-card-head">
@@ -387,6 +392,10 @@
               <label class="checkbox-row" for="dash-show-quick-commands">
                 <input id="dash-show-quick-commands" type="checkbox" />
                 <span>Show Quick Commands</span>
+              </label>
+              <label class="checkbox-row" for="dash-show-macros">
+                <input id="dash-show-macros" type="checkbox" />
+                <span>Show Macros</span>
               </label>
               <label class="checkbox-row" for="dash-show-main-camera">
                 <input id="dash-show-main-camera" type="checkbox" />
