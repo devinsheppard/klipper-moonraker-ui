@@ -1,4 +1,7 @@
+import { createLogger } from "./logger.js";
+
 const JSONRPC = "2.0";
+const log = createLogger("moonraker");
 
 export class MoonrakerClient {
   constructor(baseUrl) {
@@ -62,7 +65,7 @@ export class MoonrakerClient {
         const payload = JSON.parse(event.data);
         this.wsCallbacks.forEach((cb) => cb(payload));
       } catch (error) {
-        console.error("Invalid websocket payload", error);
+        log.error("Invalid websocket payload", error);
       }
     });
   }
@@ -94,3 +97,4 @@ export class MoonrakerClient {
     return this.call("/server/files/list");
   }
 }
+

@@ -1,4 +1,5 @@
 import { MoonrakerClient } from "./moonraker.js";
+import { createLogger } from "./logger.js";
 
 const CAMERA_MODES = {
   IMAGE: "image",
@@ -42,6 +43,9 @@ const PRINTER_STATE_META = {
   cancelled: { label: "Cancelled", color: "#94a3b8" },
   error: { label: "Error", color: "#ef4444" },
 };
+
+const CONSOLE_LOG_LEVELS = new Set(["debug", "info", "warn", "error"]);
+const log = createLogger("app");
 
 const els = {
   navItems: [...document.querySelectorAll(".nav-item")],
@@ -243,9 +247,11 @@ const state = {
   },
 };
 
-function appendConsole(message) {
+function appendConsole(message, level = "info") {
+  const normalizedLevel = CONSOLE_LOG_LEVELS.has(level) ? level : "info";
   const line = document.createElement("div");
-  line.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+  line.className = `console-line console-line-${normalizedLevel}`;
+  line.textContent = `[${new Date().toLocaleTimeString()}] [${normalizedLevel.toUpperCase()}] ${message}`;
   els.consoleLog.appendChild(line);
   els.consoleLog.scrollTop = els.consoleLog.scrollHeight;
 }
@@ -726,18 +732,46 @@ function setupCollapsibleCards() {
 }
 
 async function connectMoonraker() {
+  appendConsole(`Connecting to ${state.moonrakerUrl}`, "info");
+  log.info("Connecting to Moonraker.", { baseUrl: state.moonrakerUrl });
+
   if (state.client?.ws && state.client.ws.readyState <= 1) {
     try {
       state.client.ws.close();
+      log.debug("Closed previous websocket before reconnect.");
     } catch (error) {
-      console.warn("Previous websocket close failed", error);
+      const message = error?.message || String(error);
+      appendConsole(`Previous websocket close failed: ${message}`, "warn");
+      log.warn("Previous websocket close failed.", { error: message });
     }
   }
 
   state.client = new MoonrakerClient(state.moonrakerUrl);
   setConnectionUi("connecting");
 
-  state.client.onConnectionState((status) => setConnectionUi(status));
+  state.client.onConnectionState((status) => {
+    setConnectionUi(status);
+
+    if (status === "connected") {
+      appendConsole("Moonraker connected.", "info");
+      log.info("Moonraker websocket connected.");
+      return;
+    }
+
+    if (status === "disconnected") {
+      appendConsole("Moonraker disconnected.", "warn");
+      log.warn("Moonraker websocket disconnected.");
+      return;
+    }
+
+    if (status === "error") {
+      appendConsole("Moonraker websocket error.", "error");
+      log.error("Moonraker websocket error.");
+      return;
+    }
+
+    log.debug("Moonraker connection status update.", { status });
+  });
 
   state.client.onMessage((payload) => {
     if (payload.method !== "notify_status_update") return;
@@ -765,6 +799,13 @@ async function connectMoonraker() {
     if (reportedPrinterState) {
       setPrinterState(reportedPrinterState);
     }
+
+    log.debug("Status update received.", {
+      printerState: reportedPrinterState || null,
+      progress: printStats.progress ?? null,
+      hotend: extruder.temperature ?? null,
+      bed: bed.temperature ?? null,
+    });
   });
 
   state.client.connectWebSocket();
@@ -772,9 +813,13 @@ async function connectMoonraker() {
   try {
     const statusResponse = await state.client.call("/printer/objects/query?print_stats");
     const printStats = statusResponse?.result?.status?.print_stats || {};
-    setPrinterState(printStats.state || printStats.status || "ready");
+    const printerState = printStats.state || printStats.status || "ready";
+    setPrinterState(printerState);
+    log.debug("Initial printer state loaded.", { printerState });
   } catch (error) {
-    appendConsole(`Printer state load failed: ${error.message}`);
+    const message = error?.message || String(error);
+    appendConsole(`Printer state load failed: ${message}`, "error");
+    log.error("Printer state load failed.", { error: message });
   }
 
   try {
@@ -782,15 +827,22 @@ async function connectMoonraker() {
     const settings = macroResponse?.result?.status?.configfile?.settings || {};
     const macros = Object.keys(settings).filter((k) => k.startsWith("gcode_macro "));
     renderMacros(macros);
+    log.info("Macros loaded.", { count: macros.length });
   } catch (error) {
-    appendConsole(`Macro load failed: ${error.message}`);
+    const message = error?.message || String(error);
+    appendConsole(`Macro load failed: ${message}`, "error");
+    log.error("Macro load failed.", { error: message });
   }
 
   try {
     const fileResponse = await state.client.getFiles();
-    renderFiles(fileResponse?.result || []);
+    const files = fileResponse?.result || [];
+    renderFiles(files);
+    log.info("File list loaded.", { count: files.length });
   } catch (error) {
-    appendConsole(`File list load failed: ${error.message}`);
+    const message = error?.message || String(error);
+    appendConsole(`File list load failed: ${message}`, "error");
+    log.error("File list load failed.", { error: message });
   }
 }
 
@@ -806,9 +858,10 @@ function renderMacros(macroKeys) {
     const button = document.createElement("button");
     button.textContent = name;
     button.addEventListener("click", async () => {
-      if (!state.client) return;
-      await state.client.runGcode(name);
-      appendConsole(`Macro executed: ${name}`);
+      await executeGcodeAction(name, {
+        actionLabel: `Macro ${name}`,
+        successMessage: `Macro executed: ${name}`,
+      });
     });
     els.macroList.appendChild(button);
   });
@@ -827,6 +880,40 @@ function renderFiles(files) {
     row.innerHTML = `<strong>${file.path}</strong><div class=\"muted\">${Math.round((file.size || 0) / 1024)} KB</div>`;
     els.fileList.appendChild(row);
   });
+}
+
+async function executeGcodeAction(script, { actionLabel = script, successMessage = null } = {}) {
+  if (!state.client) {
+    appendConsole(`Cannot run "${actionLabel}" while disconnected.`, "warn");
+    log.warn("Skipped G-code action because client is unavailable.", {
+      actionLabel,
+      script,
+    });
+    return false;
+  }
+
+  log.info("Sending G-code action.", {
+    actionLabel,
+    script,
+  });
+
+  try {
+    await state.client.runGcode(script);
+    if (successMessage) {
+      appendConsole(successMessage, "info");
+    }
+    log.debug("G-code action completed.", { actionLabel });
+    return true;
+  } catch (error) {
+    const message = error?.message || String(error);
+    appendConsole(`${actionLabel} failed: ${message}`, "error");
+    log.error("G-code action failed.", {
+      actionLabel,
+      script,
+      error: message,
+    });
+    return false;
+  }
 }
 
 function wireEvents() {
@@ -893,55 +980,79 @@ function wireEvents() {
     applyDashboardLayout();
     applyDashboardSettings();
     renderCameraCards();
-    appendConsole("Settings saved.");
+    appendConsole("Settings saved.", "info");
+    log.info("Settings saved.", {
+      moonrakerUrl: state.moonrakerUrl,
+      theme: state.interface.theme,
+      density: state.interface.density,
+    });
     await connectMoonraker();
   });
 
   els.consoleForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     const command = els.consoleInput.value.trim();
-    if (!command || !state.client) return;
+    if (!command) return;
 
-    await state.client.runGcode(command);
-    appendConsole(`> ${command}`);
-    els.consoleInput.value = "";
+    const sent = await executeGcodeAction(command, {
+      actionLabel: "Console command",
+      successMessage: `> ${command}`,
+    });
+
+    if (sent) {
+      els.consoleInput.value = "";
+    }
   });
 
   els.quickGcode.forEach((btn) => {
     btn.addEventListener("click", async () => {
-      if (!state.client) return;
-      await state.client.runGcode(btn.dataset.gcode);
-      appendConsole(`> ${btn.dataset.gcode}`);
+      const command = btn.dataset.gcode;
+      if (!command) return;
+      await executeGcodeAction(command, {
+        actionLabel: `Quick command ${command}`,
+        successMessage: `> ${command}`,
+      });
     });
   });
 
   els.jog.forEach((btn) => {
     btn.addEventListener("click", async () => {
-      if (!state.client) return;
-      const script = inferAxisCommand(btn.dataset.jog);
-      await state.client.runGcode(script);
-      appendConsole(`Jogged ${btn.dataset.jog}`);
+      const direction = btn.dataset.jog;
+      if (!direction) return;
+      const script = inferAxisCommand(direction);
+      await executeGcodeAction(script, {
+        actionLabel: `Jog ${direction}`,
+        successMessage: `Jogged ${direction}`,
+      });
     });
   });
 
   els.pause.addEventListener("click", async () => {
-    if (!state.client) return;
-    await state.client.runGcode("PAUSE");
+    await executeGcodeAction("PAUSE", {
+      actionLabel: "Pause print",
+      successMessage: "Pause command sent.",
+    });
   });
 
   els.resume.addEventListener("click", async () => {
-    if (!state.client) return;
-    await state.client.runGcode("RESUME");
+    await executeGcodeAction("RESUME", {
+      actionLabel: "Resume print",
+      successMessage: "Resume command sent.",
+    });
   });
 
   els.cancel.addEventListener("click", async () => {
-    if (!state.client) return;
-    await state.client.runGcode("CANCEL_PRINT");
+    await executeGcodeAction("CANCEL_PRINT", {
+      actionLabel: "Cancel print",
+      successMessage: "Cancel command sent.",
+    });
   });
 
   els.home.addEventListener("click", async () => {
-    if (!state.client) return;
-    await state.client.runGcode("G28");
+    await executeGcodeAction("G28", {
+      actionLabel: "Home axes",
+      successMessage: "Home command sent.",
+    });
   });
 
   els.mainCameraFullscreen.addEventListener("click", () => openCameraFullscreen(state.camera, "Main Camera"));
@@ -984,13 +1095,14 @@ function init() {
   wireEvents();
 
   connectMoonraker().catch((error) => {
+    const message = error?.message || String(error);
+    log.error("Initial Moonraker connection failed.", { error: message });
     setConnectionUi("error");
-    appendConsole(`Connect failed: ${error.message}`);
+    appendConsole(`Connect failed: ${message}`, "error");
   });
 }
 
 init();
-
 
 
 
