@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Forge UI - Klipper + Moonraker Frontend</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./src/styles.css" />
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-head">
+        <div class="brand">
+          <div class="brand-dot"></div>
+          <h1>Forge UI</h1>
+        </div>
+        <button id="sidebar-toggle" class="sidebar-toggle" type="button" aria-label="Collapse sidebar" aria-expanded="true" title="Collapse sidebar">
+          <span class="sidebar-toggle-icon" aria-hidden="true"></span>
+        </button>
+      </div>
+
+      <p class="muted">Custom Moonraker frontend with Fluidd-level feature goals.</p>
+      <nav class="nav">
+        <button data-view="dashboard" class="nav-item active" title="Dashboard">
+          <span class="nav-item-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="7" height="7"></rect>
+              <rect x="14" y="3" width="7" height="7"></rect>
+              <rect x="3" y="14" width="7" height="7"></rect>
+              <rect x="14" y="14" width="7" height="7"></rect>
+            </svg>
+          </span>
+          <span class="nav-item-label">Dashboard</span>
+        </button>
+        <button data-view="console" class="nav-item" title="Console">
+          <span class="nav-item-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="4 7 10 12 4 17"></polyline>
+              <line x1="13" y1="17" x2="20" y2="17"></line>
+            </svg>
+          </span>
+          <span class="nav-item-label">Console</span>
+        </button>
+        <button data-view="macros" class="nav-item" title="Macros">
+          <span class="nav-item-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M13 3L4 14h7l-1 7 9-11h-7z"></path>
+            </svg>
+          </span>
+          <span class="nav-item-label">Macros</span>
+        </button>
+        <button data-view="files" class="nav-item" title="Files">
+          <span class="nav-item-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+            </svg>
+          </span>
+          <span class="nav-item-label">Files</span>
+        </button>
+        <button data-view="settings" class="nav-item" title="Settings">
+          <span class="nav-item-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.65 1.65 0 0 0 15 19.4a1.65 1.65 0 0 0-1 .6 1.65 1.65 0 0 0-.33 1v.17a2 2 0 1 1-4 0V21a1.65 1.65 0 0 0-.33-1 1.65 1.65 0 0 0-1-.6 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-.6-1 1.65 1.65 0 0 0-1-.33H2.83a2 2 0 1 1 0-4H3a1.65 1.65 0 0 0 1-.33 1.65 1.65 0 0 0 .6-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-.6 1.65 1.65 0 0 0 .33-1V2.83a2 2 0 1 1 4 0V3a1.65 1.65 0 0 0 .33 1 1.65 1.65 0 0 0 1 .6 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 .6 1 1.65 1.65 0 0 0 1 .33h.17a2 2 0 1 1 0 4H21a1.65 1.65 0 0 0-1 .33 1.65 1.65 0 0 0-.6 1z"></path>
+            </svg>
+          </span>
+          <span class="nav-item-label">Settings</span>
+        </button>
+      </nav>
+      <div class="status-block">
+        <div class="status-pill" id="connection-pill">Disconnected</div>
+        <small id="connection-text">Set Moonraker URL in Settings</small>
+      </div>
+    </aside>
+
+
+    <main class="content">
+      <header class="topbar">
+        <h2 id="page-title">Dashboard</h2>
+        <div class="printer-chip">
+          <span class="dot" id="printer-dot"></span>
+          <span id="printer-state">unknown</span>
+        </div>
+      </header>
+
+      <section id="view-dashboard" class="view active">
+        <div class="grid two-col">
+          <article class="card">
+            <h3>Print Progress</h3>
+            <div class="progress-wrap">
+              <div class="progress-bar" id="progress-bar"></div>
+            </div>
+            <p id="progress-text">0%</p>
+            <div class="actions">
+              <button id="btn-pause">Pause</button>
+              <button id="btn-resume">Resume</button>
+              <button id="btn-cancel" class="danger">Cancel</button>
+            </div>
+          </article>
+
+          <article class="card">
+            <h3>Temperatures</h3>
+            <div class="temp-grid">
+              <div class="temp-item">
+                <label>Hotend</label>
+                <strong id="temp-hotend">--</strong>
+              </div>
+              <div class="temp-item">
+                <label>Bed</label>
+                <strong id="temp-bed">--</strong>
+              </div>
+            </div>
+          </article>
+        </div>
+
+        <div class="grid two-col">
+          <article class="card">
+            <h3>Motion</h3>
+            <div class="actions">
+              <button data-jog="X+">X+</button>
+              <button data-jog="X-">X-</button>
+              <button data-jog="Y+">Y+</button>
+              <button data-jog="Y-">Y-</button>
+              <button data-jog="Z+">Z+</button>
+              <button data-jog="Z-">Z-</button>
+              <button id="btn-home">Home All</button>
+            </div>
+          </article>
+
+          <article class="card">
+            <h3>Quick Commands</h3>
+            <div class="actions">
+              <button data-gcode="FIRMWARE_RESTART">Firmware Restart</button>
+              <button data-gcode="RESTART">Restart</button>
+              <button data-gcode="STATUS">Status</button>
+            </div>
+          </article>
+        </div>
+
+        <div class="grid two-col">
+          <article class="card camera-card" id="camera-main-card">
+            <div class="camera-card-head">
+              <h3>Main Camera</h3>
+              <button id="main-camera-fullscreen" type="button">Fullscreen</button>
+            </div>
+            <div class="camera-frame" id="main-camera-frame"></div>
+          </article>
+
+          <article class="card camera-card" id="camera-toolhead-card">
+            <div class="camera-card-head">
+              <h3>Toolhead Cam</h3>
+              <button id="toolhead-camera-fullscreen" type="button">Fullscreen</button>
+            </div>
+            <div class="camera-frame" id="toolhead-camera-frame"></div>
+          </article>
+        </div>
+      </section>
+
+      <section id="view-console" class="view">
+        <article class="card">
+          <h3>G-code Console</h3>
+          <div class="console-log" id="console-log"></div>
+          <form id="console-form">
+            <input id="console-input" type="text" placeholder="Enter G-code..." autocomplete="off" />
+            <button type="submit">Send</button>
+          </form>
+        </article>
+      </section>
+
+      <section id="view-macros" class="view">
+        <article class="card">
+          <h3>Macros</h3>
+          <p class="muted">Loaded from Moonraker configuration.</p>
+          <div id="macro-list" class="macro-list"></div>
+        </article>
+      </section>
+
+      <section id="view-files" class="view">
+        <article class="card">
+          <h3>Print Files</h3>
+          <p class="muted">Feature scaffold for Fluidd-like file manager.</p>
+          <div id="file-list" class="file-list"></div>
+        </article>
+      </section>
+
+      <section id="view-settings" class="view">
+        <form id="settings-form" class="settings-layout">
+          <div class="grid two-col">
+            <article class="card">
+              <h3>Connection</h3>
+              <label for="moonraker-url">Moonraker URL</label>
+              <input id="moonraker-url" type="url" placeholder="http://127.0.0.1:7125" />
+            </article>
+
+            <article class="card">
+              <h3>Camera Settings</h3>
+
+              <h3>Main Camera</h3>
+              <label class="checkbox-row" for="camera-enabled">
+                <input id="camera-enabled" type="checkbox" />
+                <span>Enable main camera</span>
+              </label>
+              <label for="camera-url">Main camera URL</label>
+              <input id="camera-url" type="text" placeholder="http://klipper.local/webcam/?action=stream" />
+              <label for="camera-render-mode">Main camera render mode</label>
+              <select id="camera-render-mode">
+                <option value="image">Image/MJPEG</option>
+                <option value="iframe">Iframe</option>
+              </select>
+
+              <h3>Toolhead Cam</h3>
+              <label class="checkbox-row" for="toolhead-camera-enabled">
+                <input id="toolhead-camera-enabled" type="checkbox" />
+                <span>Enable Toolhead Cam</span>
+              </label>
+              <label for="toolhead-camera-url">Toolhead Cam URL</label>
+              <input id="toolhead-camera-url" type="text" placeholder="http://klipper.local/webcam2/?action=stream" />
+              <label for="toolhead-camera-render-mode">Toolhead Cam render mode</label>
+              <select id="toolhead-camera-render-mode">
+                <option value="image">Image/MJPEG</option>
+                <option value="iframe">Iframe</option>
+              </select>
+            </article>
+          </div>
+
+          <div class="grid two-col">
+            <article class="card">
+              <h3>Interface</h3>
+              <label for="interface-theme">Theme</label>
+              <select id="interface-theme">
+                <option value="ocean">Ocean</option>
+                <option value="ember">Ember</option>
+                <option value="graphite">Graphite</option>
+              </select>
+
+              <label class="checkbox-row" for="interface-compact">
+                <input id="interface-compact" type="checkbox" />
+                <span>Compact mode</span>
+              </label>
+
+              <label for="interface-density">Card density</label>
+              <select id="interface-density">
+                <option value="comfortable">Comfortable</option>
+                <option value="compact">Compact</option>
+              </select>
+            </article>
+          </div>
+
+          <article class="card settings-actions">
+            <button type="submit">Save & Connect</button>
+          </article>
+        </form>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="camera-fullscreen-dialog" class="camera-dialog">
+    <button type="button" id="camera-fullscreen-close" class="camera-dialog-close">Close</button>
+    <div id="camera-fullscreen-content" class="camera-dialog-content"></div>
+  </dialog>
+
+  <script type="module" src="./src/app.js"></script>
+</body>
+</html>
+
+
