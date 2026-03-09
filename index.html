@@ -102,16 +102,127 @@
             </div>
           </article>
 
-          <article class="card" id="card-temperatures">
-            <h3>Temperatures</h3>
-            <div class="temp-grid">
-              <div class="temp-item">
-                <label>Hotend</label>
-                <strong id="temp-hotend">--</strong>
+          <article class="card temperature-panel" id="card-temperatures">
+            <div class="camera-card-head temperature-card-head">
+              <h3>
+                <span class="temperature-title-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none">
+                    <path d="M14 14.76V5a4 4 0 0 0-8 0v9.76a6 6 0 1 0 8 0Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+                    <line x1="10" y1="11" x2="10" y2="17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></line>
+                    <line x1="17" y1="6" x2="20" y2="6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></line>
+                    <line x1="17" y1="10" x2="20" y2="10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></line>
+                    <line x1="17" y1="14" x2="20" y2="14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></line>
+                  </svg>
+                </span>
+                <span>Temperatures</span>
+              </h3>
+              <button type="button" id="temp-cooldown" class="temp-cooldown-btn">
+                <span class="temp-cooldown-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none">
+                    <path d="M12 2v20M4.93 6l14.14 12M19.07 6 4.93 18M5 12h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path>
+                  </svg>
+                </span>
+                <span>COOLDOWN</span>
+              </button>
+              <button type="button" id="temp-settings-toggle" class="temp-settings-btn" aria-label="Temperature panel settings" aria-expanded="false">
+                <svg viewBox="0 0 24 24" fill="none">
+                  <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.8"></circle>
+                  <path d="M19.4 15a1.6 1.6 0 0 0 .3 1.7l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.7-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.7.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.7 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.7l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.7.3h.1a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5h.1a1.6 1.6 0 0 0 1.7-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.7v.1a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"></path>
+                </svg>
+              </button>
+              <div id="temp-settings-menu" class="temp-settings-menu" hidden>
+                <label><input type="checkbox" id="temp-show-chart" checked />Show Chart</label>
+                <label><input type="checkbox" id="temp-hide-host-sensors" />Hide Host/MCU Sensors</label>
+                <label><input type="checkbox" id="temp-hide-monitors" />Hide Monitors</label>
+                <label><input type="checkbox" id="temp-autoscale-chart" />Autoscale Chart</label>
               </div>
-              <div class="temp-item">
-                <label>Bed</label>
-                <strong id="temp-bed">--</strong>
+            </div>
+            <div class="temperature-panel-content">
+              <div class="temperature-table-wrap">
+                <table class="temperature-table">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>State</th>
+                      <th>Current</th>
+                      <th>Target</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>
+                        <span class="heater-name">
+                          <span class="heater-icon heater-icon-extruder" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" fill="currentColor">
+                              <path d="M5 14h14v6H5z"></path>
+                              <path d="M8 5h8v6H8z"></path>
+                              <path d="M3 18h2v2H3zm16 0h2v2h-2z"></path>
+                            </svg>
+                          </span>
+                          <span>Extruder</span>
+                        </span>
+                      </td>
+                      <td><span id="temp-hotend-state" class="heater-state">off</span></td>
+                      <td><span id="temp-hotend" class="heater-current">--.-&deg;C</span></td>
+                      <td class="heater-target-cell">
+                        <div class="target-control" data-heater="hotend">
+                          <input id="temp-hotend-target-input" type="number" min="0" max="320" step="1" />
+                          <span class="target-unit">&deg;C</span>
+                          <button type="button" id="temp-hotend-target-toggle" class="target-toggle" aria-label="Extruder target presets">
+                            <svg viewBox="0 0 10 6" fill="currentColor"><path d="M5 6 0 0h10z"></path></svg>
+                          </button>
+                          <div id="temp-hotend-target-menu" class="target-menu" hidden></div>
+                          <span id="temp-hotend-target" hidden>0</span>
+                        </div>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td>
+                        <span class="heater-name">
+                          <span class="heater-icon heater-icon-bed" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" fill="none">
+                              <rect x="3" y="8" width="18" height="5" rx="1.2" stroke="currentColor" stroke-width="1.8"></rect>
+                              <path d="M5 16v2M9 16v2M13 16v2M17 16v2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path>
+                            </svg>
+                          </span>
+                          <span>Heater Bed</span>
+                        </span>
+                      </td>
+                      <td><span id="temp-bed-state" class="heater-state">off</span></td>
+                      <td><span id="temp-bed" class="heater-current">--.-&deg;C</span></td>
+                      <td class="heater-target-cell">
+                        <div class="target-control" data-heater="bed">
+                          <input id="temp-bed-target-input" type="number" min="0" max="130" step="1" />
+                          <span class="target-unit">&deg;C</span>
+                          <button type="button" id="temp-bed-target-toggle" class="target-toggle" aria-label="Heater bed target presets">
+                            <svg viewBox="0 0 10 6" fill="currentColor"><path d="M5 6 0 0h10z"></path></svg>
+                          </button>
+                          <div id="temp-bed-target-menu" class="target-menu" hidden></div>
+                          <span id="temp-bed-target" hidden>0</span>
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div id="temperature-chart-wrap" class="temperature-chart-wrap">
+                <p class="temperature-chart-label">Temperature [&deg;C]</p>
+                <div class="temperature-chart-canvas-wrap">
+                  <canvas id="temperature-chart" aria-label="Temperature history chart"></canvas>
+                  <div id="temperature-chart-tooltip" class="temperature-chart-tooltip" hidden>
+                    <div id="temperature-tooltip-time" class="temperature-tooltip-time">--:--:--</div>
+                    <div class="temperature-tooltip-row">
+                      <span class="tooltip-dot tooltip-dot-hotend"></span>
+                      <span>Extruder:</span>
+                      <strong id="temperature-tooltip-hotend">--</strong>
+                    </div>
+                    <div class="temperature-tooltip-row">
+                      <span class="tooltip-dot tooltip-dot-bed"></span>
+                      <span>Heater Bed:</span>
+                      <strong id="temperature-tooltip-bed">--</strong>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </article>
@@ -315,6 +426,7 @@
   <script type="module" src="./src/app.js"></script>
 </body>
 </html>
+
 
 
 

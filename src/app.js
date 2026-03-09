@@ -45,6 +45,28 @@ const PRINTER_STATE_META = {
 };
 
 const CONSOLE_LOG_LEVELS = new Set(["debug", "info", "warn", "error"]);
+const TEMPERATURE_PRESETS = {
+  hotend: [0, 170, 200, 215, 240, 260],
+  bed: [0, 45, 60, 80, 100],
+};
+const TEMPERATURE_HISTORY_LIMIT = 360;
+const TEMPERATURE_DEFAULT_MAX = 250;
+const TEMPERATURE_POLL_INTERVAL_MS = 2000;
+const TEMPERATURE_COLORS = {
+  hotend: "#ff4a3f",
+  bed: "#2ea3ff",
+};
+function getThemeColorValue(cssVarName, fallback) {
+  const value = getComputedStyle(document.documentElement).getPropertyValue(cssVarName).trim();
+  return value || fallback;
+}
+
+function getTemperatureLineColors() {
+  return {
+    hotend: getThemeColorValue("--danger", TEMPERATURE_COLORS.hotend),
+    bed: getThemeColorValue("--accent", TEMPERATURE_COLORS.bed),
+  };
+}
 const log = createLogger("app");
 
 const els = {
@@ -61,6 +83,29 @@ const els = {
   progressText: document.getElementById("progress-text"),
   tempHotend: document.getElementById("temp-hotend"),
   tempBed: document.getElementById("temp-bed"),
+  tempHotendState: document.getElementById("temp-hotend-state"),
+  tempBedState: document.getElementById("temp-bed-state"),
+  tempHotendTarget: document.getElementById("temp-hotend-target"),
+  tempBedTarget: document.getElementById("temp-bed-target"),
+  tempHotendTargetInput: document.getElementById("temp-hotend-target-input"),
+  tempBedTargetInput: document.getElementById("temp-bed-target-input"),
+  tempHotendTargetToggle: document.getElementById("temp-hotend-target-toggle"),
+  tempBedTargetToggle: document.getElementById("temp-bed-target-toggle"),
+  tempHotendTargetMenu: document.getElementById("temp-hotend-target-menu"),
+  tempBedTargetMenu: document.getElementById("temp-bed-target-menu"),
+  tempCooldown: document.getElementById("temp-cooldown"),
+  tempSettingsToggle: document.getElementById("temp-settings-toggle"),
+  tempSettingsMenu: document.getElementById("temp-settings-menu"),
+  tempShowChart: document.getElementById("temp-show-chart"),
+  tempHideHostSensors: document.getElementById("temp-hide-host-sensors"),
+  tempHideMonitors: document.getElementById("temp-hide-monitors"),
+  tempAutoscaleChart: document.getElementById("temp-autoscale-chart"),
+  temperatureChartWrap: document.getElementById("temperature-chart-wrap"),
+  temperatureChart: document.getElementById("temperature-chart"),
+  temperatureChartTooltip: document.getElementById("temperature-chart-tooltip"),
+  temperatureTooltipTime: document.getElementById("temperature-tooltip-time"),
+  temperatureTooltipHotend: document.getElementById("temperature-tooltip-hotend"),
+  temperatureTooltipBed: document.getElementById("temperature-tooltip-bed"),
   consoleLog: document.getElementById("console-log"),
   consoleForm: document.getElementById("console-form"),
   consoleInput: document.getElementById("console-input"),
@@ -116,6 +161,7 @@ const els = {
 
 let layoutDraggedCardId = null;
 let layoutDraggedFromColumn = null;
+let temperaturePollTimer = null;
 
 function loadStoredBool(key, fallback) {
   const raw = localStorage.getItem(key);
@@ -244,6 +290,19 @@ const state = {
     enabled: loadStoredBool("toolhead_camera_enabled", false),
     url: localStorage.getItem("toolhead_camera_url") || "",
     renderMode: loadStoredMode("toolhead_camera_render_mode", CAMERA_MODES.IMAGE),
+  },
+  temperatures: {
+    hotend: { current: null, target: 0 },
+    bed: { current: null, target: 0 },
+    history: [],
+    chart: {
+      show: loadStoredBool("temperature_show_chart", true),
+      hideHostSensors: loadStoredBool("temperature_hide_host_sensors", false),
+      hideMonitors: loadStoredBool("temperature_hide_monitors", false),
+      autoscale: loadStoredBool("temperature_autoscale_chart", false),
+      hoverIndex: null,
+      layout: null,
+    },
   },
 };
 
@@ -609,6 +668,661 @@ function renderCameraCards() {
   els.toolheadCameraFullscreen.disabled = !toolheadReady;
 }
 
+
+function formatTemperatureValue(value) {
+  if (typeof value !== "number" || Number.isNaN(value)) return "--.-\u00B0C";
+  return `${value.toFixed(1)}\u00B0C`;
+}
+
+function formatTemperatureTargetValue(value) {
+  if (typeof value !== "number" || Number.isNaN(value)) return "0";
+  return String(Math.round(Math.max(0, value)));
+}
+
+function clampTemperatureTarget(sensorKey, value) {
+  const max = sensorKey === "hotend" ? 320 : 130;
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  return Math.round(Math.max(0, Math.min(max, numeric)));
+}
+
+function heaterStateLabel(current, target) {
+  if (!Number.isFinite(target) || target <= 0.5) return "off";
+  if (!Number.isFinite(current)) return "on";
+  if (current < target - 2) return "heating";
+  return "on";
+}
+
+function stopTemperaturePolling() {
+  if (temperaturePollTimer) {
+    clearInterval(temperaturePollTimer);
+    temperaturePollTimer = null;
+  }
+}
+
+function startTemperaturePolling() {
+  stopTemperaturePolling();
+  if (!state.client) return;
+
+  let inFlight = false;
+
+  const poll = async () => {
+    if (!state.client || inFlight) return;
+    inFlight = true;
+
+    try {
+      const temperatureResponse = await state.client.call("/printer/objects/query?extruder&heater_bed");
+      const temperatureStatus = temperatureResponse?.result?.status || {};
+      updateTemperatureSnapshotFromStatus(temperatureStatus);
+    } catch (error) {
+      const message = error?.message || String(error);
+      log.debug("Temperature poll skipped.", { error: message });
+    } finally {
+      inFlight = false;
+    }
+  };
+
+  poll();
+  temperaturePollTimer = setInterval(poll, TEMPERATURE_POLL_INTERVAL_MS);
+}
+function updateTemperatureSnapshotFromStatus(status, { recordHistory = true } = {}) {
+  const extruder = status?.extruder || {};
+  const bed = status?.heater_bed || {};
+
+  if (typeof extruder.temperature === "number") {
+    state.temperatures.hotend.current = extruder.temperature;
+  }
+
+  if (typeof bed.temperature === "number") {
+    state.temperatures.bed.current = bed.temperature;
+  }
+
+  if (typeof extruder.target === "number") {
+    state.temperatures.hotend.target = extruder.target;
+  }
+
+  if (typeof bed.target === "number") {
+    state.temperatures.bed.target = bed.target;
+  }
+
+  if (recordHistory) {
+    const snapshot = {
+      time: Date.now(),
+      hotendCurrent: state.temperatures.hotend.current,
+      hotendTarget: state.temperatures.hotend.target,
+      bedCurrent: state.temperatures.bed.current,
+      bedTarget: state.temperatures.bed.target,
+    };
+
+    const history = state.temperatures.history;
+    const last = history[history.length - 1];
+
+    if (last && snapshot.time - last.time < 800) {
+      history[history.length - 1] = snapshot;
+    } else {
+      history.push(snapshot);
+    }
+
+    if (history.length > TEMPERATURE_HISTORY_LIMIT) {
+      history.splice(0, history.length - TEMPERATURE_HISTORY_LIMIT);
+    }
+  }
+
+  renderTemperaturePanel();
+}
+
+function saveTemperatureChartPreferences() {
+  localStorage.setItem("temperature_show_chart", String(state.temperatures.chart.show));
+  localStorage.setItem("temperature_hide_host_sensors", String(state.temperatures.chart.hideHostSensors));
+  localStorage.setItem("temperature_hide_monitors", String(state.temperatures.chart.hideMonitors));
+  localStorage.setItem("temperature_autoscale_chart", String(state.temperatures.chart.autoscale));
+}
+
+function closeTemperatureSettingsMenu() {
+  if (!els.tempSettingsMenu || !els.tempSettingsToggle) return;
+  els.tempSettingsMenu.hidden = true;
+  els.tempSettingsToggle.setAttribute("aria-expanded", "false");
+}
+
+function closeTemperatureTargetMenus(exceptMenu = null) {
+  [els.tempHotendTargetMenu, els.tempBedTargetMenu].forEach((menu) => {
+    if (!menu || menu === exceptMenu) return;
+    menu.hidden = true;
+  });
+}
+
+function buildTargetPresetIcon() {
+  return `
+    <svg class="target-preset-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M12 2v20M4.93 6l14.14 12M19.07 6 4.93 18M5 12h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path>
+    </svg>
+  `;
+}
+
+function buildTemperatureTargetMenu(sensorKey) {
+  const menu = sensorKey === "hotend" ? els.tempHotendTargetMenu : els.tempBedTargetMenu;
+  if (!menu) return;
+
+  menu.innerHTML = "";
+  const currentTarget = Math.round(state.temperatures[sensorKey].target || 0);
+
+  TEMPERATURE_PRESETS[sensorKey].forEach((preset) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "target-preset-item";
+    button.innerHTML = `${buildTargetPresetIcon()}<span>${preset}\u00B0C</span>`;
+
+    if (preset === currentTarget) {
+      button.classList.add("target-preset-active");
+    }
+
+    button.addEventListener("click", async (event) => {
+      event.preventDefault();
+      await setTemperatureTarget(sensorKey, preset);
+      closeTemperatureTargetMenus();
+    });
+
+    menu.appendChild(button);
+  });
+}
+
+function buildTemperatureTargetMenus() {
+  buildTemperatureTargetMenu("hotend");
+  buildTemperatureTargetMenu("bed");
+}
+
+function openTemperatureTargetMenu(sensorKey) {
+  const menu = sensorKey === "hotend" ? els.tempHotendTargetMenu : els.tempBedTargetMenu;
+  if (!menu) return;
+
+  buildTemperatureTargetMenu(sensorKey);
+  const isOpening = menu.hidden;
+  closeTemperatureTargetMenus();
+  menu.hidden = !isOpening;
+}
+
+function applyTemperatureChartVisibility() {
+  if (!els.temperatureChartWrap) return;
+  els.temperatureChartWrap.classList.toggle("is-hidden", !state.temperatures.chart.show);
+
+  if (!state.temperatures.chart.show) {
+    state.temperatures.chart.hoverIndex = null;
+    if (els.temperatureChartTooltip) {
+      els.temperatureChartTooltip.hidden = true;
+    }
+    return;
+  }
+
+  renderTemperatureChart();
+}
+
+function renderTemperatureTable() {
+  const hotendCurrent = state.temperatures.hotend.current;
+  const bedCurrent = state.temperatures.bed.current;
+  const hotendTarget = state.temperatures.hotend.target;
+  const bedTarget = state.temperatures.bed.target;
+
+  if (els.tempHotend) els.tempHotend.textContent = formatTemperatureValue(hotendCurrent);
+  if (els.tempBed) els.tempBed.textContent = formatTemperatureValue(bedCurrent);
+
+  if (els.tempHotendTarget) els.tempHotendTarget.textContent = formatTemperatureTargetValue(hotendTarget);
+  if (els.tempBedTarget) els.tempBedTarget.textContent = formatTemperatureTargetValue(bedTarget);
+
+  if (els.tempHotendState) {
+    els.tempHotendState.textContent = heaterStateLabel(hotendCurrent, hotendTarget);
+  }
+
+  if (els.tempBedState) {
+    els.tempBedState.textContent = heaterStateLabel(bedCurrent, bedTarget);
+  }
+
+  if (els.tempHotendTargetInput && document.activeElement !== els.tempHotendTargetInput) {
+    els.tempHotendTargetInput.value = formatTemperatureTargetValue(hotendTarget);
+  }
+
+  if (els.tempBedTargetInput && document.activeElement !== els.tempBedTargetInput) {
+    els.tempBedTargetInput.value = formatTemperatureTargetValue(bedTarget);
+  }
+
+  buildTemperatureTargetMenus();
+}
+
+function temperatureTooltipLine(current, target) {
+  const safeCurrent = Number.isFinite(current) ? current : 0;
+  const safeTarget = Number.isFinite(target) ? target : 0;
+  const pct = safeTarget > 0 ? Math.round((safeCurrent / safeTarget) * 100) : 0;
+  return `${safeCurrent.toFixed(1)} / ${safeTarget.toFixed(1)}\u00B0C [${Math.max(0, pct)}%]`;
+}
+
+function toChartX(layout, timestamp) {
+  const ratio = (timestamp - layout.startTime) / (layout.endTime - layout.startTime || 1);
+  return layout.left + ratio * layout.width;
+}
+
+function toChartY(layout, value) {
+  const safeValue = Number.isFinite(value) ? value : 0;
+  const ratio = Math.max(0, Math.min(1, safeValue / layout.yMax));
+  return layout.top + (1 - ratio) * layout.height;
+}
+
+function drawTemperatureChartGrid(ctx, layout) {
+  ctx.save();
+  ctx.strokeStyle = "rgba(148, 163, 184, 0.22)";
+  ctx.lineWidth = 1;
+
+  const horizontalLines = 5;
+  for (let i = 0; i <= horizontalLines; i += 1) {
+    const y = layout.top + (layout.height * i) / horizontalLines;
+    ctx.beginPath();
+    ctx.moveTo(layout.left, y);
+    ctx.lineTo(layout.left + layout.width, y);
+    ctx.stroke();
+
+    const value = layout.yMax - (layout.yMax * i) / horizontalLines;
+    ctx.fillStyle = "rgba(203, 213, 225, 0.72)";
+    ctx.font = '13px "JetBrains Mono"';
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
+    ctx.fillText(String(Math.round(value)), layout.left - 8, y);
+  }
+
+  const verticalLines = 9;
+  for (let i = 0; i <= verticalLines; i += 1) {
+    const x = layout.left + (layout.width * i) / verticalLines;
+    ctx.beginPath();
+    ctx.moveTo(x, layout.top);
+    ctx.lineTo(x, layout.top + layout.height);
+    ctx.stroke();
+
+    const t = layout.startTime + ((layout.endTime - layout.startTime) * i) / verticalLines;
+    ctx.fillStyle = "rgba(148, 163, 184, 0.68)";
+    ctx.font = '13px "JetBrains Mono"';
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    const label = new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    ctx.fillText(label, x, layout.top + layout.height + 10);
+  }
+
+  ctx.restore();
+}
+
+function drawTemperatureLine(ctx, layout, history, currentKey, color) {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 3;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+
+    let started = false;
+  let pointsPlotted = 0;
+  let lastPoint = null;
+
+  history.forEach((point) => {
+    const value = point[currentKey];
+    if (!Number.isFinite(value)) return;
+
+    const x = toChartX(layout, point.time);
+    const y = toChartY(layout, value);
+    lastPoint = { x, y };
+    pointsPlotted += 1;
+
+    if (!started) {
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      started = true;
+    } else {
+      ctx.lineTo(x, y);
+    }
+  });
+
+  if (started) ctx.stroke();
+
+  if (pointsPlotted === 1 && lastPoint) {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(lastPoint.x, lastPoint.y, 3.2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
+function updateTemperatureTooltip(layout) {
+  if (!els.temperatureChartTooltip) return;
+
+  const { hoverIndex } = state.temperatures.chart;
+  const hovered = Number.isInteger(hoverIndex) ? layout.history[hoverIndex] : null;
+  if (!hovered) {
+    els.temperatureChartTooltip.hidden = true;
+    return;
+  }
+
+  if (els.temperatureTooltipTime) {
+    els.temperatureTooltipTime.textContent = new Date(hovered.time).toLocaleTimeString();
+  }
+
+  if (els.temperatureTooltipHotend) {
+    els.temperatureTooltipHotend.textContent = temperatureTooltipLine(hovered.hotendCurrent, hovered.hotendTarget);
+  }
+
+  if (els.temperatureTooltipBed) {
+    els.temperatureTooltipBed.textContent = temperatureTooltipLine(hovered.bedCurrent, hovered.bedTarget);
+  }
+
+  const x = toChartX(layout, hovered.time);
+  els.temperatureChartTooltip.hidden = false;
+
+  const tooltipWidth = els.temperatureChartTooltip.offsetWidth || 248;
+  const left = Math.max(8, Math.min(layout.canvasWidth - tooltipWidth - 8, x + 12));
+
+  els.temperatureChartTooltip.style.left = `${left}px`;
+  els.temperatureChartTooltip.style.top = `${Math.max(8, layout.top + 10)}px`;
+}
+
+function renderTemperatureChart() {
+  const canvas = els.temperatureChart;
+  if (!canvas || !state.temperatures.chart.show) return;
+
+  const history = state.temperatures.history.slice(-TEMPERATURE_HISTORY_LIMIT);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+
+  const canvasWidth = Math.max(10, canvas.clientWidth || 10);
+  const canvasHeight = Math.max(10, canvas.clientHeight || 10);
+  const dpr = window.devicePixelRatio || 1;
+
+  const requiredWidth = Math.round(canvasWidth * dpr);
+  const requiredHeight = Math.round(canvasHeight * dpr);
+
+  if (canvas.width !== requiredWidth || canvas.height !== requiredHeight) {
+    canvas.width = requiredWidth;
+    canvas.height = requiredHeight;
+  }
+
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+
+  const left = 46;
+  const right = 12;
+  const top = 10;
+  const bottom = 40;
+  const width = Math.max(16, canvasWidth - left - right);
+  const height = Math.max(16, canvasHeight - top - bottom);
+
+  const lastTimestamp = history[history.length - 1]?.time || Date.now();
+  const firstTimestamp = history[0]?.time || lastTimestamp - 10 * 60 * 1000;
+  const minimumWindow = 10 * 60 * 1000;
+  const startTime = Math.min(firstTimestamp, lastTimestamp - minimumWindow);
+  const endTime = Math.max(lastTimestamp, startTime + minimumWindow);
+
+  const peak = history.reduce((max, point) => {
+    const pointMax = Math.max(
+      Number.isFinite(point.hotendCurrent) ? point.hotendCurrent : 0,
+      Number.isFinite(point.hotendTarget) ? point.hotendTarget : 0,
+      Number.isFinite(point.bedCurrent) ? point.bedCurrent : 0,
+      Number.isFinite(point.bedTarget) ? point.bedTarget : 0,
+    );
+    return Math.max(max, pointMax);
+  }, 0);
+
+  const yMax = state.temperatures.chart.autoscale
+    ? Math.max(60, Math.ceil((peak + 12) / 10) * 10)
+    : TEMPERATURE_DEFAULT_MAX;
+
+  const layout = {
+    canvasWidth,
+    canvasHeight,
+    left,
+    top,
+    width,
+    height,
+    startTime,
+    endTime,
+    yMax,
+    history,
+  };
+
+  drawTemperatureChartGrid(ctx, layout);
+  const temperatureColors = getTemperatureLineColors();
+  drawTemperatureLine(ctx, layout, history, "hotendCurrent", temperatureColors.hotend);
+  drawTemperatureLine(ctx, layout, history, "bedCurrent", temperatureColors.bed);
+
+  const hovered = Number.isInteger(state.temperatures.chart.hoverIndex)
+    ? history[state.temperatures.chart.hoverIndex]
+    : null;
+
+  if (hovered) {
+    const x = toChartX(layout, hovered.time);
+
+    ctx.save();
+    ctx.strokeStyle = "rgba(184, 198, 219, 0.62)";
+    ctx.setLineDash([6, 6]);
+    ctx.beginPath();
+    ctx.moveTo(x, top);
+    ctx.lineTo(x, top + height);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    [
+      [hovered.hotendCurrent, temperatureColors.hotend],
+      [hovered.bedCurrent, temperatureColors.bed],
+    ].forEach(([value, color]) => {
+      if (!Number.isFinite(value)) return;
+      const y = toChartY(layout, value);
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(x, y, 4.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = "rgba(15, 23, 42, 0.9)";
+      ctx.stroke();
+    });
+
+    ctx.restore();
+  }
+
+  state.temperatures.chart.layout = layout;
+  updateTemperatureTooltip(layout);
+}
+
+function renderTemperaturePanel() {
+  renderTemperatureTable();
+  applyTemperatureChartVisibility();
+}
+
+function handleTemperatureChartPointer(event) {
+  const layout = state.temperatures.chart.layout;
+  if (!layout || !els.temperatureChart) return;
+
+  const rect = els.temperatureChart.getBoundingClientRect();
+  const x = event.clientX - rect.left;
+  const y = event.clientY - rect.top;
+
+  const insideX = x >= layout.left && x <= layout.left + layout.width;
+  const insideY = y >= layout.top && y <= layout.top + layout.height;
+
+  if (!insideX || !insideY) {
+    if (state.temperatures.chart.hoverIndex !== null) {
+      state.temperatures.chart.hoverIndex = null;
+      renderTemperatureChart();
+    }
+    return;
+  }
+
+  const ratio = (x - layout.left) / layout.width;
+  const targetTime = layout.startTime + ratio * (layout.endTime - layout.startTime);
+
+  let closestIndex = null;
+  let minDiff = Number.POSITIVE_INFINITY;
+
+  layout.history.forEach((point, index) => {
+    const diff = Math.abs(point.time - targetTime);
+    if (diff < minDiff) {
+      minDiff = diff;
+      closestIndex = index;
+    }
+  });
+
+  if (closestIndex !== state.temperatures.chart.hoverIndex) {
+    state.temperatures.chart.hoverIndex = closestIndex;
+    renderTemperatureChart();
+  }
+}
+
+function handleTemperatureChartLeave() {
+  if (state.temperatures.chart.hoverIndex === null) return;
+  state.temperatures.chart.hoverIndex = null;
+  renderTemperatureChart();
+}
+
+async function setTemperatureTarget(sensorKey, rawValue) {
+  const target = clampTemperatureTarget(sensorKey, rawValue);
+  if (target === null) return;
+
+  if (sensorKey === "hotend") {
+    if (els.tempHotendTargetInput) els.tempHotendTargetInput.value = String(target);
+  } else {
+    if (els.tempBedTargetInput) els.tempBedTargetInput.value = String(target);
+  }
+
+  const heaterName = sensorKey === "hotend" ? "extruder" : "heater_bed";
+  const script = `SET_HEATER_TEMPERATURE HEATER=${heaterName} TARGET=${target}`;
+
+  const sent = await executeGcodeAction(script, {
+    actionLabel: `Set ${sensorKey === "hotend" ? "Extruder" : "Heater Bed"} target`,
+    successMessage: `Target set to ${target}\u00B0C`,
+  });
+
+  if (!sent) return;
+
+  state.temperatures[sensorKey].target = target;
+  renderTemperaturePanel();
+}
+
+async function cooldownTemperaturePanel() {
+  const sent = await executeGcodeAction("SET_HEATER_TEMPERATURE HEATER=extruder TARGET=0\nSET_HEATER_TEMPERATURE HEATER=heater_bed TARGET=0", {
+    actionLabel: "Cooldown",
+    successMessage: "Cooldown triggered.",
+  });
+
+  if (!sent) return;
+
+  state.temperatures.hotend.target = 0;
+  state.temperatures.bed.target = 0;
+  renderTemperaturePanel();
+}
+
+function initializeTemperaturePanel() {
+  if (!els.cardTemperatures) return;
+
+  if (els.tempShowChart) els.tempShowChart.checked = state.temperatures.chart.show;
+  if (els.tempHideHostSensors) els.tempHideHostSensors.checked = state.temperatures.chart.hideHostSensors;
+  if (els.tempHideMonitors) els.tempHideMonitors.checked = state.temperatures.chart.hideMonitors;
+  if (els.tempAutoscaleChart) els.tempAutoscaleChart.checked = state.temperatures.chart.autoscale;
+
+  buildTemperatureTargetMenus();
+  renderTemperaturePanel();
+  closeTemperatureTargetMenus();
+  closeTemperatureSettingsMenu();
+
+  els.tempCooldown?.addEventListener("click", async () => {
+    closeTemperatureTargetMenus();
+    closeTemperatureSettingsMenu();
+    await cooldownTemperaturePanel();
+  });
+
+  els.tempSettingsToggle?.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (!els.tempSettingsMenu || !els.tempSettingsToggle) return;
+    const opening = els.tempSettingsMenu.hidden;
+
+    closeTemperatureTargetMenus();
+    els.tempSettingsMenu.hidden = !opening;
+    els.tempSettingsToggle.setAttribute("aria-expanded", String(opening));
+  });
+
+  [els.tempShowChart, els.tempHideHostSensors, els.tempHideMonitors, els.tempAutoscaleChart].forEach((checkbox) => {
+    checkbox?.addEventListener("change", () => {
+      state.temperatures.chart.show = els.tempShowChart?.checked ?? true;
+      state.temperatures.chart.hideHostSensors = els.tempHideHostSensors?.checked ?? false;
+      state.temperatures.chart.hideMonitors = els.tempHideMonitors?.checked ?? false;
+      state.temperatures.chart.autoscale = els.tempAutoscaleChart?.checked ?? false;
+
+      saveTemperatureChartPreferences();
+      renderTemperaturePanel();
+    });
+  });
+
+  els.tempHotendTargetToggle?.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    closeTemperatureSettingsMenu();
+    openTemperatureTargetMenu("hotend");
+  });
+
+  els.tempBedTargetToggle?.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    closeTemperatureSettingsMenu();
+    openTemperatureTargetMenu("bed");
+  });
+
+  [
+    ["hotend", els.tempHotendTargetInput],
+    ["bed", els.tempBedTargetInput],
+  ].forEach(([sensorKey, input]) => {
+    if (!input) return;
+
+    input.addEventListener("keydown", async (event) => {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      await setTemperatureTarget(sensorKey, input.value);
+      closeTemperatureTargetMenus();
+      closeTemperatureSettingsMenu();
+    });
+
+    input.addEventListener("blur", async () => {
+      const target = clampTemperatureTarget(sensorKey, input.value);
+      if (target === null) {
+        input.value = formatTemperatureTargetValue(state.temperatures[sensorKey].target);
+      }
+    });
+  });
+
+  els.temperatureChart?.addEventListener("mousemove", handleTemperatureChartPointer);
+  els.temperatureChart?.addEventListener("mouseleave", handleTemperatureChartLeave);
+
+  window.addEventListener("resize", () => {
+    renderTemperatureChart();
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    closeTemperatureTargetMenus();
+    closeTemperatureSettingsMenu();
+  });
+
+  document.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+
+    if (!els.cardTemperatures.contains(target)) {
+      closeTemperatureTargetMenus();
+      closeTemperatureSettingsMenu();
+      return;
+    }
+
+    if (!target.closest(".target-control")) {
+      closeTemperatureTargetMenus();
+    }
+
+    if (!target.closest("#temp-settings-menu") && !target.closest("#temp-settings-toggle")) {
+      closeTemperatureSettingsMenu();
+    }
+  });
+}
 function openCameraFullscreen(cameraState, title) {
   if (!cameraState.enabled || !cameraState.url) return;
 
@@ -734,12 +1448,13 @@ function setupCollapsibleCards() {
 async function connectMoonraker() {
   appendConsole(`Connecting to ${state.moonrakerUrl}`, "info");
   log.info("Connecting to Moonraker.", { baseUrl: state.moonrakerUrl });
+  stopTemperaturePolling();
 
   if (state.client?.ws && state.client.ws.readyState <= 1) {
     try {
       state.client.ws.close();
       log.debug("Closed previous websocket before reconnect.");
-    } catch (error) {
+  } catch (error) {
       const message = error?.message || String(error);
       appendConsole(`Previous websocket close failed: ${message}`, "warn");
       log.warn("Previous websocket close failed.", { error: message });
@@ -754,18 +1469,21 @@ async function connectMoonraker() {
 
     if (status === "connected") {
       appendConsole("Moonraker connected.", "info");
+      startTemperaturePolling();
       log.info("Moonraker websocket connected.");
       return;
     }
 
     if (status === "disconnected") {
       appendConsole("Moonraker disconnected.", "warn");
+      stopTemperaturePolling();
       log.warn("Moonraker websocket disconnected.");
       return;
     }
 
     if (status === "error") {
       appendConsole("Moonraker websocket error.", "error");
+      stopTemperaturePolling();
       log.error("Moonraker websocket error.");
       return;
     }
@@ -778,8 +1496,6 @@ async function connectMoonraker() {
 
     const [status] = payload.params || [];
     const printStats = status?.print_stats || {};
-    const extruder = status?.extruder || {};
-    const bed = status?.heater_bed || {};
 
     if (typeof printStats.progress === "number") {
       const pct = Math.max(0, Math.min(100, Math.round(printStats.progress * 100)));
@@ -787,24 +1503,23 @@ async function connectMoonraker() {
       els.progressText.textContent = `${pct}%`;
     }
 
-    if (typeof extruder.temperature === "number") {
-      els.tempHotend.textContent = `${extruder.temperature.toFixed(1)} C`;
-    }
-
-    if (typeof bed.temperature === "number") {
-      els.tempBed.textContent = `${bed.temperature.toFixed(1)} C`;
-    }
+    updateTemperatureSnapshotFromStatus(status);
 
     const reportedPrinterState = printStats.state || printStats.status;
     if (reportedPrinterState) {
       setPrinterState(reportedPrinterState);
     }
 
+    const extruder = status?.extruder || {};
+    const bed = status?.heater_bed || {};
+
     log.debug("Status update received.", {
       printerState: reportedPrinterState || null,
       progress: printStats.progress ?? null,
       hotend: extruder.temperature ?? null,
+      hotendTarget: extruder.target ?? null,
       bed: bed.temperature ?? null,
+      bedTarget: bed.target ?? null,
     });
   });
 
@@ -820,6 +1535,16 @@ async function connectMoonraker() {
     const message = error?.message || String(error);
     appendConsole(`Printer state load failed: ${message}`, "error");
     log.error("Printer state load failed.", { error: message });
+  }
+
+  try {
+    const temperatureResponse = await state.client.call("/printer/objects/query?extruder&heater_bed");
+    const temperatureStatus = temperatureResponse?.result?.status || {};
+    updateTemperatureSnapshotFromStatus(temperatureStatus);
+  } catch (error) {
+    const message = error?.message || String(error);
+    appendConsole(`Temperature load failed: ${message}`, "warn");
+    log.warn("Temperature load failed.", { error: message });
   }
 
   try {
@@ -876,7 +1601,7 @@ function renderFiles(files) {
 
   files.slice(0, 40).forEach((file) => {
     const row = document.createElement("div");
-    row.className = "temp-item";
+    row.className = "file-row";
     row.innerHTML = `<strong>${file.path}</strong><div class=\"muted\">${Math.round((file.size || 0) / 1024)} KB</div>`;
     els.fileList.appendChild(row);
   });
@@ -1089,6 +1814,7 @@ function init() {
 
   applyDashboardLayout();
   setupCollapsibleCards();
+  initializeTemperaturePanel();
   applyInterfaceSettings();
   applyDashboardSettings();
   renderCameraCards();
@@ -1103,6 +1829,21 @@ function init() {
 }
 
 init();
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
