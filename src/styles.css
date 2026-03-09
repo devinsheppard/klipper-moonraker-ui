@@ -493,6 +493,13 @@ select {
 .status-meta-label {
   color: var(--muted);
 }
+.status-layer {
+  margin: 0;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.82rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
 .console-log {
   height: 260px;
   overflow: auto;

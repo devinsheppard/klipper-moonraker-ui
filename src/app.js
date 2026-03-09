@@ -93,6 +93,7 @@ const els = {
   statusSpeed: document.getElementById("status-speed"),
   statusFlowrate: document.getElementById("status-flowrate"),
   statusFilament: document.getElementById("status-filament"),
+  statusLayer: document.getElementById("status-layer"),
   tempHotend: document.getElementById("temp-hotend"),
   tempBed: document.getElementById("temp-bed"),
   tempHotendState: document.getElementById("temp-hotend-state"),
@@ -865,10 +866,102 @@ function renderStatusProgress(virtualSd) {
     els.progressText.textContent = `${pct}%`;
   }
 }
+function formatStatusLayerValue(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric < 0) return "--";
+  return `${Math.round(numeric)}`;
+}
+
+function readFiniteNumber(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  return numeric;
+}
+
+function readPositiveNumber(value) {
+  const numeric = readFiniteNumber(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return null;
+  return numeric;
+}
+
+function readCurrentZ() {
+  const gcodePosition = state.printStatus.lastGcodeMove?.gcode_position;
+  const position = state.printStatus.lastGcodeMove?.position;
+  const zCandidates = [
+    Array.isArray(gcodePosition) ? gcodePosition[2] : null,
+    Array.isArray(position) ? position[2] : null,
+    state.printStatus.lastGcodeMove?.gcode_z,
+    state.printStatus.lastGcodeMove?.position_z,
+  ];
+
+  for (const candidate of zCandidates) {
+    const numeric = readFiniteNumber(candidate);
+    if (Number.isFinite(numeric) && numeric >= 0) {
+      return numeric;
+    }
+  }
+
+  return null;
+}
+
+function estimateLayerFromHeight(totalLayers, metadata) {
+  const layerHeight = readPositiveNumber(metadata?.layerHeight);
+  if (!Number.isFinite(layerHeight)) return null;
+
+  const firstLayerHeight = readPositiveNumber(metadata?.firstLayerHeight) ?? layerHeight;
+  const currentZ = readCurrentZ();
+  if (!Number.isFinite(currentZ)) return null;
+
+  let estimatedLayer = 1;
+  if (currentZ > firstLayerHeight + layerHeight * 0.5) {
+    estimatedLayer = 1 + Math.round((currentZ - firstLayerHeight) / layerHeight);
+  }
+
+  if (!Number.isFinite(estimatedLayer) || estimatedLayer < 1) return null;
+
+  if (Number.isFinite(totalLayers) && totalLayers > 0) {
+    return Math.min(estimatedLayer, totalLayers);
+  }
+
+  return estimatedLayer;
+}
+
+function estimateLayerFromProgress(totalLayers) {
+  const progress = readFiniteNumber(state.printStatus.lastVirtualSd?.progress);
+  if (!Number.isFinite(progress) || progress <= 0) return null;
+  if (!Number.isFinite(totalLayers) || totalLayers <= 0) return null;
+
+  const clamped = Math.max(0, Math.min(1, progress));
+  const estimatedLayer = Math.max(1, Math.round(clamped * totalLayers));
+  return Math.min(estimatedLayer, totalLayers);
+}
+
+function renderStatusLayer(printStats) {
+  if (!els.statusLayer) return;
+
+  const metadata = getStatusMetadataEntry(state.printStatus.filename);
+  const currentLayerDirect = readFiniteNumber(printStats?.info?.current_layer ?? printStats?.current_layer);
+  const totalLayerFromStats = readPositiveNumber(printStats?.info?.total_layer ?? printStats?.total_layer);
+  const totalLayerFromMetadata = readPositiveNumber(metadata?.totalLayers);
+  const totalLayer = totalLayerFromStats ?? totalLayerFromMetadata;
+
+  const currentLayer = currentLayerDirect
+    ?? estimateLayerFromHeight(totalLayer, metadata)
+    ?? estimateLayerFromProgress(totalLayer);
+
+  els.statusLayer.textContent = `Layer: ${formatStatusLayerValue(currentLayer)}/${formatStatusLayerValue(totalLayer)}`;
+}
 function mergePrintStatsSnapshot(printStats) {
   const partial = printStats && typeof printStats === "object" ? printStats : {};
   const previous = state.printStatus.lastPrintStats || {};
   const merged = { ...previous, ...partial };
+  const previousInfo = previous?.info && typeof previous.info === "object" ? previous.info : {};
+  const partialInfo = partial?.info && typeof partial.info === "object" ? partial.info : {};
+
+  if (Object.keys(previousInfo).length || Object.keys(partialInfo).length) {
+    merged.info = { ...previousInfo, ...partialInfo };
+  }
+
   state.printStatus.lastPrintStats = merged;
   return merged;
 }
@@ -969,6 +1062,7 @@ async function syncStatusFileMetadata(filename) {
     const cachedEntry = getStatusMetadataEntry(normalized);
     setStatusThumbnail(cachedEntry?.thumbnailPath || "");
     renderStatusTiming(state.printStatus.lastPrintStats);
+    renderStatusLayer(state.printStatus.lastPrintStats);
     return;
   }
 
@@ -979,10 +1073,14 @@ async function syncStatusFileMetadata(filename) {
     const metadata = response?.result || {};
     const thumbnailPath = pickThumbnailPath(metadata);
     const estimatedTime = Number(metadata.estimated_time);
+    const layerCount = Number(metadata.layer_count);
 
     const metadataEntry = {
       thumbnailPath,
       estimatedTime: Number.isFinite(estimatedTime) && estimatedTime > 0 ? estimatedTime : null,
+      totalLayers: Number.isFinite(layerCount) && layerCount > 0 ? Math.round(layerCount) : null,
+      layerHeight: readPositiveNumber(metadata.layer_height),
+      firstLayerHeight: readPositiveNumber(metadata.first_layer_height),
     };
 
     state.printStatus.metadataByFile.set(normalized, metadataEntry);
@@ -992,6 +1090,7 @@ async function syncStatusFileMetadata(filename) {
 
     setStatusThumbnail(metadataEntry.thumbnailPath || "");
     renderStatusTiming(state.printStatus.lastPrintStats);
+    renderStatusLayer(state.printStatus.lastPrintStats);
   } catch (error) {
     const message = error?.message || String(error);
     log.debug("Print file metadata load skipped.", {
@@ -1002,6 +1101,9 @@ async function syncStatusFileMetadata(filename) {
     state.printStatus.metadataByFile.set(normalized, {
       thumbnailPath: "",
       estimatedTime: null,
+      totalLayers: null,
+      layerHeight: null,
+      firstLayerHeight: null,
     });
 
     if (requestId !== state.printStatus.metadataRequestId) return;
@@ -1009,6 +1111,7 @@ async function syncStatusFileMetadata(filename) {
 
     setStatusThumbnail("");
     renderStatusTiming(state.printStatus.lastPrintStats);
+    renderStatusLayer(state.printStatus.lastPrintStats);
   }
 }
 
@@ -1019,6 +1122,7 @@ function updateStatusFileInfo(printStats, gcodeMove = null, motionReport = null)
   setStatusFilename(filename);
   updateStatusTiming(stats);
   updateStatusRatesAndFilament(stats, gcodeMove, motionReport);
+  renderStatusLayer(stats);
 
   if (!normalized) {
     setStatusThumbnail("");
@@ -1137,12 +1241,17 @@ function startTemperaturePolling() {
     inFlight = true;
 
     try {
-      const temperatureResponse = await state.client.call("/printer/objects/query?extruder&heater_bed");
-      const temperatureStatus = temperatureResponse?.result?.status || {};
-      updateTemperatureSnapshotFromStatus(temperatureStatus);
+      const statusResponse = await state.client.call("/printer/objects/query?extruder&heater_bed&print_stats&virtual_sdcard&gcode_move&motion_report");
+      const statusSnapshot = statusResponse?.result?.status || {};
+
+      updateTemperatureSnapshotFromStatus(statusSnapshot);
+
+      const virtualSd = mergeVirtualSdSnapshot(statusSnapshot?.virtual_sdcard || null);
+      renderStatusProgress(virtualSd);
+      updateStatusFileInfo(statusSnapshot?.print_stats || {}, statusSnapshot?.gcode_move || null, statusSnapshot?.motion_report || null);
     } catch (error) {
       const message = error?.message || String(error);
-      log.debug("Temperature poll skipped.", { error: message });
+      log.debug("Status poll skipped.", { error: message });
     } finally {
       inFlight = false;
     }
@@ -1774,7 +1883,7 @@ function closeCameraFullscreen() {
 }
 
 function getCardHeader(card, index) {
-  let header = card.querySelector(":scope > .camera-card-head");
+  let header = card.querySelector(":scope > .card-head, :scope > .camera-card-head");
   if (header) {
     header.classList.add("card-head");
     return header;
@@ -2245,42 +2354,6 @@ function init() {
 }
 
 init();
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
