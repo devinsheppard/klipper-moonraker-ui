@@ -20,14 +20,20 @@ This repository now includes:
 
 ## Run Locally
 
-Because this is plain HTML/CSS/JS, you can serve it with any static server:
+Use Vite in development mode:
 
 ```powershell
 cd "C:\Users\dkshe\Documents\New project"
-python -m http.server 8080
+npm install
+npm run dev
 ```
 
-Then open `http://localhost:8080`.
+To test the production bundle locally:
+
+```powershell
+npm run build
+npm run preview
+```
 
 ## Moonraker Requirements
 
@@ -63,4 +69,18 @@ Then open `http://localhost:8080`.
 - The Moonraker API wrapper is in `src/moonraker.js`.
 - UI state/event wiring is in `src/app.js`.
 - Styling direction is in `src/styles.css`.
+
+
+## Production Deployment (Moonraker)
+
+If your Moonraker server serves this UI from built files, deploy from `dist/` only.
+
+1. Run `npm run build` (this now includes `verify:dist`).
+2. Deploy the full `dist/` folder together:
+   - `dist/index.html`
+   - `dist/assets/*`
+3. Do not mix files from different builds (hashed asset names must match `dist/index.html`).
+4. After deploy, hard refresh the browser once to clear old cached entry HTML.
+
+Tip: `npm run verify:dist` can be run by itself to validate `dist/index.html` -> `dist/assets/*` references before copying to your server.
 
