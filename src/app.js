@@ -1,5 +1,7 @@
 import { MoonrakerClient } from "./moonraker.js";
 import { createLogger } from "./logger.js";
+import * as THREE from "three";
+import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
 const CAMERA_MODES = {
   IMAGE: "image",
@@ -53,7 +55,7 @@ const VIEW_TITLES = {
   console: "Console",
   configuration: "Machine",
   files: "GCode Files",
-  "pretty-gcode": "Pretty GCode",
+  "pretty-gcode": "KlipperView",
   settings: "Settings",
 };
 const ACTIVE_VIEW_STORAGE_KEY = "active_view";
@@ -169,6 +171,70 @@ const PRETTY_GCODE_SIM_STEP_DELTA = 0.05;
 const PRETTY_GCODE_SIM_MIN_DURATION_MS = 20 * 1000;
 const PRETTY_GCODE_SIM_MAX_DURATION_MS = 4 * 60 * 60 * 1000;
 const PRETTY_GCODE_SIM_BASE_SEGMENT_MS = 95;
+const PRETTY_GCODE_LAYER_Z_TOLERANCE = 0.005;
+const PRETTY_GCODE_FEATURE_TYPE_DEFAULT = "default";
+const PRETTY_GCODE_FEATURE_TYPE_TRAVEL = "travel";
+const PRETTY_GCODE_FEATURE_TYPE_ORDER = [
+  PRETTY_GCODE_FEATURE_TYPE_DEFAULT,
+  "inner",
+  "outer",
+  "fill",
+  "skin",
+  "support",
+  "skirt",
+];
+const PRETTY_GCODE_FEATURE_COMMENT_MATCHERS = [
+  { term: "inner wall", featureType: "inner" },
+  { term: "outer wall", featureType: "outer" },
+  { term: "inner", featureType: "inner" },
+  { term: "outer", featureType: "outer" },
+  { term: "perimeter", featureType: "outer" },
+  { term: "wall", featureType: "outer" },
+  { term: "fill", featureType: "fill" },
+  { term: "infill", featureType: "fill" },
+  { term: "skin", featureType: "skin" },
+  { term: "support", featureType: "support" },
+  { term: "raft", featureType: "support" },
+  { term: "brim", featureType: "skirt" },
+  { term: "skirt", featureType: "skirt" },
+];
+const PRETTY_GCODE_FEATURE_RENDER_STYLES = {
+  [PRETTY_GCODE_FEATURE_TYPE_DEFAULT]: {
+    current: "rgba(248, 113, 113, 0.96)",
+    history: "rgba(186, 92, 92, 0.52)",
+  },
+  inner: {
+    current: "rgba(34, 197, 94, 0.95)",
+    history: "rgba(52, 138, 84, 0.5)",
+  },
+  outer: {
+    current: "rgba(239, 68, 68, 0.98)",
+    history: "rgba(164, 66, 66, 0.56)",
+  },
+  fill: {
+    current: "rgba(251, 146, 60, 0.95)",
+    history: "rgba(178, 111, 66, 0.52)",
+  },
+  skin: {
+    current: "rgba(250, 204, 21, 0.96)",
+    history: "rgba(184, 154, 60, 0.52)",
+  },
+  support: {
+    current: "rgba(56, 189, 248, 0.95)",
+    history: "rgba(72, 131, 168, 0.52)",
+  },
+  skirt: {
+    current: "rgba(14, 165, 233, 0.95)",
+    history: "rgba(60, 122, 153, 0.52)",
+  },
+};
+const PRETTY_GCODE_TRAVEL_RENDER_STYLE = {
+  current: "rgba(148, 163, 184, 0.72)",
+  history: "rgba(100, 116, 139, 0.38)",
+};
+const PRETTY_GCODE_FUTURE_RENDER_STYLE = "rgba(100, 116, 139, 0.42)";
+const PRETTY_GCODE_3D_ORBIT_IDLE_SECONDS = 5;
+const PRETTY_GCODE_3D_MIRROR_OPACITY_SCALE = 0.42;
 function getThemeColorValue(cssVarName, fallback) {
   const value = getComputedStyle(document.documentElement).getPropertyValue(cssVarName).trim();
   return value || fallback;
@@ -309,7 +375,13 @@ const els = {
   prettyGcodeRewind: document.getElementById("pretty-gcode-rewind"),
   prettyGcodePlayPause: document.getElementById("pretty-gcode-play-pause"),
   prettyGcodeFastForward: document.getElementById("pretty-gcode-fast-forward"),
+  prettyGcodeShowMirror: document.getElementById("pretty-gcode-show-mirror"),
+  prettyGcodeShowNozzle: document.getElementById("pretty-gcode-show-nozzle"),
+  prettyGcodeOrbitIdle: document.getElementById("pretty-gcode-orbit-idle"),
   prettyGcodeProgress: document.getElementById("pretty-gcode-progress"),
+  prettyGcodeLayerSlider: document.getElementById("pretty-gcode-layer-slider"),
+  prettyGcodeLayerTop: document.getElementById("pretty-gcode-layer-top"),
+  prettyGcodeLayerBottom: document.getElementById("pretty-gcode-layer-bottom"),
   prettyGcodeLoadInput: document.getElementById("pretty-gcode-load-input"),
   machineLayout: document.getElementById("machine-layout"),
   machineSideColumn: document.getElementById("machine-side-column"),
@@ -428,6 +500,24 @@ let temperatureHistoryDbPromise = null;
 let statusCountdownTimer = null;
 let jobsColumnsDragKey = null;
 let prettyGcodeSimulationTimer = null;
+let prettyGcodeThreeState = {
+  renderer: null,
+  scene: null,
+  camera: null,
+  controls: null,
+  animationFrame: null,
+  geometryDirty: true,
+  renderRequested: true,
+  layerEntries: [],
+  printGroup: null,
+  mirrorGroup: null,
+  bedGrid: null,
+  bedPlane: null,
+  nozzleMesh: null,
+  bedCenter: { x: 0, y: 0, z: 0 },
+  bedSize: { x: 220, z: 220, y: 220 },
+  lastInteractionMs: 0,
+};
 
 function loadStoredBool(key, fallback) {
   const raw = localStorage.getItem(key);
@@ -850,12 +940,23 @@ function createDefaultPrettyGcodeState() {
     bounds: null,
     extrusionCount: 0,
     followToolhead: true,
+    showMirror: true,
+    showNozzle: true,
+    orbitWhenIdle: false,
     toolhead: { x: null, y: null, z: null },
     simulationProgress: 0,
     simulationPlaying: false,
     simulationSpeed: 1,
     simulationDurationMs: PRETTY_GCODE_SIM_MIN_DURATION_MS,
     simulationLastTickMs: null,
+    layerZValues: [],
+    segmentLayerIndices: [],
+    segmentExtrusionOrderInLayer: [],
+    layerExtrusionCounts: [],
+    layerExtrusionEndCounts: [],
+    totalLayers: 0,
+    selectedLayerIndex: 0,
+    layerSelectionPinned: false,
   };
 }
 const state = {
@@ -5640,6 +5741,223 @@ function setPrettyGcodeProgressInputValue(progress) {
   els.prettyGcodeProgress.value = String(Math.round(clampPrettyGcodeProgress(progress) * 1000));
 }
 
+function buildPrettyGcodeLayerData(segments, extrudingSegmentIndices) {
+  const sourceSegments = Array.isArray(segments) ? segments : [];
+  if (!sourceSegments.length) {
+    return {
+      layerZValues: [],
+      segmentLayerIndices: [],
+      segmentExtrusionOrderInLayer: [],
+      layerExtrusionCounts: [],
+      layerExtrusionEndCounts: [],
+      totalLayers: 0,
+    };
+  }
+
+  const layerZValues = [];
+  const candidateIndices = Array.isArray(extrudingSegmentIndices) && extrudingSegmentIndices.length
+    ? extrudingSegmentIndices
+    : sourceSegments.map((_, index) => index);
+
+  for (const rawIndex of candidateIndices) {
+    const index = Number(rawIndex);
+    if (!Number.isInteger(index) || index < 0 || index >= sourceSegments.length) continue;
+
+    const segment = sourceSegments[index];
+    const z = Number(segment?.z);
+    if (!Number.isFinite(z)) continue;
+
+    let matchedIndex = -1;
+    for (let i = 0; i < layerZValues.length; i += 1) {
+      if (Math.abs(layerZValues[i] - z) <= PRETTY_GCODE_LAYER_Z_TOLERANCE) {
+        matchedIndex = i;
+        break;
+      }
+    }
+
+    if (matchedIndex >= 0) {
+      continue;
+    }
+
+    layerZValues.push(z);
+  }
+
+  if (!layerZValues.length) {
+    return {
+      layerZValues: [],
+      segmentLayerIndices: [],
+      segmentExtrusionOrderInLayer: [],
+      layerExtrusionCounts: [],
+      layerExtrusionEndCounts: [],
+      totalLayers: 0,
+    };
+  }
+
+  layerZValues.sort((a, b) => a - b);
+
+  const findClosestLayerIndex = (z) => {
+    if (!Number.isFinite(z)) return 0;
+
+    let closestIndex = 0;
+    let closestDistance = Number.POSITIVE_INFINITY;
+
+    for (let i = 0; i < layerZValues.length; i += 1) {
+      const distance = Math.abs(layerZValues[i] - z);
+      if (distance < closestDistance) {
+        closestDistance = distance;
+        closestIndex = i;
+      }
+    }
+
+    return closestIndex;
+  };
+
+  const segmentLayerIndices = new Array(sourceSegments.length).fill(0);
+  const segmentExtrusionOrderInLayer = new Array(sourceSegments.length).fill(0);
+  const layerExtrusionCounts = new Array(layerZValues.length).fill(0);
+
+  sourceSegments.forEach((segment, index) => {
+    const layerIndex = findClosestLayerIndex(Number(segment?.z));
+    segmentLayerIndices[index] = layerIndex;
+
+    if (segment?.extruding) {
+      layerExtrusionCounts[layerIndex] += 1;
+      segmentExtrusionOrderInLayer[index] = layerExtrusionCounts[layerIndex];
+    }
+  });
+
+  const layerExtrusionEndCounts = [];
+  let runningExtrusions = 0;
+
+  layerExtrusionCounts.forEach((count) => {
+    runningExtrusions += Number(count) || 0;
+    layerExtrusionEndCounts.push(runningExtrusions);
+  });
+
+  return {
+    layerZValues,
+    segmentLayerIndices,
+    segmentExtrusionOrderInLayer,
+    layerExtrusionCounts,
+    layerExtrusionEndCounts,
+    totalLayers: layerZValues.length,
+  };
+}
+
+function clampPrettyGcodeLayerIndex(layerIndex) {
+  const totalLayers = Number(state.prettyGcode.totalLayers) || 0;
+  if (totalLayers <= 0) return 0;
+
+  const numeric = Number(layerIndex);
+  const rounded = Number.isFinite(numeric) ? Math.round(numeric) : 0;
+  return Math.max(0, Math.min(totalLayers - 1, rounded));
+}
+
+function getPrettyGcodeAutoLayerIndex(progress = getPrettyGcodeProgress()) {
+  const totalLayers = Number(state.prettyGcode.totalLayers) || 0;
+  if (totalLayers <= 0) return 0;
+  if (totalLayers === 1) return 0;
+
+  const clampedProgress = clampPrettyGcodeProgress(progress);
+  const layerExtrusionEndCounts = Array.isArray(state.prettyGcode.layerExtrusionEndCounts)
+    ? state.prettyGcode.layerExtrusionEndCounts
+    : [];
+  const extrusionTotal = Math.max(0, Number(state.prettyGcode.extrusionCount) || 0);
+
+  if (extrusionTotal > 0 && layerExtrusionEndCounts.length === totalLayers) {
+    const printedExtrusions = Math.round(clampedProgress * extrusionTotal);
+    for (let i = 0; i < layerExtrusionEndCounts.length; i += 1) {
+      if (printedExtrusions <= layerExtrusionEndCounts[i]) {
+        return i;
+      }
+    }
+    return totalLayers - 1;
+  }
+
+  const layerZValues = Array.isArray(state.prettyGcode.layerZValues) ? state.prettyGcode.layerZValues : [];
+  const toolheadZ = Number(state.prettyGcode.toolhead?.z);
+
+  if (layerZValues.length === totalLayers && Number.isFinite(toolheadZ)) {
+    let closestIndex = 0;
+    let closestDistance = Number.POSITIVE_INFINITY;
+
+    for (let i = 0; i < layerZValues.length; i += 1) {
+      const distance = Math.abs(layerZValues[i] - toolheadZ);
+      if (distance < closestDistance) {
+        closestDistance = distance;
+        closestIndex = i;
+      }
+    }
+
+    return closestIndex;
+  }
+
+  return clampPrettyGcodeLayerIndex(Math.round(clampedProgress * (totalLayers - 1)));
+}
+
+function refreshPrettyGcodeLayerSelection(progress = getPrettyGcodeProgress()) {
+  const totalLayers = Number(state.prettyGcode.totalLayers) || 0;
+  if (totalLayers <= 0) {
+    state.prettyGcode.selectedLayerIndex = 0;
+    state.prettyGcode.layerSelectionPinned = false;
+    return 0;
+  }
+
+  if (state.prettyGcode.layerSelectionPinned) {
+    state.prettyGcode.selectedLayerIndex = clampPrettyGcodeLayerIndex(state.prettyGcode.selectedLayerIndex);
+    return state.prettyGcode.selectedLayerIndex;
+  }
+
+  const autoLayerIndex = getPrettyGcodeAutoLayerIndex(progress);
+  state.prettyGcode.selectedLayerIndex = autoLayerIndex;
+  return autoLayerIndex;
+}
+
+function setPrettyGcodeLayerSelection(layerIndex, { pin = true, render = true } = {}) {
+  const totalLayers = Number(state.prettyGcode.totalLayers) || 0;
+  if (totalLayers <= 0) {
+    state.prettyGcode.selectedLayerIndex = 0;
+    state.prettyGcode.layerSelectionPinned = false;
+    return;
+  }
+
+  state.prettyGcode.selectedLayerIndex = clampPrettyGcodeLayerIndex(layerIndex);
+  state.prettyGcode.layerSelectionPinned = !!pin;
+
+  if (render && state.activeView === "pretty-gcode") {
+    renderPrettyGcodeView();
+  }
+}
+
+function renderPrettyGcodeLayerSlider(progress = getPrettyGcodeProgress()) {
+  const totalLayers = Number(state.prettyGcode.totalLayers) || 0;
+  const hasLayers = totalLayers > 0;
+  const activeLayerIndex = hasLayers ? refreshPrettyGcodeLayerSelection(progress) : 0;
+  const activeLayerNumber = hasLayers ? activeLayerIndex + 1 : 1;
+
+  if (els.prettyGcodeLayerSlider) {
+    els.prettyGcodeLayerSlider.min = "1";
+    els.prettyGcodeLayerSlider.max = String(Math.max(1, totalLayers));
+    els.prettyGcodeLayerSlider.step = "1";
+    els.prettyGcodeLayerSlider.value = String(activeLayerNumber);
+    els.prettyGcodeLayerSlider.disabled = !hasLayers || state.prettyGcode.isLoading;
+    els.prettyGcodeLayerSlider.setAttribute("aria-valuenow", String(activeLayerNumber));
+    els.prettyGcodeLayerSlider.setAttribute("aria-valuetext", hasLayers
+      ? `Layer ${activeLayerNumber} of ${totalLayers}`
+      : "No layers loaded");
+  }
+
+  if (els.prettyGcodeLayerTop) {
+    els.prettyGcodeLayerTop.textContent = hasLayers ? `Layer ${totalLayers}` : "Layer --";
+  }
+
+  if (els.prettyGcodeLayerBottom) {
+    els.prettyGcodeLayerBottom.textContent = "Layer 1";
+  }
+
+  return activeLayerIndex;
+}
+
 function setPrettyGcodeFileLabel(path) {
   if (!els.prettyGcodeFile) return;
 
@@ -5687,6 +6005,19 @@ function getPrettyGcodeProgress() {
   return Math.max(0, Math.min(1, progress));
 }
 
+function detectPrettyGcodeFeatureType(commentText) {
+  const normalized = String(commentText || "").toLowerCase().trim();
+  if (!normalized) return null;
+
+  for (const matcher of PRETTY_GCODE_FEATURE_COMMENT_MATCHERS) {
+    if (normalized.includes(matcher.term)) {
+      return matcher.featureType;
+    }
+  }
+
+  return null;
+}
+
 function parsePrettyGcodeText(text) {
   const lines = String(text || "").replace(/\r/g, "").split("\n");
 
@@ -5696,6 +6027,7 @@ function parsePrettyGcodeText(text) {
   let e = 0;
   let absoluteXYZ = true;
   let absoluteE = true;
+  let currentFeatureType = PRETTY_GCODE_FEATURE_TYPE_DEFAULT;
 
   const segments = [];
   const extrudingSegmentIndices = [];
@@ -5722,6 +6054,11 @@ function parsePrettyGcodeText(text) {
     let line = String(rawLine || "");
     const semicolon = line.indexOf(";");
     if (semicolon >= 0) {
+      const comment = line.slice(semicolon + 1);
+      const featureType = detectPrettyGcodeFeatureType(comment);
+      if (featureType) {
+        currentFeatureType = featureType;
+      }
       line = line.slice(0, semicolon);
     }
 
@@ -5793,6 +6130,7 @@ function parsePrettyGcodeText(text) {
 
     if (hasMotion) {
       const extruding = nextE > e + 0.00001;
+      const featureType = extruding ? currentFeatureType : PRETTY_GCODE_FEATURE_TYPE_TRAVEL;
 
       segments.push({
         x1: x,
@@ -5801,6 +6139,7 @@ function parsePrettyGcodeText(text) {
         y2: nextY,
         z: nextZ,
         extruding,
+        featureType,
       });
 
       includePoint(x, y);
@@ -5843,148 +6182,595 @@ function ensurePrettyGcodeCanvasSize() {
   const targetWidth = Math.max(1, Math.round(rect.width * dpr));
   const targetHeight = Math.max(1, Math.round(rect.height * dpr));
 
-  if (els.prettyGcodeCanvas.width !== targetWidth || els.prettyGcodeCanvas.height !== targetHeight) {
-    els.prettyGcodeCanvas.width = targetWidth;
-    els.prettyGcodeCanvas.height = targetHeight;
-  }
-
   return {
     width: Math.max(1, rect.width),
     height: Math.max(1, rect.height),
     dpr,
+    targetWidth,
+    targetHeight,
   };
 }
 
-function renderPrettyGcodeCanvas() {
-  if (!els.prettyGcodeCanvas) return;
+function parsePrettyCssColor(styleValue, fallback = "#94a3b8") {
+  const raw = String(styleValue || "").trim();
+  const rgbaMatch = raw.match(/^rgba?\(([^)]+)\)$/i);
 
-  const canvasInfo = ensurePrettyGcodeCanvasSize();
-  const ctx = els.prettyGcodeCanvas.getContext("2d");
-  if (!ctx) return;
+  if (rgbaMatch) {
+    const parts = rgbaMatch[1].split(",").map((part) => part.trim());
+    const r = Number(parts[0]);
+    const g = Number(parts[1]);
+    const b = Number(parts[2]);
+    const a = parts.length > 3 ? Number(parts[3]) : 1;
 
-  const { width, height, dpr } = canvasInfo;
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.clearRect(0, 0, width, height);
+    if ([r, g, b].every((value) => Number.isFinite(value))) {
+      return {
+        color: new THREE.Color(`rgb(${r}, ${g}, ${b})`),
+        opacity: Number.isFinite(a) ? Math.max(0, Math.min(1, a)) : 1,
+      };
+    }
+  }
 
-  ctx.fillStyle = "rgba(4, 10, 20, 0.95)";
-  ctx.fillRect(0, 0, width, height);
+  try {
+    return {
+      color: new THREE.Color(raw || fallback),
+      opacity: 1,
+    };
+  } catch {
+    return {
+      color: new THREE.Color(fallback),
+      opacity: 1,
+    };
+  }
+}
+
+function createPrettyLineMaterial(styleValue, opacityScale = 1) {
+  const parsed = parsePrettyCssColor(styleValue);
+  const opacity = Math.max(0, Math.min(1, parsed.opacity * opacityScale));
+
+  return new THREE.LineBasicMaterial({
+    color: parsed.color,
+    transparent: opacity < 0.999,
+    opacity,
+  });
+}
+
+function requestPrettyGcodeThreeRender() {
+  prettyGcodeThreeState.renderRequested = true;
+}
+
+function invalidatePrettyGcodeThreeGeometry() {
+  prettyGcodeThreeState.geometryDirty = true;
+  requestPrettyGcodeThreeRender();
+}
+
+function disposePrettyGcodeObjectTree(root) {
+  if (!root) return;
+
+  root.traverse((node) => {
+    if (node?.geometry?.dispose) {
+      node.geometry.dispose();
+    }
+
+    if (!node?.material) return;
+    if (Array.isArray(node.material)) {
+      node.material.forEach((material) => material?.dispose?.());
+      return;
+    }
+
+    node.material.dispose?.();
+  });
+
+  root.clear();
+}
+
+function ensurePrettyGcodeThreeScene() {
+  if (!els.prettyGcodeCanvas) return false;
+  if (prettyGcodeThreeState.scene && prettyGcodeThreeState.renderer && prettyGcodeThreeState.camera) {
+    return true;
+  }
+
+  const renderer = new THREE.WebGLRenderer({
+    canvas: els.prettyGcodeCanvas,
+    antialias: true,
+    alpha: false,
+    preserveDrawingBuffer: false,
+  });
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color("#050b14");
+
+  const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 5000);
+  camera.position.set(180, 160, 180);
+
+  const controls = new OrbitControls(camera, els.prettyGcodeCanvas);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.08;
+  controls.screenSpacePanning = true;
+  controls.target.set(110, 0, 110);
+  controls.update();
+
+  controls.addEventListener("change", () => {
+    prettyGcodeThreeState.lastInteractionMs = Date.now();
+    requestPrettyGcodeThreeRender();
+  });
+
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.62);
+  scene.add(ambientLight);
+
+  const keyLight = new THREE.DirectionalLight(0xffffff, 0.68);
+  keyLight.position.set(80, 220, 120);
+  scene.add(keyLight);
+
+  const fillLight = new THREE.DirectionalLight(0x9cc5ff, 0.28);
+  fillLight.position.set(-120, 130, -100);
+  scene.add(fillLight);
+
+  const printGroup = new THREE.Group();
+  printGroup.name = "pretty-print-group";
+  scene.add(printGroup);
+
+  const mirrorGroup = new THREE.Group();
+  mirrorGroup.name = "pretty-mirror-group";
+  mirrorGroup.scale.set(1, -1, 1);
+  scene.add(mirrorGroup);
+
+  const grid = new THREE.GridHelper(220, 22, 0x334155, 0x1f2937);
+  scene.add(grid);
+
+  const bedPlaneGeometry = new THREE.PlaneGeometry(220, 220, 1, 1);
+  bedPlaneGeometry.rotateX(-Math.PI / 2);
+  const bedPlane = new THREE.Mesh(
+    bedPlaneGeometry,
+    new THREE.MeshBasicMaterial({
+      color: new THREE.Color("#0b1727"),
+      transparent: true,
+      opacity: 0.36,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    })
+  );
+  bedPlane.position.y = -0.05;
+  scene.add(bedPlane);
+
+  const nozzleHeight = 14;
+  const nozzleRadius = 4;
+  const nozzleGeometry = new THREE.ConeGeometry(nozzleRadius, nozzleHeight, 22);
+  const nozzleMaterial = new THREE.MeshStandardMaterial({
+    color: new THREE.Color("#f59e0b"),
+    metalness: 0.42,
+    roughness: 0.38,
+    emissive: new THREE.Color("#7c2d12"),
+    emissiveIntensity: 0.2,
+  });
+  const nozzleMesh = new THREE.Mesh(nozzleGeometry, nozzleMaterial);
+  nozzleMesh.rotation.x = Math.PI;
+  nozzleMesh.visible = false;
+  scene.add(nozzleMesh);
+
+  prettyGcodeThreeState.renderer = renderer;
+  prettyGcodeThreeState.scene = scene;
+  prettyGcodeThreeState.camera = camera;
+  prettyGcodeThreeState.controls = controls;
+  prettyGcodeThreeState.printGroup = printGroup;
+  prettyGcodeThreeState.mirrorGroup = mirrorGroup;
+  prettyGcodeThreeState.bedGrid = grid;
+  prettyGcodeThreeState.bedPlane = bedPlane;
+  prettyGcodeThreeState.nozzleMesh = nozzleMesh;
+  prettyGcodeThreeState.lastInteractionMs = Date.now();
+  prettyGcodeThreeState.geometryDirty = true;
+  prettyGcodeThreeState.renderRequested = true;
+
+  const size = ensurePrettyGcodeCanvasSize();
+  renderer.setPixelRatio(size.dpr);
+  renderer.setSize(size.width, size.height, false);
+
+  if (!prettyGcodeThreeState.animationFrame) {
+    const tick = () => {
+      prettyGcodeThreeState.animationFrame = window.requestAnimationFrame(tick);
+
+      const isViewerVisible = state.activeView === "pretty-gcode";
+      if (!isViewerVisible || !prettyGcodeThreeState.renderer || !prettyGcodeThreeState.scene || !prettyGcodeThreeState.camera) {
+        return;
+      }
+
+      let rotated = false;
+      const nowMs = Date.now();
+      const controlsInstance = prettyGcodeThreeState.controls;
+
+      if (
+        controlsInstance
+        && state.prettyGcode.orbitWhenIdle
+        && nowMs - prettyGcodeThreeState.lastInteractionMs > PRETTY_GCODE_3D_ORBIT_IDLE_SECONDS * 1000
+      ) {
+        controlsInstance.rotateLeft(0.0036);
+        rotated = true;
+      }
+
+      const controlsChanged = !!controlsInstance?.update?.();
+      if (rotated || controlsChanged) {
+        requestPrettyGcodeThreeRender();
+      }
+
+      if (prettyGcodeThreeState.renderRequested) {
+        prettyGcodeThreeState.renderer.render(prettyGcodeThreeState.scene, prettyGcodeThreeState.camera);
+        prettyGcodeThreeState.renderRequested = false;
+      }
+    };
+
+    tick();
+  }
+
+  return true;
+}
+
+function applyPrettyGcodeThreeBedLayout(bounds) {
+  if (!prettyGcodeThreeState.scene || !bounds) return;
+
+  const spanX = Math.max(60, Math.abs(bounds.maxX - bounds.minX) + 28);
+  const spanZ = Math.max(60, Math.abs(bounds.maxY - bounds.minY) + 28);
+  const centerX = (bounds.minX + bounds.maxX) * 0.5;
+  const centerZ = (bounds.minY + bounds.maxY) * 0.5;
+
+  prettyGcodeThreeState.bedCenter = { x: centerX, y: 0, z: centerZ };
+  prettyGcodeThreeState.bedSize = {
+    x: spanX,
+    z: spanZ,
+    y: Math.max(120, spanX, spanZ),
+  };
+
+  if (prettyGcodeThreeState.bedGrid) {
+    prettyGcodeThreeState.scene.remove(prettyGcodeThreeState.bedGrid);
+    prettyGcodeThreeState.bedGrid.geometry?.dispose?.();
+    prettyGcodeThreeState.bedGrid.material?.dispose?.();
+  }
+
+  const divisions = Math.max(8, Math.min(70, Math.round(Math.max(spanX, spanZ) / 10)));
+  const gridSize = Math.max(spanX, spanZ);
+  const grid = new THREE.GridHelper(gridSize, divisions, 0x334155, 0x1f2937);
+  grid.position.set(centerX, 0, centerZ);
+  prettyGcodeThreeState.scene.add(grid);
+  prettyGcodeThreeState.bedGrid = grid;
+
+  if (prettyGcodeThreeState.bedPlane) {
+    const plane = prettyGcodeThreeState.bedPlane;
+    plane.scale.set(spanX / 220, 1, spanZ / 220);
+    plane.position.set(centerX, -0.05, centerZ);
+  }
+
+  const camera = prettyGcodeThreeState.camera;
+  const controls = prettyGcodeThreeState.controls;
+  if (camera && controls) {
+    const radius = Math.max(spanX, spanZ) * 0.9;
+    controls.target.set(centerX, 0, centerZ);
+    camera.position.set(centerX + radius, Math.max(80, radius * 0.75), centerZ + radius * 0.9);
+    controls.update();
+  }
+}
+
+function createPrettyLineObjectPair(positions, styleCurrent, styleHistory, styleFuture) {
+  if (!Array.isArray(positions) || !positions.length) {
+    return null;
+  }
+
+  const buildGeometry = () => {
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    return geometry;
+  };
+
+  const segmentCount = Math.floor(positions.length / 6);
+
+  const current = new THREE.LineSegments(buildGeometry(), createPrettyLineMaterial(styleCurrent));
+  const history = new THREE.LineSegments(buildGeometry(), createPrettyLineMaterial(styleHistory));
+  const future = styleFuture
+    ? new THREE.LineSegments(buildGeometry(), createPrettyLineMaterial(styleFuture))
+    : null;
+
+  const currentMirror = current.clone();
+  currentMirror.material = createPrettyLineMaterial(styleCurrent, PRETTY_GCODE_3D_MIRROR_OPACITY_SCALE);
+
+  const historyMirror = history.clone();
+  historyMirror.material = createPrettyLineMaterial(styleHistory, PRETTY_GCODE_3D_MIRROR_OPACITY_SCALE);
+
+  const futureMirror = future
+    ? future.clone()
+    : null;
+
+  if (futureMirror) {
+    futureMirror.material = createPrettyLineMaterial(styleFuture, PRETTY_GCODE_3D_MIRROR_OPACITY_SCALE);
+  }
+
+  return {
+    segmentCount,
+    current,
+    history,
+    future,
+    currentMirror,
+    historyMirror,
+    futureMirror,
+  };
+}
+
+function rebuildPrettyGcodeThreeGeometry() {
+  const sceneReady = ensurePrettyGcodeThreeScene();
+  if (!sceneReady) return;
 
   const pretty = state.prettyGcode;
   const segments = Array.isArray(pretty.segments) ? pretty.segments : [];
   const bounds = pretty.bounds;
 
+  if (!prettyGcodeThreeState.printGroup || !prettyGcodeThreeState.mirrorGroup) return;
+
+  disposePrettyGcodeObjectTree(prettyGcodeThreeState.printGroup);
+  disposePrettyGcodeObjectTree(prettyGcodeThreeState.mirrorGroup);
+  prettyGcodeThreeState.layerEntries = [];
+
   if (!segments.length || !bounds) {
-    ctx.fillStyle = "rgba(148, 163, 184, 0.92)";
-    ctx.font = "13px JetBrains Mono";
-    ctx.textAlign = "center";
-    ctx.fillText("No path data loaded.", width / 2, height / 2);
+    prettyGcodeThreeState.geometryDirty = false;
+    requestPrettyGcodeThreeRender();
     return;
   }
 
-  const padding = 20;
-  const spanX = Math.max(1e-6, bounds.maxX - bounds.minX);
-  const spanY = Math.max(1e-6, bounds.maxY - bounds.minY);
+  applyPrettyGcodeThreeBedLayout(bounds);
 
-  const fitScale = Math.min((width - padding * 2) / spanX, (height - padding * 2) / spanY);
-  const toolhead = pretty.toolhead || { x: null, y: null };
-  const shouldFollow = !!pretty.followToolhead && Number.isFinite(toolhead.x) && Number.isFinite(toolhead.y);
+  const totalLayers = Math.max(1, Number(pretty.totalLayers) || 0);
+  const segmentLayerIndices = Array.isArray(pretty.segmentLayerIndices) ? pretty.segmentLayerIndices : [];
+  const segmentExtrusionOrderInLayer = Array.isArray(pretty.segmentExtrusionOrderInLayer)
+    ? pretty.segmentExtrusionOrderInLayer
+    : [];
+  const hasLayerData = Number(pretty.totalLayers) > 0
+    && segmentLayerIndices.length === segments.length
+    && segmentExtrusionOrderInLayer.length === segments.length;
 
-  const scale = Math.max(0.0001, shouldFollow ? fitScale * 1.6 : fitScale);
-  const centerX = shouldFollow ? toolhead.x : (bounds.minX + bounds.maxX) * 0.5;
-  const centerY = shouldFollow ? toolhead.y : (bounds.minY + bounds.maxY) * 0.5;
+  const layers = Array.from({ length: totalLayers }, (_, layerIndex) => {
+    const features = new Map();
+    PRETTY_GCODE_FEATURE_TYPE_ORDER.forEach((featureType) => {
+      features.set(featureType, {
+        positions: [],
+        orders: [],
+      });
+    });
 
-  const toScreen = (worldX, worldY) => ({
-    x: (worldX - centerX) * scale + width * 0.5,
-    y: height * 0.5 - (worldY - centerY) * scale,
+    return {
+      layerIndex,
+      travelPositions: [],
+      features,
+      travelPair: null,
+      featurePairs: new Map(),
+    };
   });
 
-  ctx.strokeStyle = "rgba(71, 85, 105, 0.55)";
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  const bedA = toScreen(bounds.minX, bounds.minY);
-  const bedB = toScreen(bounds.maxX, bounds.minY);
-  const bedC = toScreen(bounds.maxX, bounds.maxY);
-  const bedD = toScreen(bounds.minX, bounds.maxY);
-  ctx.moveTo(bedA.x, bedA.y);
-  ctx.lineTo(bedB.x, bedB.y);
-  ctx.lineTo(bedC.x, bedC.y);
-  ctx.lineTo(bedD.x, bedD.y);
-  ctx.closePath();
-  ctx.stroke();
+  const toThree = (segment, useEnd = false) => {
+    const x = useEnd ? segment.x2 : segment.x1;
+    const y = Number(segment.z) || 0;
+    const z = useEnd ? segment.y2 : segment.y1;
+    return { x, y, z };
+  };
+
+  segments.forEach((segment, index) => {
+    const layerIndexRaw = hasLayerData ? Number(segmentLayerIndices[index]) || 0 : 0;
+    const layerIndex = Math.max(0, Math.min(layers.length - 1, layerIndexRaw));
+    const layerBucket = layers[layerIndex];
+
+    const p1 = toThree(segment, false);
+    const p2 = toThree(segment, true);
+
+    if (!segment.extruding) {
+      layerBucket.travelPositions.push(p1.x, p1.y, p1.z, p2.x, p2.y, p2.z);
+      return;
+    }
+
+    const featureType = PRETTY_GCODE_FEATURE_TYPE_ORDER.includes(segment.featureType)
+      ? segment.featureType
+      : PRETTY_GCODE_FEATURE_TYPE_DEFAULT;
+    const featureBucket = layerBucket.features.get(featureType) || layerBucket.features.get(PRETTY_GCODE_FEATURE_TYPE_DEFAULT);
+
+    featureBucket.positions.push(p1.x, p1.y, p1.z, p2.x, p2.y, p2.z);
+
+    const orderInLayer = hasLayerData
+      ? (Number(segmentExtrusionOrderInLayer[index]) || featureBucket.orders.length + 1)
+      : featureBucket.orders.length + 1;
+    featureBucket.orders.push(orderInLayer);
+  });
+
+  layers.forEach((layerEntry) => {
+    const travelPair = createPrettyLineObjectPair(
+      layerEntry.travelPositions,
+      PRETTY_GCODE_TRAVEL_RENDER_STYLE.current,
+      PRETTY_GCODE_TRAVEL_RENDER_STYLE.history,
+      null
+    );
+
+    if (travelPair) {
+      layerEntry.travelPair = travelPair;
+      prettyGcodeThreeState.printGroup.add(travelPair.current, travelPair.history);
+      prettyGcodeThreeState.mirrorGroup.add(travelPair.currentMirror, travelPair.historyMirror);
+    }
+
+    PRETTY_GCODE_FEATURE_TYPE_ORDER.forEach((featureType) => {
+      const bucket = layerEntry.features.get(featureType);
+      if (!bucket || !bucket.positions.length) return;
+
+      const style = PRETTY_GCODE_FEATURE_RENDER_STYLES[featureType] || PRETTY_GCODE_FEATURE_RENDER_STYLES[PRETTY_GCODE_FEATURE_TYPE_DEFAULT];
+      const pair = createPrettyLineObjectPair(bucket.positions, style.current, style.history, PRETTY_GCODE_FUTURE_RENDER_STYLE);
+      if (!pair) return;
+
+      pair.orders = bucket.orders;
+      layerEntry.featurePairs.set(featureType, pair);
+
+      prettyGcodeThreeState.printGroup.add(pair.current, pair.history, pair.future);
+      prettyGcodeThreeState.mirrorGroup.add(pair.currentMirror, pair.historyMirror, pair.futureMirror);
+    });
+
+    prettyGcodeThreeState.layerEntries.push(layerEntry);
+  });
+
+  prettyGcodeThreeState.geometryDirty = false;
+  requestPrettyGcodeThreeRender();
+}
+
+function setLineDrawRange(lineObject, startSegment, segmentCount) {
+  if (!lineObject?.geometry?.setDrawRange) return;
+  const safeStart = Math.max(0, Number(startSegment) || 0);
+  const safeCount = Math.max(0, Number(segmentCount) || 0);
+  lineObject.geometry.setDrawRange(safeStart * 2, safeCount * 2);
+}
+
+function applyPrettyGcodeThreeVisibility(progress) {
+  const pretty = state.prettyGcode;
+  const totalLayers = Number(pretty.totalLayers) || 0;
+  const activeLayerIndex = refreshPrettyGcodeLayerSelection(progress);
+  const printedExtrusions = Math.round(progress * Math.max(1, Number(pretty.extrusionCount) || 0));
+  const layerExtrusionEndCounts = Array.isArray(pretty.layerExtrusionEndCounts)
+    ? pretty.layerExtrusionEndCounts
+    : [];
+  const manualLayerView = !!pretty.layerSelectionPinned;
+  const mirrorEnabled = !!pretty.showMirror;
+
+  const previousLayerPrintedCount = activeLayerIndex > 0
+    ? Number(layerExtrusionEndCounts[activeLayerIndex - 1]) || 0
+    : 0;
+  const printedInActiveLayer = manualLayerView
+    ? Number.POSITIVE_INFINITY
+    : Math.max(0, printedExtrusions - previousLayerPrintedCount);
+
+  prettyGcodeThreeState.layerEntries.forEach((layerEntry) => {
+    const layerIndex = layerEntry.layerIndex;
+    const isPast = layerIndex < activeLayerIndex;
+    const isActive = layerIndex === activeLayerIndex;
+
+    const travel = layerEntry.travelPair;
+    if (travel) {
+      travel.history.visible = isPast;
+      travel.historyMirror.visible = isPast && mirrorEnabled;
+      travel.current.visible = isActive;
+      travel.currentMirror.visible = isActive && mirrorEnabled;
+      setLineDrawRange(travel.history, 0, travel.segmentCount);
+      setLineDrawRange(travel.current, 0, travel.segmentCount);
+    }
+
+    layerEntry.featurePairs.forEach((pair) => {
+      if (isPast) {
+        pair.history.visible = true;
+        pair.historyMirror.visible = mirrorEnabled;
+        pair.current.visible = false;
+        pair.currentMirror.visible = false;
+        pair.future.visible = false;
+        pair.futureMirror.visible = false;
+        setLineDrawRange(pair.history, 0, pair.segmentCount);
+        return;
+      }
+
+      if (!isActive) {
+        pair.history.visible = false;
+        pair.historyMirror.visible = false;
+        pair.current.visible = false;
+        pair.currentMirror.visible = false;
+        pair.future.visible = false;
+        pair.futureMirror.visible = false;
+        return;
+      }
+
+      pair.history.visible = false;
+      pair.historyMirror.visible = false;
+
+      if (manualLayerView) {
+        pair.current.visible = true;
+        pair.currentMirror.visible = mirrorEnabled;
+        pair.future.visible = false;
+        pair.futureMirror.visible = false;
+        setLineDrawRange(pair.current, 0, pair.segmentCount);
+        return;
+      }
+
+      let printedForFeature = 0;
+      for (let i = 0; i < pair.orders.length; i += 1) {
+        if ((Number(pair.orders[i]) || 0) <= printedInActiveLayer) {
+          printedForFeature += 1;
+        }
+      }
+
+      const futureCount = Math.max(0, pair.segmentCount - printedForFeature);
+
+      pair.current.visible = printedForFeature > 0;
+      pair.currentMirror.visible = printedForFeature > 0 && mirrorEnabled;
+      pair.future.visible = futureCount > 0;
+      pair.futureMirror.visible = futureCount > 0 && mirrorEnabled;
+
+      setLineDrawRange(pair.current, 0, printedForFeature);
+      setLineDrawRange(pair.future, printedForFeature, futureCount);
+    });
+  });
+
+  if (prettyGcodeThreeState.mirrorGroup) {
+    prettyGcodeThreeState.mirrorGroup.visible = mirrorEnabled;
+  }
+}
+
+function updatePrettyGcodeNozzleMesh() {
+  const nozzle = prettyGcodeThreeState.nozzleMesh;
+  if (!nozzle) return;
+
+  const toolhead = state.prettyGcode.toolhead || { x: null, y: null, z: null };
+  const showNozzle = !!state.prettyGcode.showNozzle;
+
+  if (!showNozzle || !Number.isFinite(toolhead.x) || !Number.isFinite(toolhead.y)) {
+    nozzle.visible = false;
+    return;
+  }
+
+  const bedSpan = Math.max(40, prettyGcodeThreeState.bedSize.x, prettyGcodeThreeState.bedSize.z);
+  const nozzleHeight = Math.max(8, Math.min(20, bedSpan * 0.055));
+
+  nozzle.scale.set(nozzleHeight / 14, nozzleHeight / 14, nozzleHeight / 14);
+  nozzle.position.set(
+    Number(toolhead.x),
+    Number(toolhead.z) + nozzleHeight * 0.45,
+    Number(toolhead.y)
+  );
+  nozzle.visible = true;
+}
+
+function renderPrettyGcodeCanvas() {
+  if (!els.prettyGcodeCanvas) return;
+
+  if (!ensurePrettyGcodeThreeScene()) {
+    return;
+  }
+
+  const canvasInfo = ensurePrettyGcodeCanvasSize();
+  if (prettyGcodeThreeState.renderer && prettyGcodeThreeState.camera) {
+    prettyGcodeThreeState.renderer.setPixelRatio(canvasInfo.dpr);
+    prettyGcodeThreeState.renderer.setSize(canvasInfo.width, canvasInfo.height, false);
+    prettyGcodeThreeState.camera.aspect = Math.max(0.1, canvasInfo.width / Math.max(1, canvasInfo.height));
+    prettyGcodeThreeState.camera.updateProjectionMatrix();
+  }
+
+  if (prettyGcodeThreeState.geometryDirty) {
+    rebuildPrettyGcodeThreeGeometry();
+  }
 
   const progress = getPrettyGcodeProgress();
-  const extrusionTotal = Math.max(1, Number(pretty.extrusionCount) || 0);
-  const printedExtrusions = Math.round(progress * extrusionTotal);
-
-  let extrusionSeen = 0;
-
-  ctx.lineCap = "round";
-  ctx.lineJoin = "round";
-
-  ctx.strokeStyle = "rgba(51, 65, 85, 0.55)";
-  ctx.lineWidth = 0.9;
-  ctx.beginPath();
-  segments.forEach((segment) => {
-    if (segment.extruding) return;
-    const p1 = toScreen(segment.x1, segment.y1);
-    const p2 = toScreen(segment.x2, segment.y2);
-    ctx.moveTo(p1.x, p1.y);
-    ctx.lineTo(p2.x, p2.y);
-  });
-  ctx.stroke();
-
-  ctx.strokeStyle = "rgba(71, 85, 105, 0.68)";
-  ctx.lineWidth = 1.2;
-  ctx.beginPath();
-
-  segments.forEach((segment) => {
-    if (!segment.extruding) return;
-    extrusionSeen += 1;
-    if (extrusionSeen <= printedExtrusions) return;
-    const p1 = toScreen(segment.x1, segment.y1);
-    const p2 = toScreen(segment.x2, segment.y2);
-    ctx.moveTo(p1.x, p1.y);
-    ctx.lineTo(p2.x, p2.y);
-  });
-  ctx.stroke();
-
-  extrusionSeen = 0;
-  ctx.strokeStyle = "rgba(34, 211, 238, 0.95)";
-  ctx.lineWidth = 1.7;
-  ctx.beginPath();
-
-  segments.forEach((segment) => {
-    if (!segment.extruding) return;
-    extrusionSeen += 1;
-    if (extrusionSeen > printedExtrusions) return;
-    const p1 = toScreen(segment.x1, segment.y1);
-    const p2 = toScreen(segment.x2, segment.y2);
-    ctx.moveTo(p1.x, p1.y);
-    ctx.lineTo(p2.x, p2.y);
-  });
-  ctx.stroke();
-
-  if (Number.isFinite(toolhead.x) && Number.isFinite(toolhead.y)) {
-    const marker = toScreen(toolhead.x, toolhead.y);
-    ctx.fillStyle = "rgba(249, 115, 22, 0.96)";
-    ctx.beginPath();
-    ctx.arc(marker.x, marker.y, 4.2, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.strokeStyle = "rgba(249, 115, 22, 0.35)";
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(marker.x - 9, marker.y);
-    ctx.lineTo(marker.x + 9, marker.y);
-    ctx.moveTo(marker.x, marker.y - 9);
-    ctx.lineTo(marker.x, marker.y + 9);
-    ctx.stroke();
-  }
+  applyPrettyGcodeThreeVisibility(progress);
+  updatePrettyGcodeNozzleMesh();
+  requestPrettyGcodeThreeRender();
 }
 
 function renderPrettyGcodeView() {
   if (els.prettyGcodeFollow) {
     els.prettyGcodeFollow.checked = !!state.prettyGcode.followToolhead;
+  }
+
+  if (els.prettyGcodeShowMirror) {
+    els.prettyGcodeShowMirror.checked = !!state.prettyGcode.showMirror;
+  }
+
+  if (els.prettyGcodeShowNozzle) {
+    els.prettyGcodeShowNozzle.checked = !!state.prettyGcode.showNozzle;
+  }
+
+  if (els.prettyGcodeOrbitIdle) {
+    els.prettyGcodeOrbitIdle.checked = !!state.prettyGcode.orbitWhenIdle;
   }
 
   const simulationMode = isPrettySimulationMode();
@@ -5995,6 +6781,12 @@ function renderPrettyGcodeView() {
 
   const progress = getPrettyGcodeProgress();
   setPrettyGcodeProgressInputValue(progress);
+
+  const activeLayerIndex = renderPrettyGcodeLayerSlider(progress);
+  const totalLayers = Number(state.prettyGcode.totalLayers) || 0;
+  const layerSummary = totalLayers > 0
+    ? ` | Layer: ${activeLayerIndex + 1}/${totalLayers}${state.prettyGcode.layerSelectionPinned ? " (manual)" : ""}`
+    : "";
 
   if (els.prettyGcodeMode) {
     els.prettyGcodeMode.textContent = simulationMode ? "Mode: Simulation" : "Mode: Live";
@@ -6044,7 +6836,7 @@ function renderPrettyGcodeView() {
   }
 
   if (state.prettyGcode.lastError) {
-    setPrettyGcodeStatus(`Pretty GCode failed: ${state.prettyGcode.lastError}`, "error");
+    setPrettyGcodeStatus(`KlipperView failed: ${state.prettyGcode.lastError}`, "error");
     renderPrettyGcodeCanvas();
     return;
   }
@@ -6065,17 +6857,61 @@ function renderPrettyGcodeView() {
   } else if (simulationMode) {
     const playState = state.prettyGcode.simulationPlaying ? "Playing" : "Paused";
     setPrettyGcodeStatus(
-      `Simulation ${playState} | Progress: ${percent.toFixed(1)}%${toolheadLabel}`,
+      `Simulation ${playState} | Progress: ${percent.toFixed(1)}%${layerSummary}${toolheadLabel}`,
       "info"
     );
   } else {
     setPrettyGcodeStatus(
-      `Loaded ${segments.length.toLocaleString()} moves | Progress: ${percent.toFixed(1)}%${toolheadLabel}`,
+      `Loaded ${segments.length.toLocaleString()} moves | Progress: ${percent.toFixed(1)}%${layerSummary}${toolheadLabel}`,
       "info"
     );
   }
 
   renderPrettyGcodeCanvas();
+}
+
+function applyPrettyGcodeParsedData(parsed, sourceTextLength) {
+  state.prettyGcode.sourceTextLength = Number(sourceTextLength) || 0;
+  state.prettyGcode.segments = Array.isArray(parsed?.segments) ? parsed.segments : [];
+  state.prettyGcode.extrudingSegmentIndices = Array.isArray(parsed?.extrudingSegmentIndices)
+    ? parsed.extrudingSegmentIndices
+    : [];
+  state.prettyGcode.bounds = parsed?.bounds || null;
+  state.prettyGcode.extrusionCount = Number(parsed?.extrusionCount) || 0;
+
+  const layerData = buildPrettyGcodeLayerData(state.prettyGcode.segments, state.prettyGcode.extrudingSegmentIndices);
+  state.prettyGcode.layerZValues = layerData.layerZValues;
+  state.prettyGcode.segmentLayerIndices = layerData.segmentLayerIndices;
+  state.prettyGcode.segmentExtrusionOrderInLayer = layerData.segmentExtrusionOrderInLayer;
+  state.prettyGcode.layerExtrusionCounts = layerData.layerExtrusionCounts;
+  state.prettyGcode.layerExtrusionEndCounts = layerData.layerExtrusionEndCounts;
+  state.prettyGcode.totalLayers = layerData.totalLayers;
+
+  if (state.prettyGcode.layerSelectionPinned) {
+    state.prettyGcode.selectedLayerIndex = clampPrettyGcodeLayerIndex(state.prettyGcode.selectedLayerIndex);
+  } else {
+    state.prettyGcode.selectedLayerIndex = getPrettyGcodeAutoLayerIndex();
+  }
+
+  invalidatePrettyGcodeThreeGeometry();
+}
+
+function clearPrettyGcodeParsedData() {
+  state.prettyGcode.segments = [];
+  state.prettyGcode.extrudingSegmentIndices = [];
+  state.prettyGcode.bounds = null;
+  state.prettyGcode.extrusionCount = 0;
+  state.prettyGcode.sourceTextLength = 0;
+  state.prettyGcode.layerZValues = [];
+  state.prettyGcode.segmentLayerIndices = [];
+  state.prettyGcode.segmentExtrusionOrderInLayer = [];
+  state.prettyGcode.layerExtrusionCounts = [];
+  state.prettyGcode.layerExtrusionEndCounts = [];
+  state.prettyGcode.totalLayers = 0;
+  state.prettyGcode.selectedLayerIndex = 0;
+  state.prettyGcode.layerSelectionPinned = false;
+
+  invalidatePrettyGcodeThreeGeometry();
 }
 
 async function loadPrettyGcodeSimulationFile(file) {
@@ -6097,6 +6933,8 @@ async function loadPrettyGcodeSimulationFile(file) {
   state.prettyGcode.simulationProgress = 0;
   state.prettyGcode.simulationPlaying = false;
   state.prettyGcode.simulationLastTickMs = null;
+  state.prettyGcode.layerSelectionPinned = false;
+  state.prettyGcode.selectedLayerIndex = 0;
 
   renderPrettyGcodeView();
 
@@ -6107,11 +6945,7 @@ async function loadPrettyGcodeSimulationFile(file) {
     }
 
     const parsed = parsePrettyGcodeText(fileText);
-    state.prettyGcode.sourceTextLength = String(fileText || "").length;
-    state.prettyGcode.segments = parsed.segments;
-    state.prettyGcode.extrudingSegmentIndices = parsed.extrudingSegmentIndices;
-    state.prettyGcode.bounds = parsed.bounds;
-    state.prettyGcode.extrusionCount = parsed.extrusionCount;
+    applyPrettyGcodeParsedData(parsed, String(fileText || "").length);
     state.prettyGcode.simulationDurationMs = estimatePrettyGcodeSimulationDurationMs(
       parsed.segments.length,
       parsed.extrusionCount
@@ -6124,10 +6958,7 @@ async function loadPrettyGcodeSimulationFile(file) {
     const message = error?.message || String(error);
     if (requestId === state.prettyGcode.parseRequestId) {
       state.prettyGcode.lastError = message;
-      state.prettyGcode.segments = [];
-      state.prettyGcode.extrudingSegmentIndices = [];
-      state.prettyGcode.bounds = null;
-      state.prettyGcode.extrusionCount = 0;
+      clearPrettyGcodeParsedData();
       state.prettyGcode.simulationDurationMs = PRETTY_GCODE_SIM_MIN_DURATION_MS;
     }
     return false;
@@ -6160,6 +6991,8 @@ async function requestPrettyGcodeSimulationFromHost(path) {
   state.prettyGcode.simulationProgress = 0;
   state.prettyGcode.simulationPlaying = false;
   state.prettyGcode.simulationLastTickMs = null;
+  state.prettyGcode.layerSelectionPinned = false;
+  state.prettyGcode.selectedLayerIndex = 0;
 
   if (state.activeView === "pretty-gcode") {
     renderPrettyGcodeView();
@@ -6172,11 +7005,7 @@ async function requestPrettyGcodeSimulationFromHost(path) {
     }
 
     const parsed = parsePrettyGcodeText(fileText);
-    state.prettyGcode.sourceTextLength = String(fileText || "").length;
-    state.prettyGcode.segments = parsed.segments;
-    state.prettyGcode.extrudingSegmentIndices = parsed.extrudingSegmentIndices;
-    state.prettyGcode.bounds = parsed.bounds;
-    state.prettyGcode.extrusionCount = parsed.extrusionCount;
+    applyPrettyGcodeParsedData(parsed, String(fileText || "").length);
     state.prettyGcode.simulationDurationMs = estimatePrettyGcodeSimulationDurationMs(
       parsed.segments.length,
       parsed.extrusionCount
@@ -6189,10 +7018,7 @@ async function requestPrettyGcodeSimulationFromHost(path) {
     const message = error?.message || String(error);
     if (requestId === state.prettyGcode.parseRequestId) {
       state.prettyGcode.lastError = message;
-      state.prettyGcode.segments = [];
-      state.prettyGcode.extrudingSegmentIndices = [];
-      state.prettyGcode.bounds = null;
-      state.prettyGcode.extrusionCount = 0;
+      clearPrettyGcodeParsedData();
       state.prettyGcode.simulationDurationMs = PRETTY_GCODE_SIM_MIN_DURATION_MS;
     }
     return false;
@@ -6254,11 +7080,7 @@ async function loadPrettyGcodeFile(path, { force = false } = {}) {
     }
 
     const parsed = parsePrettyGcodeText(fileText);
-    state.prettyGcode.sourceTextLength = String(fileText || "").length;
-    state.prettyGcode.segments = parsed.segments;
-    state.prettyGcode.extrudingSegmentIndices = parsed.extrudingSegmentIndices;
-    state.prettyGcode.bounds = parsed.bounds;
-    state.prettyGcode.extrusionCount = parsed.extrusionCount;
+    applyPrettyGcodeParsedData(parsed, String(fileText || "").length);
     state.prettyGcode.lastLoadedAtMs = Date.now();
     state.prettyGcode.lastError = "";
     state.prettyGcode.simulationDurationMs = estimatePrettyGcodeSimulationDurationMs(
@@ -6271,10 +7093,7 @@ async function loadPrettyGcodeFile(path, { force = false } = {}) {
     const message = error?.message || String(error);
     if (requestId === state.prettyGcode.parseRequestId) {
       state.prettyGcode.lastError = message;
-      state.prettyGcode.segments = [];
-      state.prettyGcode.extrudingSegmentIndices = [];
-      state.prettyGcode.bounds = null;
-      state.prettyGcode.extrusionCount = 0;
+      clearPrettyGcodeParsedData();
     }
     return false;
   } finally {
@@ -6292,11 +7111,7 @@ async function syncPrettyGcodeForActiveFile(path, { force = false } = {}) {
     pausePrettyGcodeSimulation({ render: false });
     state.prettyGcode.activeFile = "";
     state.prettyGcode.sourceLabel = "";
-    state.prettyGcode.segments = [];
-    state.prettyGcode.extrudingSegmentIndices = [];
-    state.prettyGcode.bounds = null;
-    state.prettyGcode.extrusionCount = 0;
-    state.prettyGcode.sourceTextLength = 0;
+    clearPrettyGcodeParsedData();
     state.prettyGcode.lastLoadedAtMs = null;
     state.prettyGcode.lastError = "";
     state.prettyGcode.simulationProgress = 0;
@@ -6327,6 +7142,8 @@ async function requestPrettyGcodeReload() {
     pausePrettyGcodeSimulation({ render: false });
     state.prettyGcode.simulationProgress = 0;
     state.prettyGcode.simulationLastTickMs = null;
+    state.prettyGcode.layerSelectionPinned = false;
+    state.prettyGcode.selectedLayerIndex = 0;
     updatePrettyGcodeToolhead({ skipRender: true });
     if (state.activeView === "pretty-gcode") {
       renderPrettyGcodeView();
@@ -6349,6 +7166,8 @@ async function requestPrettyGcodeLiveMode() {
   state.prettyGcode.sourceLabel = "";
   state.prettyGcode.simulationProgress = 0;
   state.prettyGcode.simulationLastTickMs = null;
+  state.prettyGcode.layerSelectionPinned = false;
+  state.prettyGcode.selectedLayerIndex = 0;
 
   const filename = normalizeGcodePath(state.printStatus.lastPrintStats?.filename || state.printStatus.filename);
   if (!filename || !state.client || state.connectionStatus !== "connected") {
@@ -9369,6 +10188,30 @@ function wireEvents() {
     state.prettyGcode.followToolhead = !!els.prettyGcodeFollow?.checked;
     renderPrettyGcodeView();
   });
+  els.prettyGcodeShowMirror?.addEventListener("change", () => {
+    state.prettyGcode.showMirror = !!els.prettyGcodeShowMirror?.checked;
+    requestPrettyGcodeThreeRender();
+    if (state.activeView === "pretty-gcode") {
+      renderPrettyGcodeView();
+    }
+  });
+
+  els.prettyGcodeShowNozzle?.addEventListener("change", () => {
+    state.prettyGcode.showNozzle = !!els.prettyGcodeShowNozzle?.checked;
+    requestPrettyGcodeThreeRender();
+    if (state.activeView === "pretty-gcode") {
+      renderPrettyGcodeView();
+    }
+  });
+
+  els.prettyGcodeOrbitIdle?.addEventListener("change", () => {
+    state.prettyGcode.orbitWhenIdle = !!els.prettyGcodeOrbitIdle?.checked;
+    prettyGcodeThreeState.lastInteractionMs = Date.now();
+    requestPrettyGcodeThreeRender();
+    if (state.activeView === "pretty-gcode") {
+      renderPrettyGcodeView();
+    }
+  });
 
   els.prettyGcodeReload?.addEventListener("click", async () => {
     await requestPrettyGcodeReload();
@@ -9381,7 +10224,7 @@ function wireEvents() {
     }
 
     await requestViewChange("files");
-    setJobsStatusMessage("Choose a GCode file and click Simulate to load it in Pretty GCode.", "info");
+    setJobsStatusMessage("Choose a GCode file and click Simulate to load it in KlipperView.", "info");
   });
 
   els.prettyGcodeLoadInput?.addEventListener("change", async (event) => {
@@ -9416,10 +10259,37 @@ function wireEvents() {
 
     pausePrettyGcodeSimulation({ render: false });
     state.prettyGcode.simulationProgress = clampPrettyGcodeProgress(progress);
+    state.prettyGcode.layerSelectionPinned = false;
     updatePrettyGcodeToolhead({ skipRender: true });
     if (state.activeView === "pretty-gcode") {
       renderPrettyGcodeView();
     }
+  });
+
+  els.prettyGcodeLayerSlider?.addEventListener("pointerdown", () => {
+    els.prettyGcodeLayerSlider?.focus();
+  });
+
+  els.prettyGcodeLayerSlider?.addEventListener("input", (event) => {
+    const input = event.currentTarget;
+    const layerNumber = Number(input?.value);
+    if (!Number.isFinite(layerNumber)) return;
+
+    setPrettyGcodeLayerSelection(layerNumber - 1, { pin: true, render: false });
+    renderPrettyGcodeView();
+  });
+
+  els.prettyGcodeLayerSlider?.addEventListener("keydown", (event) => {
+    if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+
+    event.preventDefault();
+    const step = event.key === "ArrowUp" ? 1 : -1;
+    const currentValue = Number(els.prettyGcodeLayerSlider?.value || 1);
+    const maxValue = Number(els.prettyGcodeLayerSlider?.max || 1);
+    const nextValue = Math.max(1, Math.min(maxValue, currentValue + step));
+
+    setPrettyGcodeLayerSelection(nextValue - 1, { pin: true, render: false });
+    renderPrettyGcodeView();
   });
 
   window.addEventListener("resize", () => {
@@ -10069,28 +10939,3 @@ init().catch((error) => {
   setConnectionUi("error");
   appendConsole(`Init failed: ${message}`, "error");
 });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
