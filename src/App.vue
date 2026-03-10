@@ -112,7 +112,7 @@ const navItems: { key: ViewName; label: string }[] = [
   { key: "dashboard", label: "Dashboard" },
   { key: "console", label: "Console" },
   { key: "macros", label: "Macros" },
-  { key: "files", label: "Files" },
+  { key: "files", label: "GCode Files" },
   { key: "settings", label: "Settings" },
 ];
 
@@ -120,7 +120,7 @@ const viewTitle: Record<ViewName, string> = {
   dashboard: "Dashboard",
   console: "Console",
   macros: "Macros",
-  files: "Files",
+  files: "GCode Files",
   settings: "Settings",
 };
 
@@ -677,7 +677,7 @@ onUnmounted(() => {
       </section>
 
       <section v-else-if="activeView === 'files'" class="card">
-        <h3>Files</h3>
+        <h3>GCode Files</h3>
         <p class="muted">G-code files from Moonraker virtual SD.</p>
         <div class="file-actions">
           <button type="button" @click="fetchFiles" :disabled="connectionState !== 'Connected' || isLoadingFiles">
@@ -1097,3 +1097,4 @@ select {
   background: rgba(4, 10, 24, 0.72);
 }
 </style>
+

@@ -7,8 +7,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
-  <script type="module" crossorigin src="/assets/index-DUs5utV1.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-Cr2m01gQ.css">
+  <script type="module" crossorigin src="/assets/index-Bok0f-nH.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-CKcW5nlt.css">
 </head>
 <body>
   <div class="shell">
@@ -53,13 +53,13 @@
           </span>
           <span class="nav-item-label">Machine</span>
         </button>
-        <button data-view="files" class="nav-item" title="Files">
+        <button data-view="files" class="nav-item" title="GCode Files">
           <span class="nav-item-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
             </svg>
           </span>
-          <span class="nav-item-label">Files</span>
+          <span class="nav-item-label">GCode Files</span>
         </button>
         <button data-view="settings" class="nav-item" title="Settings">
           <span class="nav-item-icon" aria-hidden="true">
@@ -421,7 +421,7 @@
         </article>
       </section>
       <section id="view-configuration" class="view">
-        <div class="machine-layout">
+        <div class="machine-layout" id="machine-layout">
           <div class="machine-main-column">
             <article class="card config-card">
               <div class="card-head">
@@ -544,7 +544,10 @@
               <p id="machine-update-status" class="muted machine-update-status">Connect to Moonraker to use Update Manager.</p>
             </article>
           </div>
-          <aside class="machine-side-column">
+          <button type="button" id="machine-side-toggle" class="machine-side-toggle" aria-label="Collapse right column" title="Collapse right column" aria-expanded="true">
+            <span class="machine-side-toggle-icon" aria-hidden="true"></span>
+          </button>
+          <aside class="machine-side-column" id="machine-side-column">
             <article class="card machine-system-loads-card" id="card-machine-system-loads">
               <div class="card-head machine-system-loads-head">
                 <h3>
@@ -651,10 +654,51 @@
       </section>
 
       <section id="view-files" class="view">
-        <article class="card">
-          <h3>Print Files</h3>
-          <p class="muted">Feature scaffold for Fluidd-like file manager.</p>
-          <div id="file-list" class="file-list"></div>
+        <article class="card jobs-card" id="jobs-card">
+          <div class="card-head jobs-head">
+            <h3>GCode Files</h3>
+            <div class="actions jobs-head-actions">
+              <button type="button" id="jobs-refresh" class="jobs-action-btn">Refresh</button>
+              <button type="button" id="jobs-upload-btn" class="jobs-action-btn">Upload</button>
+              <button type="button" id="jobs-new-folder" class="jobs-action-btn">New Folder</button>
+            </div>
+          </div>
+
+          <p id="jobs-summary" class="muted jobs-summary">Connect to Moonraker to load print jobs.</p>
+
+          <div class="jobs-toolbar">
+            <input id="jobs-search" type="search" placeholder="Search files and folders" autocomplete="off" />
+            <select id="jobs-sort" aria-label="Sort jobs">
+              <option value="modified_desc">Date (Newest)</option>
+              <option value="modified_asc">Date (Oldest)</option>
+              <option value="name_asc">Name (A-Z)</option>
+              <option value="name_desc">Name (Z-A)</option>
+              <option value="size_desc">Size (Largest)</option>
+              <option value="size_asc">Size (Smallest)</option>
+              <option value="eta_desc">ETA (Longest)</option>
+              <option value="eta_asc">ETA (Shortest)</option>
+            </select>
+            <select id="jobs-type-filter" aria-label="Filter jobs">
+              <option value="all">All</option>
+              <option value="files">Files</option>
+              <option value="folders">Folders</option>
+            </select>
+          </div>
+
+          <div class="jobs-current-job">
+            <p id="jobs-active-label" class="jobs-active-label">Printer is idle.</p>
+            <div class="actions jobs-current-actions">
+              <button type="button" id="jobs-pause" class="jobs-job-action">Pause</button>
+              <button type="button" id="jobs-resume" class="jobs-job-action">Resume</button>
+              <button type="button" id="jobs-cancel" class="jobs-job-action danger">Cancel</button>
+            </div>
+          </div>
+
+          <nav id="jobs-breadcrumbs" class="jobs-breadcrumbs" aria-label="Current directory"></nav>
+          <div id="file-list" class="file-list jobs-list"></div>
+          <p id="jobs-status" class="muted jobs-status">Connect to Moonraker to manage print files.</p>
+
+          <input id="jobs-upload-input" type="file" hidden multiple />
         </article>
       </section>
 
@@ -797,6 +841,7 @@
 
 </body>
 </html>
+
 
 
 

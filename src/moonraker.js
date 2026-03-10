@@ -154,6 +154,101 @@ export class MoonrakerClient {
     return this.getFilesByRoot("logs");
   }
 
+  async getGcodeFiles() {
+    return this.getFilesByRoot("gcodes");
+  }
+
+  async getFileMetadata(path) {
+    const normalizedPath = normalizePathSegments(path).join("/");
+    if (!normalizedPath) {
+      throw new Error("A file path is required.");
+    }
+
+    return this.call(`/server/files/metadata?filename=${encodeURIComponent(normalizedPath)}`);
+  }
+
+  async startPrint(path) {
+    const normalizedPath = normalizePathSegments(path).join("/");
+    if (!normalizedPath) {
+      throw new Error("A print file path is required.");
+    }
+
+    const attempts = [
+      {
+        path: "/printer/print/start",
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filename: normalizedPath }),
+      },
+      {
+        path: `/printer/print/start?filename=${encodeURIComponent(normalizedPath)}`,
+        method: "POST",
+      },
+    ];
+
+    let lastError = null;
+
+    for (const attempt of attempts) {
+      try {
+        const response = await fetch(`${this.baseUrl}${attempt.path}`, {
+          method: attempt.method,
+          headers: attempt.headers,
+          body: attempt.body,
+        });
+
+        if (response.ok) {
+          return true;
+        }
+
+        lastError = new Error(`Moonraker call failed: ${attempt.method} ${attempt.path}`);
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    try {
+      await this.runGcode(`SDCARD_PRINT_FILE FILENAME=\"${normalizedPath.replace(/\"/g, '\\\"')}\"`);
+      return true;
+    } catch (error) {
+      lastError = error;
+    }
+
+    if (lastError instanceof Error) {
+      throw lastError;
+    }
+
+    throw new Error(`Failed to start print: ${normalizedPath}`);
+  }
+
+  async pausePrint() {
+    try {
+      await this.call("/printer/print/pause", { method: "POST" });
+      return true;
+    } catch {
+      await this.runGcode("PAUSE");
+      return true;
+    }
+  }
+
+  async resumePrint() {
+    try {
+      await this.call("/printer/print/resume", { method: "POST" });
+      return true;
+    } catch {
+      await this.runGcode("RESUME");
+      return true;
+    }
+  }
+
+  async cancelPrint() {
+    try {
+      await this.call("/printer/print/cancel", { method: "POST" });
+      return true;
+    } catch {
+      await this.runGcode("CANCEL_PRINT");
+      return true;
+    }
+  }
   async getServerInfo() {
     return this.call("/server/info");
   }
@@ -311,6 +406,224 @@ export class MoonrakerClient {
     });
   }
 
+  async createDirectory(root, path) {
+    const normalizedRoot = String(root || "").trim();
+    const normalizedPath = normalizePathSegments(path).join("/");
+
+    if (!normalizedRoot || !normalizedPath) {
+      throw new Error("A file root and directory path are required.");
+    }
+
+    const prefixedPath = `${normalizedRoot}/${normalizedPath}`;
+
+    const attempts = [
+      {
+        path: `/server/files/directory?path=${encodeURIComponent(prefixedPath)}`,
+        method: "POST",
+      },
+      {
+        path: "/server/files/directory",
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: prefixedPath }),
+      },
+      {
+        path: `/server/files/mkdir?path=${encodeURIComponent(prefixedPath)}`,
+        method: "POST",
+      },
+      {
+        path: "/server/files/mkdir",
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: prefixedPath }),
+      },
+    ];
+
+    let lastError = null;
+
+    for (const attempt of attempts) {
+      try {
+        const response = await fetch(`${this.baseUrl}${attempt.path}`, {
+          method: attempt.method,
+          headers: attempt.headers,
+          body: attempt.body,
+        });
+
+        if (response.ok) {
+          return true;
+        }
+
+        lastError = new Error(`Moonraker call failed: ${attempt.method} ${attempt.path}`);
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    if (lastError instanceof Error) {
+      throw lastError;
+    }
+
+    throw new Error(`Failed to create directory: ${prefixedPath}`);
+  }
+
+  async moveFile(root, sourcePath, destinationPath) {
+    const normalizedRoot = String(root || "").trim();
+    const normalizedSource = normalizePathSegments(sourcePath).join("/");
+    const normalizedDestination = normalizePathSegments(destinationPath).join("/");
+
+    if (!normalizedRoot || !normalizedSource || !normalizedDestination) {
+      throw new Error("A file root, source path, and destination path are required.");
+    }
+
+    const prefixedSource = `${normalizedRoot}/${normalizedSource}`;
+    const prefixedDestination = `${normalizedRoot}/${normalizedDestination}`;
+
+    const attempts = [
+      {
+        path: "/server/files/move",
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          source: prefixedSource,
+          dest: prefixedDestination,
+        }),
+      },
+      {
+        path: "/server/files/move",
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          source: normalizedSource,
+          dest: normalizedDestination,
+          root: normalizedRoot,
+        }),
+      },
+      {
+        path: "/server/files/move",
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          src: prefixedSource,
+          dst: prefixedDestination,
+        }),
+      },
+      {
+        path: `/server/files/move?source=${encodeURIComponent(prefixedSource)}&dest=${encodeURIComponent(prefixedDestination)}`,
+        method: "POST",
+      },
+      {
+        path: `/server/files/move?source=${encodeURIComponent(normalizedSource)}&dest=${encodeURIComponent(normalizedDestination)}&root=${encodeURIComponent(normalizedRoot)}`,
+        method: "POST",
+      },
+    ];
+
+    let lastError = null;
+
+    for (const attempt of attempts) {
+      try {
+        const response = await fetch(`${this.baseUrl}${attempt.path}`, {
+          method: attempt.method,
+          headers: attempt.headers,
+          body: attempt.body,
+        });
+
+        if (response.ok) {
+          return true;
+        }
+
+        lastError = new Error(`Moonraker call failed: ${attempt.method} ${attempt.path}`);
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    if (lastError instanceof Error) {
+      throw lastError;
+    }
+
+    throw new Error(`Failed to move path: ${prefixedSource} -> ${prefixedDestination}`);
+  }
+
+  async deleteDirectory(root, path, { force = true } = {}) {
+    const normalizedRoot = String(root || "").trim();
+    const normalizedPath = normalizePathSegments(path).join("/");
+
+    if (!normalizedRoot || !normalizedPath) {
+      throw new Error("A file root and directory path are required.");
+    }
+
+    const prefixedPath = `${normalizedRoot}/${normalizedPath}`;
+    const forceSuffix = force ? "&force=true" : "";
+
+    const attempts = [
+      {
+        path: `/server/files/directory?path=${encodeURIComponent(prefixedPath)}${forceSuffix}`,
+        method: "DELETE",
+      },
+      {
+        path: `/server/files/delete_directory?path=${encodeURIComponent(prefixedPath)}${forceSuffix}`,
+        method: "DELETE",
+      },
+      {
+        path: `/server/files/delete_directory?path=${encodeURIComponent(prefixedPath)}${forceSuffix}`,
+        method: "POST",
+      },
+      {
+        path: "/server/files/delete_directory",
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          path: prefixedPath,
+          force: !!force,
+        }),
+      },
+      {
+        path: "/server/files/directory",
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          path: prefixedPath,
+          force: !!force,
+        }),
+      },
+      {
+        path: "/server/files/directory",
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          path: prefixedPath,
+          action: "delete",
+          force: !!force,
+        }),
+      },
+    ];
+
+    let lastError = null;
+
+    for (const attempt of attempts) {
+      try {
+        const response = await fetch(`${this.baseUrl}${attempt.path}`, {
+          method: attempt.method,
+          headers: attempt.headers,
+          body: attempt.body,
+        });
+
+        if (response.ok) {
+          return true;
+        }
+
+        lastError = new Error(`Moonraker call failed: ${attempt.method} ${attempt.path}`);
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    if (lastError instanceof Error) {
+      throw lastError;
+    }
+
+    throw new Error(`Failed to delete directory: ${prefixedPath}`);
+  }
   async saveConfigFileText(path, content) {
     const { directory, filename } = splitPath(path);
     if (!filename) {

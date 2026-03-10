@@ -52,13 +52,29 @@ const VIEW_TITLES = {
   dashboard: "Dashboard",
   console: "Console",
   configuration: "Machine",
-  files: "Files",
+  files: "GCode Files",
   settings: "Settings",
 };
 const ACTIVE_VIEW_STORAGE_KEY = "active_view";
 const CONFIG_SELECTED_PATH_STORAGE_KEY = "config_selected_path";
 const CONFIG_FILE_FILTER_STORAGE_KEY = "config_file_type_filter";
 const CONFIG_FILE_SEARCH_STORAGE_KEY = "config_file_search_filter";
+const MACHINE_SIDE_COLLAPSED_STORAGE_KEY = "interface_machine_side_collapsed";
+const JOBS_SORT_STORAGE_KEY = "jobs_sort_mode";
+const JOBS_TYPE_FILTER_STORAGE_KEY = "jobs_type_filter";
+const JOBS_SEARCH_STORAGE_KEY = "jobs_search_query";
+const JOBS_DIRECTORY_STORAGE_KEY = "jobs_directory";
+const JOBS_SORT_VALUES = [
+  "modified_desc",
+  "modified_asc",
+  "name_asc",
+  "name_desc",
+  "size_desc",
+  "size_asc",
+  "eta_desc",
+  "eta_asc",
+];
+const JOBS_TYPE_FILTER_VALUES = ["all", "files", "folders"];
 
 const CONSOLE_LOG_LEVELS = new Set(["debug", "info", "warn", "error"]);
 const CONSOLE_MAX_LINES = 1200;
@@ -219,7 +235,25 @@ const els = {
   dashboardConsoleHelperGrid: document.getElementById("dashboard-console-helper-grid"),
   macroList: document.getElementById("macro-list"),
   dashboardMacroList: document.getElementById("dashboard-macro-list"),
+  jobsCard: document.getElementById("jobs-card"),
   fileList: document.getElementById("file-list"),
+  jobsRefresh: document.getElementById("jobs-refresh"),
+  jobsUploadBtn: document.getElementById("jobs-upload-btn"),
+  jobsUploadInput: document.getElementById("jobs-upload-input"),
+  jobsNewFolder: document.getElementById("jobs-new-folder"),
+  jobsSummary: document.getElementById("jobs-summary"),
+  jobsSearch: document.getElementById("jobs-search"),
+  jobsSort: document.getElementById("jobs-sort"),
+  jobsTypeFilter: document.getElementById("jobs-type-filter"),
+  jobsActiveLabel: document.getElementById("jobs-active-label"),
+  jobsPause: document.getElementById("jobs-pause"),
+  jobsResume: document.getElementById("jobs-resume"),
+  jobsCancel: document.getElementById("jobs-cancel"),
+  jobsBreadcrumbs: document.getElementById("jobs-breadcrumbs"),
+  jobsStatus: document.getElementById("jobs-status"),
+  machineLayout: document.getElementById("machine-layout"),
+  machineSideColumn: document.getElementById("machine-side-column"),
+  machineSideToggle: document.getElementById("machine-side-toggle"),
   configRefresh: document.getElementById("config-refresh"),
   configUploadBtn: document.getElementById("config-upload-btn"),
   configUploadInput: document.getElementById("config-upload-input"),
@@ -370,6 +404,40 @@ function loadStoredConfigFileTypeFilter() {
 
 function loadStoredConfigFileSearchQuery() {
   return String(localStorage.getItem(CONFIG_FILE_SEARCH_STORAGE_KEY) || "").trim();
+}
+
+function normalizeJobsSort(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return JOBS_SORT_VALUES.includes(normalized) ? normalized : "modified_desc";
+}
+
+function normalizeJobsTypeFilter(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return JOBS_TYPE_FILTER_VALUES.includes(normalized) ? normalized : "all";
+}
+
+function normalizeJobsDirectory(path) {
+  return String(path || "")
+    .trim()
+    .replace(/\\/g, "/")
+    .replace(/^\/+/, "")
+    .replace(/\/+$/, "");
+}
+
+function loadStoredJobsSort() {
+  return normalizeJobsSort(localStorage.getItem(JOBS_SORT_STORAGE_KEY));
+}
+
+function loadStoredJobsTypeFilter() {
+  return normalizeJobsTypeFilter(localStorage.getItem(JOBS_TYPE_FILTER_STORAGE_KEY));
+}
+
+function loadStoredJobsSearchQuery() {
+  return String(localStorage.getItem(JOBS_SEARCH_STORAGE_KEY) || "").trim();
+}
+
+function loadStoredJobsDirectory() {
+  return normalizeJobsDirectory(localStorage.getItem(JOBS_DIRECTORY_STORAGE_KEY));
 }
 
 function persistConfigViewState() {
@@ -654,6 +722,26 @@ function createDefaultMachineLogFilesState() {
   };
 }
 
+function createDefaultJobsState() {
+  return {
+    files: [],
+    directories: [],
+    isLoading: false,
+    actionInFlight: false,
+    actionLabel: "",
+    activePath: "",
+    lastError: "",
+    lastUpdatedMs: null,
+    searchQuery: loadStoredJobsSearchQuery(),
+    sortMode: loadStoredJobsSort(),
+    typeFilter: loadStoredJobsTypeFilter(),
+    currentDirectory: loadStoredJobsDirectory(),
+    metadataByPath: new Map(),
+    metadataLoading: new Set(),
+    uploadDragDepth: 0,
+  };
+}
+
 const state = {
   client: null,
   connectionStatus: "disconnected",
@@ -684,6 +772,7 @@ const state = {
     compact: loadStoredBool("interface_compact", false),
     density: loadStoredChoice("interface_density", "comfortable", INTERFACE_DENSITIES),
     sidebarCollapsed: loadStoredBool("interface_sidebar_collapsed", false),
+    machineSideCollapsed: loadStoredBool(MACHINE_SIDE_COLLAPSED_STORAGE_KEY, false),
   },
   dashboard: {
     showPrintProgress: loadStoredBool("dashboard_show_print_progress", true),
@@ -730,6 +819,7 @@ const state = {
   updateManager: createDefaultUpdateManagerState(),
   endstops: createDefaultEndstopsState(),
   logFiles: createDefaultMachineLogFilesState(),
+  jobs: createDefaultJobsState(),
   console: {
     seenStoreEntryKeys: new Set(),
     pendingCommandCounts: new Map(),
@@ -1681,12 +1771,25 @@ function updateSidebarToggleUi() {
   els.sidebarToggle.setAttribute("title", collapsed ? "Expand sidebar" : "Collapse sidebar");
 }
 
+function updateMachineSideToggleUi() {
+  if (!els.machineSideToggle) return;
+
+  const collapsed = !!state.interface.machineSideCollapsed;
+  els.machineSideToggle.dataset.state = collapsed ? "collapsed" : "expanded";
+  els.machineSideToggle.setAttribute("aria-expanded", String(!collapsed));
+  const label = collapsed ? "Expand right column" : "Collapse right column";
+  els.machineSideToggle.setAttribute("aria-label", label);
+  els.machineSideToggle.setAttribute("title", label);
+}
+
 function applyInterfaceSettings() {
   document.documentElement.dataset.theme = state.interface.theme;
   document.documentElement.dataset.density = state.interface.density;
   document.body.classList.toggle("compact-mode", state.interface.compact);
   document.body.classList.toggle("sidebar-collapsed", state.interface.sidebarCollapsed);
+  els.machineLayout?.classList.toggle("machine-side-collapsed", !!state.interface.machineSideCollapsed);
   updateSidebarToggleUi();
+  updateMachineSideToggleUi();
 }
 
 function applyDashboardLayout() {
@@ -1921,6 +2024,12 @@ function toggleSidebar() {
   applyInterfaceSettings();
 }
 
+function toggleMachineSideColumn() {
+  state.interface.machineSideCollapsed = !state.interface.machineSideCollapsed;
+  localStorage.setItem(MACHINE_SIDE_COLLAPSED_STORAGE_KEY, String(state.interface.machineSideCollapsed));
+  applyInterfaceSettings();
+}
+
 function normalizePrinterState(value) {
   const normalized = String(value || "").trim().toLowerCase();
   if (!normalized) return "unknown";
@@ -1964,6 +2073,7 @@ function setPrinterState(value) {
   els.printerState.dataset.state = normalized;
   els.printerState.textContent = meta.label;
   els.printerDot.style.background = meta.color;
+  renderJobsJobControls();
 }
 
 function setStatusFilename(filename) {
@@ -2399,6 +2509,11 @@ function updateStatusFileInfo(printStats, gcodeMove = null, motionReport = null)
   updateStatusTiming(stats);
   updateStatusRatesAndFilament(stats, gcodeMove, motionReport);
   renderStatusLayer(stats);
+  renderJobsJobControls();
+
+  if (state.activeView === "files") {
+    renderJobsList();
+  }
 
   if (!normalized) {
     setStatusThumbnail("");
@@ -2763,7 +2878,7 @@ function renderMachineLoadsCard() {
   const memUsageLabel = Number.isFinite(usedMemoryBytes) && Number.isFinite(totalMemoryBytes)
     ? `${formatByteMagnitude(usedMemoryBytes)} / ${formatByteMagnitude(totalMemoryBytes)}`
     : "--";
-  const tempLabel = Number.isFinite(hostTemp) ? `${Math.round(hostTemp)}°C` : "--";
+  const tempLabel = Number.isFinite(hostTemp) ? `${Math.round(hostTemp)}\u00B0C` : "--";
 
   if (els.machineHostArch) els.machineHostArch.textContent = hostArchLabel;
   if (els.machineHostVersion) els.machineHostVersion.textContent = `Version: ${hostVersionLabel}`;
@@ -4963,8 +5078,7 @@ async function connectMoonraker() {
       void refreshMachineLoadsSnapshot({ fetchStatic: true });
       void refreshUpdateManagerStatus({ forceRefresh: false, source: "connect" });
       void requestEndstopsStatus({ source: "connect", silent: true });
-      void loadMachineLogFiles({ source: "connect", silent: true });
-      log.info("Moonraker websocket connected.");
+      void loadMachineLogFiles({ source: "connect", silent: true });      log.info("Moonraker websocket connected.");
       return;
     }
 
@@ -4980,10 +5094,13 @@ async function connectMoonraker() {
       state.endstops.queryInFlight = false;
       state.logFiles.isLoading = false;
       state.logFiles.actionInFlight = false;
+      state.jobs.isLoading = false;
+      state.jobs.actionInFlight = false;
       renderMachineLoadsCard();
       renderUpdateManagerCard();
       renderEndstopsCard();
       renderMachineLogFilesCard();
+      renderJobsCard();
       log.warn("Moonraker websocket disconnected.");
       return;
     }
@@ -5000,10 +5117,13 @@ async function connectMoonraker() {
       state.endstops.queryInFlight = false;
       state.logFiles.isLoading = false;
       state.logFiles.actionInFlight = false;
+      state.jobs.isLoading = false;
+      state.jobs.actionInFlight = false;
       renderMachineLoadsCard();
       renderUpdateManagerCard();
       renderEndstopsCard();
       renderMachineLogFilesCard();
+      renderJobsCard();
       log.error("Moonraker websocket error.");
       return;
     }
@@ -5135,14 +5255,12 @@ async function connectMoonraker() {
   }
 
   try {
-    const fileResponse = await state.client.getFiles();
-    const files = fileResponse?.result || [];
-    renderFiles(files);
-    log.info("File list loaded.", { count: files.length });
+    const files = await loadJobsFiles({ source: "connect", silent: true });
+    log.info("Print files loaded.", { count: files.length });
   } catch (error) {
     const message = error?.message || String(error);
-    appendConsole(`File list load failed: ${message}`, "error");
-    log.error("File list load failed.", { error: message });
+    appendConsole(`Print files load failed: ${message}`, "error");
+    log.error("Print files load failed.", { error: message });
   }
 
   await loadConfigFiles({ preserveSelection: true });
@@ -5181,19 +5299,1353 @@ function renderMacros(macroKeys) {
   renderMacroButtons(els.dashboardMacroList, macroKeys);
 }
 
-function renderFiles(files) {
+function normalizeGcodePath(path) {
+  return String(path || "")
+    .trim()
+    .replace(/\\/g, "/")
+    .replace(/^\/+/, "")
+    .replace(/^gcodes\//i, "")
+    .replace(/\/+$/, "");
+}
+
+function getGcodeDirectory(path) {
+  const normalized = normalizeGcodePath(path);
+  if (!normalized) return "";
+
+  const parts = normalized.split("/").filter(Boolean);
+  if (parts.length <= 1) return "";
+  return parts.slice(0, -1).join("/");
+}
+
+function getGcodeDisplayName(path) {
+  const normalized = normalizeGcodePath(path);
+  if (!normalized) return "";
+
+  const parts = normalized.split("/").filter(Boolean);
+  return parts.length ? parts[parts.length - 1] : normalized;
+}
+
+function toGcodeTimestampMs(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return null;
+  return numeric > 1_000_000_000_000 ? numeric : numeric * 1000;
+}
+
+function formatJobsTimestamp(modifiedMs) {
+  const numeric = Number(modifiedMs);
+  if (!Number.isFinite(numeric) || numeric <= 0) return "--";
+  return new Date(numeric).toLocaleString();
+}
+
+function normalizeJobsEntryType(type) {
+  const normalized = String(type || "").trim().toLowerCase();
+  if (normalized === "directory") return "directory";
+  if (normalized === "file") return "file";
+  return "";
+}
+
+function addJobsDirectoryWithParents(directorySet, directoryPath) {
+  const normalized = normalizeJobsDirectory(directoryPath);
+  if (!normalized) return;
+
+  const segments = normalized.split("/").filter(Boolean);
+  if (!segments.length) return;
+
+  let prefix = "";
+  segments.forEach((segment) => {
+    prefix = prefix ? `${prefix}/${segment}` : segment;
+    directorySet.add(prefix);
+  });
+}
+
+function extractJobsListing(fileResponse) {
+  const result = fileResponse?.result;
+  const rawFiles = Array.isArray(fileResponse)
+    ? fileResponse
+    : Array.isArray(result)
+      ? result
+      : Array.isArray(result?.files)
+        ? result.files
+        : [];
+
+  const byPath = new Map();
+  const directories = new Set();
+
+  rawFiles.forEach((entry) => {
+    if (!entry) return;
+
+    const entryType = normalizeJobsEntryType(entry?.type);
+    const candidatePath = typeof entry === "string"
+      ? entry
+      : typeof entry.path === "string"
+        ? entry.path
+        : [entry.dirname, entry.filename].filter(Boolean).join("/");
+
+    const normalizedPath = normalizeGcodePath(candidatePath);
+    if (!normalizedPath) return;
+
+    const isDirectory = entryType === "directory" || String(candidatePath || "").trim().endsWith("/");
+    if (isDirectory) {
+      addJobsDirectoryWithParents(directories, normalizedPath);
+      return;
+    }
+
+    const sizeValue = Number(entry?.size);
+    const size = Number.isFinite(sizeValue) && sizeValue >= 0 ? sizeValue : 0;
+    const modifiedMs = toGcodeTimestampMs(entry?.modified ?? entry?.mtime ?? entry?.date ?? entry?.time);
+
+    byPath.set(normalizedPath, {
+      path: normalizedPath,
+      displayName: getGcodeDisplayName(normalizedPath),
+      directory: getGcodeDirectory(normalizedPath),
+      size,
+      modifiedMs,
+    });
+
+    const parentDirectory = getGcodeDirectory(normalizedPath);
+    if (parentDirectory) {
+      addJobsDirectoryWithParents(directories, parentDirectory);
+    }
+  });
+
+  const files = [...byPath.values()].sort((a, b) => {
+    const aModified = Number(a.modifiedMs) || 0;
+    const bModified = Number(b.modifiedMs) || 0;
+    if (aModified !== bModified) return bModified - aModified;
+    return a.path.localeCompare(b.path);
+  });
+
+  return {
+    files,
+    directories: [...directories].sort((a, b) => a.localeCompare(b)),
+  };
+}
+
+function syncJobsMetadataCache(files) {
+  const paths = new Set((files || []).map((entry) => normalizeGcodePath(entry.path)).filter(Boolean));
+
+  [...state.jobs.metadataByPath.keys()].forEach((key) => {
+    if (!paths.has(key)) {
+      state.jobs.metadataByPath.delete(key);
+    }
+  });
+
+  [...state.jobs.metadataLoading].forEach((key) => {
+    if (!paths.has(key)) {
+      state.jobs.metadataLoading.delete(key);
+    }
+  });
+}
+
+function applyJobsListing(listing) {
+  const files = Array.isArray(listing?.files) ? listing.files : [];
+  const directories = Array.isArray(listing?.directories) ? listing.directories : [];
+
+  state.jobs.files = files;
+  state.jobs.directories = directories;
+  syncJobsMetadataCache(files);
+  state.jobs.currentDirectory = normalizeJobsCurrentDirectory(state.jobs.currentDirectory);
+}
+
+function deriveJobsDirectoryEntries() {
+  const currentDirectory = normalizeJobsDirectory(state.jobs.currentDirectory);
+  const directoryPrefix = currentDirectory ? `${currentDirectory}/` : "";
+  const directories = new Map();
+  const files = [];
+
+  const ensureDirectory = (path) => {
+    const normalizedPath = normalizeJobsDirectory(path);
+    if (!normalizedPath) return;
+
+    const displayName = getGcodeDisplayName(normalizedPath) || normalizedPath;
+
+    if (!directories.has(normalizedPath)) {
+      directories.set(normalizedPath, {
+        path: normalizedPath,
+        displayName,
+        fileCount: 0,
+        size: 0,
+        modifiedMs: 0,
+      });
+    }
+  };
+
+  const getImmediateChildDirectory = (path) => {
+    const normalizedPath = normalizeJobsDirectory(path);
+    if (!normalizedPath) return "";
+
+    if (currentDirectory) {
+      if (!normalizedPath.startsWith(directoryPrefix)) return "";
+      const remainder = normalizedPath.slice(directoryPrefix.length);
+      if (!remainder || remainder.startsWith("/")) return "";
+      const childName = remainder.split("/")[0];
+      if (!childName) return "";
+      return `${directoryPrefix}${childName}`;
+    }
+
+    const childName = normalizedPath.split("/")[0];
+    return childName || "";
+  };
+
+  (state.jobs.directories || []).forEach((directoryPath) => {
+    const childPath = getImmediateChildDirectory(directoryPath);
+    if (!childPath || childPath === currentDirectory) return;
+    ensureDirectory(childPath);
+  });
+
+  (state.jobs.files || []).forEach((entry) => {
+    const normalizedPath = normalizeGcodePath(entry.path);
+    if (!normalizedPath) return;
+
+    if (currentDirectory && !normalizedPath.startsWith(directoryPrefix)) {
+      return;
+    }
+
+    const remainder = currentDirectory ? normalizedPath.slice(directoryPrefix.length) : normalizedPath;
+    if (!remainder || remainder.startsWith("/")) return;
+
+    const slashIndex = remainder.indexOf("/");
+    if (slashIndex >= 0) {
+      const childName = remainder.slice(0, slashIndex);
+      const childPath = directoryPrefix ? `${directoryPrefix}${childName}` : childName;
+      if (!childPath) return;
+
+      ensureDirectory(childPath);
+
+      const folderEntry = directories.get(childPath);
+      folderEntry.fileCount += 1;
+      folderEntry.size += Number(entry.size) || 0;
+      folderEntry.modifiedMs = Math.max(folderEntry.modifiedMs, Number(entry.modifiedMs) || 0);
+      return;
+    }
+
+    files.push(entry);
+  });
+
+  return {
+    directories: [...directories.values()],
+    files,
+  };
+}
+function sortJobsDirectories(entries) {
+  return [...entries].sort((a, b) => a.path.localeCompare(b.path));
+}
+
+function sortJobsFiles(entries) {
+  const sortMode = normalizeJobsSort(state.jobs.sortMode);
+  const items = [...entries];
+
+  items.sort((a, b) => {
+    if (sortMode === "name_asc") {
+      return a.displayName.localeCompare(b.displayName) || a.path.localeCompare(b.path);
+    }
+
+    if (sortMode === "name_desc") {
+      return b.displayName.localeCompare(a.displayName) || b.path.localeCompare(a.path);
+    }
+
+    if (sortMode === "size_desc") {
+      const delta = (Number(b.size) || 0) - (Number(a.size) || 0);
+      return delta || a.displayName.localeCompare(b.displayName);
+    }
+
+    if (sortMode === "size_asc") {
+      const delta = (Number(a.size) || 0) - (Number(b.size) || 0);
+      return delta || a.displayName.localeCompare(b.displayName);
+    }
+
+    if (sortMode === "eta_desc" || sortMode === "eta_asc") {
+      const metadataA = state.jobs.metadataByPath.get(a.path);
+      const metadataB = state.jobs.metadataByPath.get(b.path);
+      const etaA = Number(metadataA?.estimatedTime) || 0;
+      const etaB = Number(metadataB?.estimatedTime) || 0;
+      const delta = sortMode === "eta_desc" ? etaB - etaA : etaA - etaB;
+      if (delta !== 0) return delta;
+      return a.displayName.localeCompare(b.displayName);
+    }
+
+    if (sortMode === "modified_asc") {
+      const delta = (Number(a.modifiedMs) || 0) - (Number(b.modifiedMs) || 0);
+      return delta || a.displayName.localeCompare(b.displayName);
+    }
+
+    const delta = (Number(b.modifiedMs) || 0) - (Number(a.modifiedMs) || 0);
+    return delta || a.displayName.localeCompare(b.displayName);
+  });
+
+  return items;
+}
+
+function getCurrentJobsPrintState() {
+  const printStats = state.printStatus.lastPrintStats || {};
+  const fallbackState = els.printerState?.dataset?.state || "unknown";
+  const reportedState = printStats.state || printStats.status || fallbackState;
+  const normalizedState = normalizePrinterState(reportedState);
+
+  const statsFilename = normalizeGcodePath(printStats.filename);
+  const fallbackFilename = normalizeGcodePath(state.printStatus.filename);
+  const filename = statsFilename || fallbackFilename;
+
+  return {
+    state: normalizedState,
+    filename,
+  };
+}
+
+function setJobsStatusMessage(message, level = "info") {
+  if (!els.jobsStatus) return;
+  els.jobsStatus.textContent = String(message || "").trim();
+  els.jobsStatus.dataset.level = level;
+}
+
+function parseJobsMetadata(metadata) {
+  const estimatedTime = Number(metadata?.estimated_time);
+  const layerCount = Number(metadata?.layer_count);
+
+  return {
+    thumbnailPath: pickThumbnailPath(metadata),
+    estimatedTime: Number.isFinite(estimatedTime) && estimatedTime > 0 ? estimatedTime : null,
+    totalLayers: Number.isFinite(layerCount) && layerCount > 0 ? Math.round(layerCount) : null,
+    layerHeight: readPositiveNumber(metadata?.layer_height),
+    firstLayerHeight: readPositiveNumber(metadata?.first_layer_height),
+    filamentTotal: readPositiveNumber(metadata?.filament_total),
+  };
+}
+
+async function ensureJobsMetadata(path) {
+  const normalizedPath = normalizeGcodePath(path);
+  if (!normalizedPath || !state.client) return;
+
+  if (state.jobs.metadataByPath.has(normalizedPath)) return;
+  if (state.jobs.metadataLoading.has(normalizedPath)) return;
+
+  state.jobs.metadataLoading.add(normalizedPath);
+
+  try {
+    const response = await state.client.getFileMetadata(normalizedPath);
+    const metadata = parseJobsMetadata(response?.result || {});
+    state.jobs.metadataByPath.set(normalizedPath, metadata);
+
+    if (!state.printStatus.metadataByFile.has(normalizedPath)) {
+      state.printStatus.metadataByFile.set(normalizedPath, metadata);
+    }
+  } catch {
+    state.jobs.metadataByPath.set(normalizedPath, {
+      thumbnailPath: "",
+      estimatedTime: null,
+      totalLayers: null,
+      layerHeight: null,
+      firstLayerHeight: null,
+      filamentTotal: null,
+    });
+  } finally {
+    state.jobs.metadataLoading.delete(normalizedPath);
+    if (state.activeView === "files") {
+      renderJobsCard();
+    }
+  }
+}
+
+function persistJobsViewState() {
+  localStorage.setItem(JOBS_SORT_STORAGE_KEY, normalizeJobsSort(state.jobs.sortMode));
+  localStorage.setItem(JOBS_TYPE_FILTER_STORAGE_KEY, normalizeJobsTypeFilter(state.jobs.typeFilter));
+  localStorage.setItem(JOBS_SEARCH_STORAGE_KEY, String(state.jobs.searchQuery || "").trim());
+  localStorage.setItem(JOBS_DIRECTORY_STORAGE_KEY, normalizeJobsDirectory(state.jobs.currentDirectory));
+}
+
+function doesJobsDirectoryExist(directory) {
+  const normalizedDirectory = normalizeJobsDirectory(directory);
+  if (!normalizedDirectory) return true;
+
+  if ((state.jobs.directories || []).some((entry) => normalizeJobsDirectory(entry) === normalizedDirectory)) {
+    return true;
+  }
+
+  return (state.jobs.files || []).some((entry) => {
+    const path = normalizeGcodePath(entry.path);
+    return path.startsWith(`${normalizedDirectory}/`);
+  });
+}
+
+function normalizeJobsCurrentDirectory(directoryCandidate = state.jobs.currentDirectory) {
+  let directory = normalizeJobsDirectory(directoryCandidate);
+  if (!directory) return "";
+
+  while (directory && !doesJobsDirectoryExist(directory)) {
+    const segments = directory.split("/");
+    segments.pop();
+    directory = segments.join("/");
+  }
+
+  return directory;
+}
+
+function setJobsDirectory(directory, { persist = true } = {}) {
+  state.jobs.currentDirectory = normalizeJobsCurrentDirectory(directory);
+
+  if (persist) {
+    persistJobsViewState();
+  }
+
+  renderJobsCard();
+}
+
+function renderJobsBreadcrumbs() {
+  if (!els.jobsBreadcrumbs) return;
+
+  const breadcrumbs = [];
+  const currentDirectory = normalizeJobsDirectory(state.jobs.currentDirectory);
+
+  breadcrumbs.push({ label: "gcodes", path: "" });
+
+  if (currentDirectory) {
+    const parts = currentDirectory.split("/").filter(Boolean);
+    let prefix = "";
+
+    parts.forEach((part) => {
+      prefix = prefix ? `${prefix}/${part}` : part;
+      breadcrumbs.push({ label: part, path: prefix });
+    });
+  }
+
+  els.jobsBreadcrumbs.innerHTML = "";
+
+  breadcrumbs.forEach((crumb, index) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "jobs-breadcrumb-btn";
+    button.textContent = crumb.label;
+    button.disabled = crumb.path === currentDirectory;
+    button.addEventListener("click", () => {
+      setJobsDirectory(crumb.path);
+    });
+    els.jobsBreadcrumbs.appendChild(button);
+
+    if (index < breadcrumbs.length - 1) {
+      const separator = document.createElement("span");
+      separator.className = "jobs-breadcrumb-sep";
+      separator.textContent = "/";
+      els.jobsBreadcrumbs.appendChild(separator);
+    }
+  });
+}
+
+function renderJobsJobControls() {
+  const isConnected = state.connectionStatus === "connected";
+  const busy = state.jobs.actionInFlight;
+  const current = getCurrentJobsPrintState();
+  const activeLabel = current.filename
+    ? `${PRINTER_STATE_META[current.state]?.label || "Job"}: ${current.filename}`
+    : "Printer is idle.";
+
+  if (els.jobsActiveLabel) {
+    els.jobsActiveLabel.textContent = activeLabel;
+  }
+
+  if (els.jobsPause) {
+    els.jobsPause.disabled = !isConnected || busy || current.state !== "printing";
+  }
+
+  if (els.jobsResume) {
+    els.jobsResume.disabled = !isConnected || busy || current.state !== "paused";
+  }
+
+  if (els.jobsCancel) {
+    const cancellable = current.state === "printing" || current.state === "paused";
+    els.jobsCancel.disabled = !isConnected || busy || !cancellable;
+  }
+}
+
+function buildJobsEntryMetaLine(fileEntry, metadata) {
+  const parts = [];
+
+  const sizeLabel = formatFileSize(fileEntry.size) || "--";
+  parts.push(sizeLabel);
+
+  const modifiedLabel = formatJobsTimestamp(fileEntry.modifiedMs);
+  parts.push(`Modified: ${modifiedLabel}`);
+
+  const etaSeconds = Number(metadata?.estimatedTime);
+  if (Number.isFinite(etaSeconds) && etaSeconds > 0) {
+    parts.push(`ETA: ${formatStatusDuration(etaSeconds)}`);
+  }
+
+  const layers = Number(metadata?.totalLayers);
+  if (Number.isFinite(layers) && layers > 0) {
+    parts.push(`Layers: ${Math.round(layers)}`);
+  }
+
+  return parts.join(" | ");
+}
+
+function getJobsParentDirectory(path) {
+  const normalized = normalizeJobsDirectory(path);
+  if (!normalized) return "";
+  const segments = normalized.split("/").filter(Boolean);
+  segments.pop();
+  return segments.join("/");
+}
+
+function formatJobsRootPath(path) {
+  const normalized = normalizeJobsDirectory(path);
+  return normalized ? `gcodes/${normalized}` : "gcodes/";
+}
+
+function renderJobsList() {
+  if (!els.fileList) return;
+
+  const isConnected = state.connectionStatus === "connected";
+  const busy = state.jobs.isLoading || state.jobs.actionInFlight;
+  const query = String(state.jobs.searchQuery || "").trim().toLowerCase();
+  const typeFilter = normalizeJobsTypeFilter(state.jobs.typeFilter);
+  const currentDirectory = normalizeJobsDirectory(state.jobs.currentDirectory);
+  const parentDirectory = getJobsParentDirectory(currentDirectory);
+
+  const { directories, files } = deriveJobsDirectoryEntries();
+
+  const filteredDirectories = sortJobsDirectories(directories).filter((entry) => {
+    if (typeFilter === "files") return false;
+    if (!query) return true;
+    return entry.displayName.toLowerCase().includes(query);
+  });
+
+  const filteredFiles = sortJobsFiles(files).filter((entry) => {
+    if (typeFilter === "folders") return false;
+    if (!query) return true;
+    return entry.path.toLowerCase().includes(query);
+  });
+
+  const showParentEntry = !!currentDirectory && !query && typeFilter !== "files";
+
   els.fileList.innerHTML = "";
-  if (!files.length) {
-    els.fileList.textContent = "No files available.";
+
+  if (!isConnected) {
+    const empty = document.createElement("p");
+    empty.className = "muted";
+    empty.textContent = "Print files are unavailable while disconnected.";
+    els.fileList.appendChild(empty);
     return;
   }
 
-  files.slice(0, 40).forEach((file) => {
-    const row = document.createElement("div");
-    row.className = "file-row";
-    row.innerHTML = `<strong>${file.path}</strong><div class="muted">${Math.round((file.size || 0) / 1024)} KB</div>`;
+  if (state.jobs.isLoading) {
+    const loading = document.createElement("p");
+    loading.className = "muted";
+    loading.textContent = "Loading print files...";
+    els.fileList.appendChild(loading);
+    return;
+  }
+
+  if (!showParentEntry && !filteredDirectories.length && !filteredFiles.length) {
+    const empty = document.createElement("p");
+    empty.className = "muted";
+    empty.textContent = query
+      ? `No files or folders match "${query}".`
+      : "No print files found in this directory.";
+    els.fileList.appendChild(empty);
+    return;
+  }
+
+  if (showParentEntry) {
+    const row = document.createElement("article");
+    row.className = "jobs-entry jobs-entry-folder jobs-entry-parent";
+
+    const body = document.createElement("div");
+    body.className = "jobs-entry-body";
+
+    const title = document.createElement("p");
+    title.className = "jobs-entry-title";
+    title.textContent = "..";
+
+    const detail = document.createElement("p");
+    detail.className = "jobs-entry-detail muted";
+    detail.textContent = `Up to ${formatJobsRootPath(parentDirectory)}`;
+
+    body.append(title, detail);
+
+    const actions = document.createElement("div");
+    actions.className = "jobs-entry-actions";
+
+    const upButton = document.createElement("button");
+    upButton.type = "button";
+    upButton.className = "jobs-entry-btn";
+    upButton.textContent = "Up";
+    upButton.disabled = busy;
+    upButton.addEventListener("click", () => {
+      setJobsDirectory(parentDirectory);
+    });
+
+    actions.append(upButton);
+    row.append(body, actions);
+    els.fileList.appendChild(row);
+  }
+
+  filteredDirectories.forEach((entry) => {
+    const row = document.createElement("article");
+    row.className = "jobs-entry jobs-entry-folder";
+
+    const body = document.createElement("div");
+    body.className = "jobs-entry-body";
+
+    const title = document.createElement("p");
+    title.className = "jobs-entry-title";
+    title.textContent = entry.displayName;
+    title.title = entry.path;
+
+    const detail = document.createElement("p");
+    detail.className = "jobs-entry-detail muted";
+    const fileWord = entry.fileCount === 1 ? "file" : "files";
+    const sizeLabel = formatFileSize(entry.size) || "--";
+    const latest = entry.modifiedMs ? formatJobsTimestamp(entry.modifiedMs) : "--";
+    detail.textContent = `${entry.fileCount} ${fileWord} | ${sizeLabel} | Latest: ${latest}`;
+
+    body.append(title, detail);
+
+    const actions = document.createElement("div");
+    actions.className = "jobs-entry-actions";
+
+    const openButton = document.createElement("button");
+    openButton.type = "button";
+    openButton.className = "jobs-entry-btn";
+    openButton.textContent = "Open";
+    openButton.disabled = busy;
+    openButton.addEventListener("click", () => {
+      setJobsDirectory(entry.path);
+    });
+
+    const renameButton = document.createElement("button");
+    renameButton.type = "button";
+    renameButton.className = "jobs-entry-btn";
+    renameButton.textContent = "Rename";
+    renameButton.disabled = busy;
+    renameButton.addEventListener("click", async () => {
+      await requestJobsFolderRename(entry.path);
+    });
+
+    const moveButton = document.createElement("button");
+    moveButton.type = "button";
+    moveButton.className = "jobs-entry-btn";
+    moveButton.textContent = "Move";
+    moveButton.disabled = busy;
+    moveButton.addEventListener("click", async () => {
+      await requestJobsFolderMove(entry.path);
+    });
+
+    const deleteButton = document.createElement("button");
+    deleteButton.type = "button";
+    deleteButton.className = "jobs-entry-btn danger";
+    deleteButton.textContent = "Delete";
+    deleteButton.disabled = busy;
+    deleteButton.addEventListener("click", async () => {
+      await requestJobsFolderDelete(entry.path);
+    });
+
+    actions.append(openButton, renameButton, moveButton, deleteButton);
+    row.append(body, actions);
     els.fileList.appendChild(row);
   });
+
+  const currentPrintPath = normalizeGcodePath(getCurrentJobsPrintState().filename);
+
+  filteredFiles.forEach((entry) => {
+    const row = document.createElement("article");
+    row.className = "jobs-entry jobs-entry-file";
+
+    if (currentPrintPath && currentPrintPath === entry.path) {
+      row.classList.add("is-active-job");
+    }
+
+    const thumbWrap = document.createElement("div");
+    thumbWrap.className = "jobs-entry-thumb-wrap";
+
+    const metadata = state.jobs.metadataByPath.get(entry.path);
+    const thumbnailPath = metadata?.thumbnailPath || "";
+
+    if (thumbnailPath) {
+      const thumb = document.createElement("img");
+      thumb.className = "jobs-entry-thumb";
+      thumb.loading = "lazy";
+      thumb.alt = `Thumbnail for ${entry.displayName}`;
+      thumb.src = buildThumbnailUrl(thumbnailPath);
+      thumb.addEventListener("error", () => {
+        thumbWrap.classList.add("is-fallback");
+        thumb.remove();
+        thumbWrap.textContent = "G";
+      });
+      thumbWrap.appendChild(thumb);
+    } else {
+      thumbWrap.classList.add("is-fallback");
+      thumbWrap.textContent = "G";
+      if (!state.jobs.metadataLoading.has(entry.path)) {
+        void ensureJobsMetadata(entry.path);
+      }
+    }
+
+    const body = document.createElement("div");
+    body.className = "jobs-entry-body";
+
+    const title = document.createElement("p");
+    title.className = "jobs-entry-title";
+    title.textContent = entry.displayName;
+    title.title = entry.path;
+
+    const detail = document.createElement("p");
+    detail.className = "jobs-entry-detail muted";
+    detail.textContent = buildJobsEntryMetaLine(entry, metadata);
+
+    body.append(title, detail);
+
+    const actions = document.createElement("div");
+    actions.className = "jobs-entry-actions";
+
+    const printButton = document.createElement("button");
+    printButton.type = "button";
+    printButton.className = "jobs-entry-btn";
+    printButton.textContent = state.jobs.actionInFlight && state.jobs.activePath === entry.path && state.jobs.actionLabel === "print"
+      ? "Printing..."
+      : "Print";
+    printButton.disabled = busy;
+    printButton.addEventListener("click", async () => {
+      await requestJobsFilePrint(entry.path);
+    });
+
+    const renameButton = document.createElement("button");
+    renameButton.type = "button";
+    renameButton.className = "jobs-entry-btn";
+    renameButton.textContent = "Rename";
+    renameButton.disabled = busy;
+    renameButton.addEventListener("click", async () => {
+      await requestJobsFileRename(entry.path);
+    });
+
+    const moveButton = document.createElement("button");
+    moveButton.type = "button";
+    moveButton.className = "jobs-entry-btn";
+    moveButton.textContent = "Move";
+    moveButton.disabled = busy;
+    moveButton.addEventListener("click", async () => {
+      await requestJobsFileMove(entry.path);
+    });
+
+    const downloadButton = document.createElement("button");
+    downloadButton.type = "button";
+    downloadButton.className = "jobs-entry-btn";
+    downloadButton.textContent = "Download";
+    downloadButton.disabled = busy;
+    downloadButton.addEventListener("click", async () => {
+      await requestJobsFileDownload(entry.path);
+    });
+
+    const deleteButton = document.createElement("button");
+    deleteButton.type = "button";
+    deleteButton.className = "jobs-entry-btn danger";
+    deleteButton.textContent = "Delete";
+    deleteButton.disabled = busy;
+    deleteButton.addEventListener("click", async () => {
+      await requestJobsFileDelete(entry.path);
+    });
+
+    actions.append(printButton, renameButton, moveButton, downloadButton, deleteButton);
+    row.append(thumbWrap, body, actions);
+    els.fileList.appendChild(row);
+
+    if (!metadata && !state.jobs.metadataLoading.has(entry.path)) {
+      void ensureJobsMetadata(entry.path);
+    }
+  });
+}
+function renderJobsSummary() {
+  if (!els.jobsSummary) return;
+
+  const totalFiles = state.jobs.files.length;
+  const totalFolders = state.jobs.directories.length;
+  const totalSize = state.jobs.files.reduce((sum, entry) => sum + (Number(entry.size) || 0), 0);
+  const directory = normalizeJobsDirectory(state.jobs.currentDirectory);
+  const label = directory ? `gcodes/${directory}` : "gcodes/";
+  const sizeLabel = totalSize > 0 ? ` | Total: ${formatFileSize(totalSize)}` : "";
+
+  const fileLabel = `${totalFiles} print file${totalFiles === 1 ? "" : "s"}`;
+  const folderLabel = `${totalFolders} folder${totalFolders === 1 ? "" : "s"}`;
+  els.jobsSummary.textContent = `${fileLabel} | ${folderLabel} in ${label}${sizeLabel}`;
+}
+
+function renderJobsStatus() {
+  if (!state.client) {
+    setJobsStatusMessage("Connect to Moonraker to manage print files.", "warn");
+    return;
+  }
+
+  if (state.connectionStatus !== "connected") {
+    setJobsStatusMessage("Moonraker disconnected. Reconnect to manage print files.", "warn");
+    return;
+  }
+
+  if (state.jobs.isLoading) {
+    setJobsStatusMessage("Loading print files...", "info");
+    return;
+  }
+
+  if (state.jobs.actionInFlight) {
+    setJobsStatusMessage("Running print file action...", "warn");
+    return;
+  }
+
+  if (state.jobs.lastError) {
+    setJobsStatusMessage(`Print files action failed: ${state.jobs.lastError}`, "error");
+    return;
+  }
+
+  if (state.jobs.lastUpdatedMs) {
+    setJobsStatusMessage(`Last refreshed: ${new Date(state.jobs.lastUpdatedMs).toLocaleTimeString()}`, "info");
+    return;
+  }
+
+  setJobsStatusMessage("Press Refresh to load print files.", "info");
+}
+
+function renderJobsCard() {
+  if (els.jobsSearch && els.jobsSearch.value !== state.jobs.searchQuery) {
+    els.jobsSearch.value = state.jobs.searchQuery;
+  }
+
+  if (els.jobsSort) {
+    els.jobsSort.value = normalizeJobsSort(state.jobs.sortMode);
+  }
+
+  if (els.jobsTypeFilter) {
+    els.jobsTypeFilter.value = normalizeJobsTypeFilter(state.jobs.typeFilter);
+  }
+
+  const isConnected = state.connectionStatus === "connected";
+  const busy = state.jobs.isLoading || state.jobs.actionInFlight;
+
+  if (els.jobsRefresh) {
+    els.jobsRefresh.disabled = !isConnected || busy;
+    els.jobsRefresh.textContent = state.jobs.isLoading ? "Loading..." : "Refresh";
+  }
+
+  if (els.jobsUploadBtn) {
+    els.jobsUploadBtn.disabled = !isConnected || busy;
+  }
+
+  if (els.jobsNewFolder) {
+    els.jobsNewFolder.disabled = !isConnected || busy;
+  }
+
+  if (!isConnected || busy) {
+    state.jobs.uploadDragDepth = 0;
+    updateJobsDragTarget(false);
+  }
+
+  renderJobsSummary();
+  renderJobsBreadcrumbs();
+  renderJobsJobControls();
+  renderJobsList();
+  renderJobsStatus();
+}
+
+function renderFiles(files) {
+  const listing = extractJobsListing(files);
+  applyJobsListing(listing);
+  renderJobsCard();
+}
+
+async function loadJobsFiles({ source = "user", silent = false } = {}) {
+  if (!state.client || state.connectionStatus !== "connected") {
+    renderJobsCard();
+    return [];
+  }
+
+  if (state.jobs.isLoading) {
+    return state.jobs.files || [];
+  }
+
+  state.jobs.isLoading = true;
+  state.jobs.lastError = "";
+  renderJobsCard();
+
+  try {
+    const response = await state.client.getGcodeFiles();
+    const listing = extractJobsListing(response);
+
+    applyJobsListing(listing);
+    state.jobs.lastError = "";
+    state.jobs.lastUpdatedMs = Date.now();
+    persistJobsViewState();
+
+    if (source === "user") {
+      appendConsole(`Loaded ${listing.files.length} print file${listing.files.length === 1 ? "" : "s"}.`, "info");
+    }
+
+    renderJobsCard();
+    return listing.files;
+  } catch (error) {
+    const message = error?.message || String(error);
+    state.jobs.lastError = message;
+
+    if (!silent) {
+      appendConsole(`Print files load failed: ${message}`, "error");
+    }
+
+    renderJobsCard();
+    return [];
+  } finally {
+    state.jobs.isLoading = false;
+    renderJobsCard();
+  }
+}
+
+async function requestJobsFileDownload(path) {
+  const normalizedPath = normalizeGcodePath(path);
+  if (!normalizedPath || !state.client || state.connectionStatus !== "connected") return false;
+
+  state.jobs.actionInFlight = true;
+  state.jobs.actionLabel = "download";
+  state.jobs.activePath = normalizedPath;
+  renderJobsCard();
+
+  try {
+    const fileBlob = await state.client.getFileBlob("gcodes", normalizedPath);
+    const fileName = getGcodeDisplayName(normalizedPath) || "print.gcode";
+    const url = URL.createObjectURL(fileBlob);
+
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = fileName;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+
+    URL.revokeObjectURL(url);
+    state.jobs.lastError = "";
+    appendConsole(`Downloaded print file: ${formatJobsRootPath(normalizedPath)}`, "info");
+    return true;
+  } catch (error) {
+    const message = error?.message || String(error);
+    state.jobs.lastError = message;
+    appendConsole(`Print file download failed (${normalizedPath}): ${message}`, "error");
+    return false;
+  } finally {
+    state.jobs.actionInFlight = false;
+    state.jobs.actionLabel = "";
+    state.jobs.activePath = "";
+    renderJobsCard();
+  }
+}
+
+function normalizeJobsSimpleName(value) {
+  const name = String(value || "").trim();
+  if (!name) return "";
+  if (name.includes("/") || name.includes("\\")) return "";
+  return name;
+}
+
+function remapJobsCurrentDirectoryForMove(sourcePath, destinationPath) {
+  const source = normalizeJobsDirectory(sourcePath);
+  const destination = normalizeJobsDirectory(destinationPath);
+  const current = normalizeJobsDirectory(state.jobs.currentDirectory);
+
+  if (!source || !destination || !current) return;
+
+  if (current === source) {
+    state.jobs.currentDirectory = destination;
+    persistJobsViewState();
+    return;
+  }
+
+  if (current.startsWith(`${source}/`)) {
+    const suffix = current.slice(source.length + 1);
+    state.jobs.currentDirectory = suffix ? `${destination}/${suffix}` : destination;
+    persistJobsViewState();
+  }
+}
+
+async function requestJobsPathMove(sourcePath, destinationPath, { entryType = "file", mode = "move" } = {}) {
+  const normalize = entryType === "directory" ? normalizeJobsDirectory : normalizeGcodePath;
+  const source = normalize(sourcePath);
+  const destination = normalize(destinationPath);
+
+  if (!source || !destination || !state.client || state.connectionStatus !== "connected") return false;
+  if (source === destination) return false;
+
+  if (entryType === "directory" && destination.startsWith(`${source}/`)) {
+    setJobsStatusMessage("Cannot move a folder into itself.", "warn");
+    return false;
+  }
+
+  state.jobs.actionInFlight = true;
+  state.jobs.actionLabel = mode;
+  state.jobs.activePath = source;
+  renderJobsCard();
+
+  try {
+    await state.client.moveFile("gcodes", source, destination);
+    state.jobs.lastError = "";
+
+    if (entryType === "directory") {
+      remapJobsCurrentDirectoryForMove(source, destination);
+    }
+
+    const label = mode === "rename" ? "Renamed" : "Moved";
+    const noun = entryType === "directory" ? "folder" : "print file";
+    appendConsole(`${label} ${noun}: ${formatJobsRootPath(source)} -> ${formatJobsRootPath(destination)}`, "info");
+
+    await loadJobsFiles({ source: mode, silent: true });
+    return true;
+  } catch (error) {
+    const message = error?.message || String(error);
+    state.jobs.lastError = message;
+
+    const noun = entryType === "directory" ? "Folder" : "Print file";
+    const verb = mode === "rename" ? "rename" : "move";
+    appendConsole(`${noun} ${verb} failed (${source}): ${message}`, "error");
+    renderJobsCard();
+    return false;
+  } finally {
+    state.jobs.actionInFlight = false;
+    state.jobs.actionLabel = "";
+    state.jobs.activePath = "";
+    renderJobsCard();
+  }
+}
+
+async function requestJobsFileRename(path) {
+  const normalizedPath = normalizeGcodePath(path);
+  if (!normalizedPath) return false;
+
+  const currentName = getGcodeDisplayName(normalizedPath) || "";
+  const requested = window.prompt("Rename print file to:", currentName);
+  if (requested === null) return false;
+
+  const nextName = normalizeJobsSimpleName(requested);
+  if (!nextName) {
+    setJobsStatusMessage("Enter a valid file name.", "warn");
+    return false;
+  }
+
+  const directory = getGcodeDirectory(normalizedPath);
+  const destination = directory ? `${directory}/${nextName}` : nextName;
+  return requestJobsPathMove(normalizedPath, destination, { entryType: "file", mode: "rename" });
+}
+
+async function requestJobsFileMove(path) {
+  const normalizedPath = normalizeGcodePath(path);
+  if (!normalizedPath) return false;
+
+  const filename = getGcodeDisplayName(normalizedPath);
+  if (!filename) return false;
+
+  const currentDirectory = getGcodeDirectory(normalizedPath);
+  const requested = window.prompt(
+    "Move print file to folder (relative to gcodes root):",
+    currentDirectory
+  );
+  if (requested === null) return false;
+
+  const targetDirectory = normalizeJobsDirectory(requested);
+  const destination = targetDirectory ? `${targetDirectory}/${filename}` : filename;
+  return requestJobsPathMove(normalizedPath, destination, { entryType: "file", mode: "move" });
+}
+
+async function requestJobsFolderRename(path) {
+  const normalizedPath = normalizeJobsDirectory(path);
+  if (!normalizedPath) return false;
+
+  const currentName = getGcodeDisplayName(normalizedPath) || "";
+  const requested = window.prompt("Rename folder to:", currentName);
+  if (requested === null) return false;
+
+  const nextName = normalizeJobsSimpleName(requested);
+  if (!nextName) {
+    setJobsStatusMessage("Enter a valid folder name.", "warn");
+    return false;
+  }
+
+  const parent = getJobsParentDirectory(normalizedPath);
+  const destination = parent ? `${parent}/${nextName}` : nextName;
+  return requestJobsPathMove(normalizedPath, destination, { entryType: "directory", mode: "rename" });
+}
+
+async function requestJobsFolderMove(path) {
+  const normalizedPath = normalizeJobsDirectory(path);
+  if (!normalizedPath) return false;
+
+  const folderName = getGcodeDisplayName(normalizedPath);
+  if (!folderName) return false;
+
+  const currentParent = getJobsParentDirectory(normalizedPath);
+  const requested = window.prompt(
+    "Move folder to destination parent (relative to gcodes root):",
+    currentParent
+  );
+  if (requested === null) return false;
+
+  const targetParent = normalizeJobsDirectory(requested);
+  const destination = targetParent ? `${targetParent}/${folderName}` : folderName;
+  return requestJobsPathMove(normalizedPath, destination, { entryType: "directory", mode: "move" });
+}
+
+async function requestJobsFileDelete(path) {
+  const normalizedPath = normalizeGcodePath(path);
+  if (!normalizedPath || !state.client || state.connectionStatus !== "connected") return false;
+
+  const confirmed = window.confirm(`Delete print file ${formatJobsRootPath(normalizedPath)}? This cannot be undone.`);
+  if (!confirmed) return false;
+
+  state.jobs.actionInFlight = true;
+  state.jobs.actionLabel = "delete";
+  state.jobs.activePath = normalizedPath;
+  renderJobsCard();
+
+  try {
+    await state.client.deleteFile("gcodes", normalizedPath);
+    state.jobs.lastError = "";
+    appendConsole(`Deleted print file: ${formatJobsRootPath(normalizedPath)}`, "warn");
+    await loadJobsFiles({ source: "delete", silent: true });
+    return true;
+  } catch (error) {
+    const message = error?.message || String(error);
+    state.jobs.lastError = message;
+    appendConsole(`Print file delete failed (${normalizedPath}): ${message}`, "error");
+    renderJobsCard();
+    return false;
+  } finally {
+    state.jobs.actionInFlight = false;
+    state.jobs.actionLabel = "";
+    state.jobs.activePath = "";
+    renderJobsCard();
+  }
+}
+
+async function requestJobsFolderDelete(path) {
+  const normalizedPath = normalizeJobsDirectory(path);
+  if (!normalizedPath || !state.client || state.connectionStatus !== "connected") return false;
+
+  const confirmed = window.confirm(`Delete folder ${formatJobsRootPath(normalizedPath)} and its contents? This cannot be undone.`);
+  if (!confirmed) return false;
+
+  state.jobs.actionInFlight = true;
+  state.jobs.actionLabel = "delete";
+  state.jobs.activePath = normalizedPath;
+  renderJobsCard();
+
+  try {
+    await state.client.deleteDirectory("gcodes", normalizedPath, { force: true });
+
+    const currentDirectory = normalizeJobsDirectory(state.jobs.currentDirectory);
+    if (currentDirectory === normalizedPath || currentDirectory.startsWith(`${normalizedPath}/`)) {
+      state.jobs.currentDirectory = getJobsParentDirectory(normalizedPath);
+      persistJobsViewState();
+    }
+
+    state.jobs.lastError = "";
+    appendConsole(`Deleted folder: ${formatJobsRootPath(normalizedPath)}`, "warn");
+    await loadJobsFiles({ source: "delete", silent: true });
+    return true;
+  } catch (error) {
+    const message = error?.message || String(error);
+    state.jobs.lastError = message;
+    appendConsole(`Folder delete failed (${normalizedPath}): ${message}`, "error");
+    renderJobsCard();
+    return false;
+  } finally {
+    state.jobs.actionInFlight = false;
+    state.jobs.actionLabel = "";
+    state.jobs.activePath = "";
+    renderJobsCard();
+  }
+}
+
+async function requestJobsFilePrint(path) {
+  const normalizedPath = normalizeGcodePath(path);
+  if (!normalizedPath || !state.client || state.connectionStatus !== "connected") return false;
+
+  const current = getCurrentJobsPrintState();
+  const hasActiveJob = current.state === "printing" || current.state === "paused";
+
+  if (hasActiveJob) {
+    const confirmedReplace = window.confirm(
+      `A job is currently ${current.state}. Start ${formatJobsRootPath(normalizedPath)} anyway?`
+    );
+    if (!confirmedReplace) return false;
+  }
+
+  state.jobs.actionInFlight = true;
+  state.jobs.actionLabel = "print";
+  state.jobs.activePath = normalizedPath;
+  renderJobsCard();
+
+  try {
+    await state.client.startPrint(normalizedPath);
+    state.jobs.lastError = "";
+    appendConsole(`Started print: ${formatJobsRootPath(normalizedPath)}`, "info");
+    return true;
+  } catch (error) {
+    const message = error?.message || String(error);
+    state.jobs.lastError = message;
+    appendConsole(`Start print failed (${normalizedPath}): ${message}`, "error");
+    return false;
+  } finally {
+    state.jobs.actionInFlight = false;
+    state.jobs.actionLabel = "";
+    state.jobs.activePath = "";
+    renderJobsCard();
+  }
+}
+
+async function requestJobsUpload(files) {
+  if (!state.client || state.connectionStatus !== "connected") return false;
+
+  const fileList = Array.isArray(files) ? files : [...(files || [])];
+  if (!fileList.length) return false;
+
+  state.jobs.actionInFlight = true;
+  state.jobs.actionLabel = "upload";
+  state.jobs.activePath = "";
+  renderJobsCard();
+
+  let uploaded = 0;
+
+  try {
+    const targetDirectory = normalizeJobsDirectory(state.jobs.currentDirectory);
+
+    for (const file of fileList) {
+      await state.client.uploadFile("gcodes", file, targetDirectory, file.name);
+      uploaded += 1;
+    }
+
+    state.jobs.lastError = "";
+    appendConsole(`Uploaded ${uploaded} print file${uploaded === 1 ? "" : "s"}.`, "info");
+    await loadJobsFiles({ source: "upload", silent: true });
+    return true;
+  } catch (error) {
+    const message = error?.message || String(error);
+    state.jobs.lastError = message;
+    appendConsole(`Print file upload failed: ${message}`, "error");
+    renderJobsCard();
+    return false;
+  } finally {
+    state.jobs.actionInFlight = false;
+    state.jobs.actionLabel = "";
+    state.jobs.activePath = "";
+    state.jobs.uploadDragDepth = 0;
+    els.jobsCard?.classList.remove("is-drag-over");
+    renderJobsCard();
+  }
+}
+
+async function requestJobsCreateFolder() {
+  if (!state.client || state.connectionStatus !== "connected") return false;
+
+  const targetDefault = "new-folder";
+  const requested = window.prompt("Enter the new folder name (relative to current directory):", targetDefault);
+  if (requested === null) return false;
+
+  const normalizedName = normalizeJobsDirectory(requested);
+  if (!normalizedName) {
+    setJobsStatusMessage("Enter a valid folder name.", "warn");
+    return false;
+  }
+
+  const currentDirectory = normalizeJobsDirectory(state.jobs.currentDirectory);
+  const fullPath = currentDirectory ? `${currentDirectory}/${normalizedName}` : normalizedName;
+
+  state.jobs.actionInFlight = true;
+  state.jobs.actionLabel = "mkdir";
+  state.jobs.activePath = fullPath;
+  renderJobsCard();
+
+  try {
+    await state.client.createDirectory("gcodes", fullPath);
+    state.jobs.lastError = "";
+    appendConsole(`Created folder: ${formatJobsRootPath(fullPath)}`, "info");
+    state.jobs.currentDirectory = normalizeJobsDirectory(fullPath);
+    persistJobsViewState();
+    await loadJobsFiles({ source: "mkdir", silent: true });
+    return true;
+  } catch (error) {
+    const message = error?.message || String(error);
+    state.jobs.lastError = message;
+    appendConsole(`Create folder failed (${fullPath}): ${message}`, "error");
+    renderJobsCard();
+    return false;
+  } finally {
+    state.jobs.actionInFlight = false;
+    state.jobs.actionLabel = "";
+    state.jobs.activePath = "";
+    renderJobsCard();
+  }
+}
+
+function jobsDataTransferHasFiles(dataTransfer) {
+  if (!dataTransfer) return false;
+  const types = Array.from(dataTransfer.types || []);
+  return types.includes("Files");
+}
+
+function updateJobsDragTarget(active) {
+  if (!els.jobsCard) return;
+  els.jobsCard.classList.toggle("is-drag-over", !!active);
+}
+
+async function handleJobsDropUpload(event) {
+  if (!state.client || state.connectionStatus !== "connected") return;
+
+  if (!jobsDataTransferHasFiles(event.dataTransfer)) {
+    return;
+  }
+
+  event.preventDefault();
+  state.jobs.uploadDragDepth = 0;
+  updateJobsDragTarget(false);
+
+  const files = [...(event.dataTransfer?.files || [])];
+  if (!files.length) return;
+
+  await requestJobsUpload(files);
+}
+async function requestJobsPrintAction(action) {
+  if (!state.client || state.connectionStatus !== "connected") return false;
+
+  const normalizedAction = String(action || "").trim().toLowerCase();
+  if (!["pause", "resume", "cancel"].includes(normalizedAction)) return false;
+
+  const label = normalizedAction === "cancel" ? "cancel" : normalizedAction;
+
+  state.jobs.actionInFlight = true;
+  state.jobs.actionLabel = label;
+  state.jobs.activePath = "";
+  renderJobsCard();
+
+  try {
+    if (normalizedAction === "pause") {
+      await state.client.pausePrint();
+    } else if (normalizedAction === "resume") {
+      await state.client.resumePrint();
+    } else {
+      const confirmed = window.confirm("Cancel the active print job?");
+      if (!confirmed) return false;
+      await state.client.cancelPrint();
+    }
+
+    state.jobs.lastError = "";
+    appendConsole(`Job action sent: ${normalizedAction.toUpperCase()}`, "info");
+    return true;
+  } catch (error) {
+    const message = error?.message || String(error);
+    state.jobs.lastError = message;
+    appendConsole(`Job action failed (${normalizedAction}): ${message}`, "error");
+    return false;
+  } finally {
+    state.jobs.actionInFlight = false;
+    state.jobs.actionLabel = "";
+    state.jobs.activePath = "";
+    renderJobsCard();
+  }
+}
+
+function resetJobsState() {
+  state.jobs = createDefaultJobsState();
+  renderJobsCard();
 }
 
 function normalizeConfigPath(path) {
@@ -5213,6 +6665,16 @@ function getConfigDirectory(path) {
   return parts.slice(0, -1).join("/");
 }
 
+function getConfigFileDisplayName(entry) {
+  const relative = String(entry?.relativePath || entry?.path || "")
+    .trim()
+    .replace(/\\/g, "/")
+    .replace(/\/+$/, "");
+  if (!relative) return "";
+
+  const segments = relative.split("/").filter(Boolean);
+  return segments.length ? segments[segments.length - 1] : relative;
+}
 function formatFileSize(size) {
   const numeric = Number(size);
   if (!Number.isFinite(numeric) || numeric < 0) return "";
@@ -5273,7 +6735,7 @@ function getConfigFileType(path, rootName = "") {
     return CONFIG_FILE_TYPES.CONFIG;
   }
 
-  if (/\.(doc|md)$/i.test(normalized)) {
+  if (/\.(doc|md|txt)$/i.test(normalized)) {
     return CONFIG_FILE_TYPES.DOC;
   }
 
@@ -5611,7 +7073,7 @@ function renderConfigFileList() {
     const searchQuery = String(state.config.fileSearchQuery || "").trim();
 
     if (!state.config.files.length) {
-      empty.textContent = "No supported files found (.conf, .cfg, .config, .log, .bak, .bkp, .doc, .md).";
+      empty.textContent = "No supported files found (.conf, .cfg, .config, .log, .bak, .bkp, .doc, .md, .txt).";
     } else if (searchQuery) {
       if (selectedType === CONFIG_FILE_TYPES.ALL) {
         empty.textContent = `No files match "${searchQuery}".`;
@@ -5649,7 +7111,7 @@ function renderConfigFileList() {
 
     const label = document.createElement("span");
     label.className = "config-file-path";
-    label.textContent = entry.path;
+    label.textContent = getConfigFileDisplayName(entry);
 
     const sizeLabel = document.createElement("span");
     sizeLabel.className = "config-file-size muted";
@@ -5714,6 +7176,9 @@ function extractConfigFiles(fileResponse, rootName = "config") {
     const aRank = CONFIG_FILE_TYPE_RANK[a.fileType] ?? Number.MAX_SAFE_INTEGER;
     const bRank = CONFIG_FILE_TYPE_RANK[b.fileType] ?? Number.MAX_SAFE_INTEGER;
     if (aRank !== bRank) return aRank - bRank;
+    const aName = getConfigFileDisplayName(a).toLowerCase();
+    const bName = getConfigFileDisplayName(b).toLowerCase();
+    if (aName !== bName) return aName.localeCompare(bName);
     return a.path.localeCompare(b.path);
   });
 }
@@ -5773,6 +7238,9 @@ async function loadConfigFiles({ preserveSelection = true } = {}) {
       const aRank = CONFIG_FILE_TYPE_RANK[a.fileType] ?? Number.MAX_SAFE_INTEGER;
       const bRank = CONFIG_FILE_TYPE_RANK[b.fileType] ?? Number.MAX_SAFE_INTEGER;
       if (aRank !== bRank) return aRank - bRank;
+      const aName = getConfigFileDisplayName(a).toLowerCase();
+      const bName = getConfigFileDisplayName(b).toLowerCase();
+      if (aName !== bName) return aName.localeCompare(bName);
       return a.path.localeCompare(b.path);
     });
 
@@ -5968,6 +7436,22 @@ async function requestViewChange(viewName) {
   }
 
   switchView(viewName);
+
+  if (viewName === "files") {
+    if (!state.client || state.connectionStatus !== "connected") {
+      renderJobsCard();
+      return;
+    }
+
+    if (!state.jobs.files.length && !state.jobs.directories.length) {
+      await loadJobsFiles({ source: "view", silent: true });
+    } else {
+      state.jobs.currentDirectory = normalizeJobsCurrentDirectory(state.jobs.currentDirectory);
+      renderJobsCard();
+    }
+
+    return;
+  }
 
   if (viewName !== "configuration") return;
 
@@ -6223,6 +7707,7 @@ function wireEvents() {
     });
   });
   els.sidebarToggle?.addEventListener("click", toggleSidebar);
+  els.machineSideToggle?.addEventListener("click", toggleMachineSideColumn);
 
   els.configRefresh?.addEventListener("click", async () => {
     await loadConfigFiles({ preserveSelection: true });
@@ -6248,6 +7733,100 @@ function wireEvents() {
 
   els.machineLogFilesDeleteAll?.addEventListener("click", async () => {
     await requestMachineLogFilesDeleteAll();
+  });
+
+  els.jobsRefresh?.addEventListener("click", async () => {
+    await loadJobsFiles({ source: "user" });
+  });
+
+  els.jobsUploadBtn?.addEventListener("click", () => {
+    els.jobsUploadInput?.click();
+  });
+
+  els.jobsUploadInput?.addEventListener("change", async (event) => {
+    const input = event.currentTarget;
+    const files = [...(input?.files || [])];
+    if (!files.length) return;
+
+    await requestJobsUpload(files);
+    input.value = "";
+  });
+
+  els.jobsCard?.addEventListener("dragenter", (event) => {
+    if (!jobsDataTransferHasFiles(event.dataTransfer)) return;
+    if (!state.client || state.connectionStatus !== "connected") return;
+
+    event.preventDefault();
+    state.jobs.uploadDragDepth += 1;
+    updateJobsDragTarget(true);
+  });
+
+  els.jobsCard?.addEventListener("dragover", (event) => {
+    if (!jobsDataTransferHasFiles(event.dataTransfer)) return;
+    if (!state.client || state.connectionStatus !== "connected") return;
+
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    updateJobsDragTarget(true);
+  });
+
+  els.jobsCard?.addEventListener("dragleave", (event) => {
+    event.preventDefault();
+    state.jobs.uploadDragDepth = Math.max(0, state.jobs.uploadDragDepth - 1);
+    if (state.jobs.uploadDragDepth === 0) {
+      updateJobsDragTarget(false);
+    }
+  });
+
+  els.jobsCard?.addEventListener("drop", async (event) => {
+    await handleJobsDropUpload(event);
+  });
+
+  els.jobsNewFolder?.addEventListener("click", async () => {
+    await requestJobsCreateFolder();
+  });
+
+  els.jobsSearch?.addEventListener("input", () => {
+    state.jobs.searchQuery = String(els.jobsSearch.value || "").trim();
+    persistJobsViewState();
+    renderJobsCard();
+  });
+
+  els.jobsSearch?.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      state.jobs.searchQuery = "";
+      if (els.jobsSearch) {
+        els.jobsSearch.value = "";
+        els.jobsSearch.blur();
+      }
+      persistJobsViewState();
+      renderJobsCard();
+    }
+  });
+
+  els.jobsSort?.addEventListener("change", () => {
+    state.jobs.sortMode = normalizeJobsSort(els.jobsSort.value);
+    persistJobsViewState();
+    renderJobsCard();
+  });
+
+  els.jobsTypeFilter?.addEventListener("change", () => {
+    state.jobs.typeFilter = normalizeJobsTypeFilter(els.jobsTypeFilter.value);
+    persistJobsViewState();
+    renderJobsCard();
+  });
+
+  els.jobsPause?.addEventListener("click", async () => {
+    await requestJobsPrintAction("pause");
+  });
+
+  els.jobsResume?.addEventListener("click", async () => {
+    await requestJobsPrintAction("resume");
+  });
+
+  els.jobsCancel?.addEventListener("click", async () => {
+    await requestJobsPrintAction("cancel");
   });
 
   els.configSearchInput?.addEventListener("input", () => {
@@ -6415,6 +7994,7 @@ function wireEvents() {
     localStorage.setItem("interface_compact", String(state.interface.compact));
     localStorage.setItem("interface_density", state.interface.density);
     localStorage.setItem("interface_sidebar_collapsed", String(state.interface.sidebarCollapsed));
+    localStorage.setItem(MACHINE_SIDE_COLLAPSED_STORAGE_KEY, String(state.interface.machineSideCollapsed));
     localStorage.setItem("dashboard_show_print_progress", String(state.dashboard.showPrintProgress));
     localStorage.setItem("dashboard_show_temperatures", String(state.dashboard.showTemperatures));
     localStorage.setItem("dashboard_show_motion", String(state.dashboard.showMotion));
@@ -6630,6 +8210,18 @@ async function init() {
     els.configFileSearch.value = String(state.config.fileSearchQuery || "");
   }
 
+  if (els.jobsSearch) {
+    els.jobsSearch.value = String(state.jobs.searchQuery || "");
+  }
+
+  if (els.jobsSort) {
+    els.jobsSort.value = normalizeJobsSort(state.jobs.sortMode);
+  }
+
+  if (els.jobsTypeFilter) {
+    els.jobsTypeFilter.value = normalizeJobsTypeFilter(state.jobs.typeFilter);
+  }
+
   getConsoleInstances().forEach((instance) => {
     if (instance.autoscrollInput) {
       instance.autoscrollInput.checked = state.console.autoscroll;
@@ -6668,6 +8260,7 @@ async function init() {
   renderUpdateManagerCard();
   renderEndstopsCard();
   renderMachineLogFilesCard();
+  renderJobsCard();
 
   try {
     await restoreTemperatureHistoryForSession();
