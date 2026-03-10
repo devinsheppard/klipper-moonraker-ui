@@ -56,6 +56,7 @@ const VIEW_TITLES = {
 const ACTIVE_VIEW_STORAGE_KEY = "active_view";
 const CONFIG_SELECTED_PATH_STORAGE_KEY = "config_selected_path";
 const CONFIG_FILE_FILTER_STORAGE_KEY = "config_file_type_filter";
+const CONFIG_FILE_SEARCH_STORAGE_KEY = "config_file_search_filter";
 
 const CONSOLE_LOG_LEVELS = new Set(["debug", "info", "warn", "error"]);
 const TEMPERATURE_PRESETS = {
@@ -173,6 +174,7 @@ const els = {
   configUploadBtn: document.getElementById("config-upload-btn"),
   configUploadInput: document.getElementById("config-upload-input"),
   configFilter: document.getElementById("config-filter"),
+  configFileSearch: document.getElementById("config-file-search"),
   configFileList: document.getElementById("config-file-list"),
   configCurrentFile: document.getElementById("config-current-file"),
   configStatus: document.getElementById("config-status"),
@@ -183,6 +185,13 @@ const els = {
   configSaveRestart: document.getElementById("config-save-restart"),
   configDirtyPrompt: document.getElementById("config-dirty-prompt"),
   configEditor: document.getElementById("config-editor"),
+  configSearchInput: document.getElementById("config-search-input"),
+  configSearchPrev: document.getElementById("config-search-prev"),
+  configSearchNext: document.getElementById("config-search-next"),
+  configSearchCount: document.getElementById("config-search-count"),
+  configSearchCase: document.getElementById("config-search-case"),
+  configSearchWord: document.getElementById("config-search-word"),
+  configSearchRegex: document.getElementById("config-search-regex"),
   machineSystemStatus: document.getElementById("machine-system-status"),
   machineMcuName: document.getElementById("machine-mcu-name"),
   machineMcuChip: document.getElementById("machine-mcu-chip"),
@@ -206,6 +215,15 @@ const els = {
   machineUpdateList: document.getElementById("machine-update-list"),
   machineUpdateLog: document.getElementById("machine-update-log"),
   machineUpdateStatus: document.getElementById("machine-update-status"),
+  machineEndstopsQuery: document.getElementById("machine-endstops-query"),
+  machineEndstopsSummary: document.getElementById("machine-endstops-summary"),
+  machineEndstopsList: document.getElementById("machine-endstops-list"),
+  machineEndstopsStatus: document.getElementById("machine-endstops-status"),
+  machineLogFilesRefresh: document.getElementById("machine-log-files-refresh"),
+  machineLogFilesDeleteAll: document.getElementById("machine-log-files-delete-all"),
+  machineLogFilesSummary: document.getElementById("machine-log-files-summary"),
+  machineLogFilesList: document.getElementById("machine-log-files-list"),
+  machineLogFilesStatus: document.getElementById("machine-log-files-status"),
   settingsForm: document.getElementById("settings-form"),
   moonrakerUrl: document.getElementById("moonraker-url"),
   interfaceTheme: document.getElementById("interface-theme"),
@@ -297,9 +315,14 @@ function loadStoredConfigFileTypeFilter() {
   return normalizeConfigFileType(localStorage.getItem(CONFIG_FILE_FILTER_STORAGE_KEY));
 }
 
+function loadStoredConfigFileSearchQuery() {
+  return String(localStorage.getItem(CONFIG_FILE_SEARCH_STORAGE_KEY) || "").trim();
+}
+
 function persistConfigViewState() {
   localStorage.setItem(CONFIG_SELECTED_PATH_STORAGE_KEY, state.config.selectedPath || "");
   localStorage.setItem(CONFIG_FILE_FILTER_STORAGE_KEY, normalizeConfigFileType(state.config.fileTypeFilter));
+  localStorage.setItem(CONFIG_FILE_SEARCH_STORAGE_KEY, String(state.config.fileSearchQuery || "").trim());
 }
 
 function slugify(value) {
@@ -559,8 +582,28 @@ function createDefaultUpdateManagerState() {
   };
 }
 
+function createDefaultEndstopsState() {
+  return {
+    values: {},
+    queryInFlight: false,
+    lastError: "",
+    lastUpdatedMs: null,
+  };
+}
+
+function createDefaultMachineLogFilesState() {
+  return {
+    files: [],
+    isLoading: false,
+    actionInFlight: false,
+    lastError: "",
+    lastUpdatedMs: null,
+  };
+}
+
 const state = {
   client: null,
+  connectionStatus: "disconnected",
   activeView: loadStoredView(),
   moonrakerUrl: localStorage.getItem("moonraker_url") || "http://127.0.0.1:7125",
   config: {
@@ -572,6 +615,16 @@ const state = {
     isDirty: false,
     isLoadingFile: false,
     fileTypeFilter: loadStoredConfigFileTypeFilter(),
+    fileSearchQuery: loadStoredConfigFileSearchQuery(),
+  },
+  configSearch: {
+    query: "",
+    caseSensitive: false,
+    wholeWord: false,
+    useRegex: false,
+    matches: [],
+    activeIndex: -1,
+    invalidRegex: false,
   },
   interface: {
     theme: loadStoredChoice("interface_theme", "ocean", INTERFACE_THEMES),
@@ -621,6 +674,8 @@ const state = {
   },
   machineLoads: createDefaultMachineLoadsState(),
   updateManager: createDefaultUpdateManagerState(),
+  endstops: createDefaultEndstopsState(),
+  logFiles: createDefaultMachineLogFilesState(),
   printStatus: {
     filename: "",
     thumbnailPath: "",
@@ -910,6 +965,7 @@ function normalizePrinterState(value) {
 }
 
 function setConnectionUi(status) {
+  state.connectionStatus = String(status || "").trim().toLowerCase();
   els.connectionPill.textContent = status;
   if (status === "connected") {
     els.connectionPill.style.borderColor = "rgba(34, 197, 94, 0.7)";
@@ -1934,6 +1990,511 @@ function startMachineLoadPolling() {
 function resetMachineLoadsState() {
   state.machineLoads = createDefaultMachineLoadsState();
   renderMachineLoadsCard();
+}
+
+function normalizeEndstopState(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "triggered" || normalized === "closed") return "triggered";
+  if (normalized === "open") return "open";
+  return "unknown";
+}
+
+function normalizeEndstopPayload(payload) {
+  if (!payload || typeof payload !== "object") return {};
+
+  const entries = Object.entries(payload)
+    .filter(([key]) => !!String(key || "").trim())
+    .filter(([, value]) => ["string", "number", "boolean"].includes(typeof value));
+
+  const normalized = {};
+  entries.forEach(([key, value]) => {
+    normalized[String(key).trim()] = String(value);
+  });
+
+  return normalized;
+}
+
+function sortEndstopEntries(entries) {
+  const axisOrder = ["x", "y", "z", "probe", "z_probe"];
+
+  return [...entries].sort((a, b) => {
+    const nameA = a.name.toLowerCase();
+    const nameB = b.name.toLowerCase();
+
+    const rankA = axisOrder.indexOf(nameA);
+    const rankB = axisOrder.indexOf(nameB);
+
+    const weightedA = rankA >= 0 ? rankA : axisOrder.length + (nameA[0] === "x" ? 0 : nameA[0] === "y" ? 1 : nameA[0] === "z" ? 2 : 3);
+    const weightedB = rankB >= 0 ? rankB : axisOrder.length + (nameB[0] === "x" ? 0 : nameB[0] === "y" ? 1 : nameB[0] === "z" ? 2 : 3);
+
+    if (weightedA !== weightedB) return weightedA - weightedB;
+    return nameA.localeCompare(nameB);
+  });
+}
+
+function setEndstopsStatusMessage(message, level = "info") {
+  const normalized = String(message || "").trim();
+  if (!els.machineEndstopsStatus) return;
+  els.machineEndstopsStatus.textContent = normalized;
+  els.machineEndstopsStatus.dataset.level = level;
+}
+
+function renderEndstopsCard() {
+  const endstopsState = state.endstops || createDefaultEndstopsState();
+  const isConnected = state.connectionStatus === "connected";
+  const entries = sortEndstopEntries(
+    Object.entries(endstopsState.values || {}).map(([name, raw]) => ({
+      name,
+      raw: String(raw || "").trim(),
+      state: normalizeEndstopState(raw),
+    }))
+  );
+
+  if (els.machineEndstopsQuery) {
+    els.machineEndstopsQuery.disabled = !isConnected || endstopsState.queryInFlight;
+    els.machineEndstopsQuery.textContent = endstopsState.queryInFlight ? "Querying..." : "Query";
+  }
+
+  if (els.machineEndstopsList) {
+    els.machineEndstopsList.innerHTML = "";
+
+    if (!entries.length) {
+      const empty = document.createElement("p");
+      empty.className = "muted";
+      empty.textContent = isConnected
+        ? "No endstop data available yet."
+        : "Endstop data is unavailable while disconnected.";
+      els.machineEndstopsList.appendChild(empty);
+    } else {
+      entries.forEach((entry) => {
+        const row = document.createElement("div");
+        row.className = "machine-endstop-item";
+
+        const label = document.createElement("span");
+        label.className = "machine-endstop-name";
+        label.textContent = entry.name;
+
+        const pill = document.createElement("span");
+        pill.className = `machine-endstop-pill machine-endstop-pill-${entry.state}`;
+        pill.textContent = entry.state === "triggered" ? "TRIGGERED" : entry.state === "open" ? "open" : "unknown";
+
+        row.append(label, pill);
+        els.machineEndstopsList.appendChild(row);
+      });
+    }
+  }
+
+  if (els.machineEndstopsSummary) {
+    if (!entries.length) {
+      els.machineEndstopsSummary.textContent = "Press Query to check current endstop states.";
+    } else {
+      const triggeredCount = entries.filter((entry) => entry.state === "triggered").length;
+      const openCount = entries.filter((entry) => entry.state === "open").length;
+      const unknownCount = entries.length - triggeredCount - openCount;
+
+      const parts = [
+        `${triggeredCount} triggered`,
+        `${openCount} open`,
+      ];
+      if (unknownCount > 0) {
+        parts.push(`${unknownCount} unknown`);
+      }
+
+      const lastLabel = endstopsState.lastUpdatedMs
+        ? ` | Last query: ${new Date(endstopsState.lastUpdatedMs).toLocaleTimeString()}`
+        : "";
+
+      els.machineEndstopsSummary.textContent = `${parts.join(" | ")}${lastLabel}`;
+    }
+  }
+
+  if (!state.client) {
+    setEndstopsStatusMessage("Connect to Moonraker to query endstops.", "warn");
+  } else if (!isConnected) {
+    setEndstopsStatusMessage("Moonraker disconnected. Reconnect to query endstops.", "warn");
+  } else if (endstopsState.queryInFlight) {
+    setEndstopsStatusMessage("Querying endstop state...", "info");
+  } else if (endstopsState.lastError) {
+    setEndstopsStatusMessage(`Endstop query failed: ${endstopsState.lastError}`, "error");
+  } else if (endstopsState.lastUpdatedMs) {
+    setEndstopsStatusMessage("Endstop query complete.", "info");
+  } else {
+    setEndstopsStatusMessage("Press Query to request endstop state from Moonraker.", "info");
+  }
+}
+
+async function requestEndstopsStatus({ source = "user", silent = false } = {}) {
+  if (!state.client || state.connectionStatus !== "connected") {
+    renderEndstopsCard();
+    return null;
+  }
+
+  if (state.endstops.queryInFlight) {
+    return null;
+  }
+
+  state.endstops.queryInFlight = true;
+  state.endstops.lastError = "";
+  renderEndstopsCard();
+
+  try {
+    const response = await state.client.getEndstopsStatus();
+    const payload = response?.result && typeof response.result === "object" ? response.result : response;
+    const normalized = normalizeEndstopPayload(payload);
+
+    state.endstops.values = normalized;
+    state.endstops.lastUpdatedMs = Date.now();
+    state.endstops.lastError = "";
+
+    if (source === "user") {
+      appendConsole("Endstops queried.", "info");
+    }
+
+    renderEndstopsCard();
+    return normalized;
+  } catch (error) {
+    const message = error?.message || String(error);
+    state.endstops.lastError = message;
+
+    if (!silent) {
+      appendConsole(`Endstop query failed: ${message}`, "error");
+    }
+
+    renderEndstopsCard();
+    return null;
+  } finally {
+    state.endstops.queryInFlight = false;
+    renderEndstopsCard();
+  }
+}
+
+function resetEndstopsState() {
+  state.endstops = createDefaultEndstopsState();
+  renderEndstopsCard();
+}
+
+function normalizeMachineLogPath(path) {
+  return String(path || "")
+    .trim()
+    .replace(/\\/g, "/")
+    .replace(/^\/+/, "")
+    .replace(/^logs\//i, "");
+}
+
+function toMachineLogTimestampMs(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return null;
+  return numeric > 1_000_000_000_000 ? numeric : numeric * 1000;
+}
+
+function extractMachineLogFiles(fileResponse) {
+  const result = fileResponse?.result;
+  const rawFiles = Array.isArray(result)
+    ? result
+    : Array.isArray(result?.files)
+      ? result.files
+      : [];
+
+  const byPath = new Map();
+
+  rawFiles.forEach((entry) => {
+    if (!entry) return;
+
+    if (typeof entry === "object" && String(entry.type || "").toLowerCase() === "directory") {
+      return;
+    }
+
+    const candidatePath = typeof entry === "string"
+      ? entry
+      : typeof entry.path === "string"
+        ? entry.path
+        : [entry.dirname, entry.filename].filter(Boolean).join("/");
+
+    const relativePath = normalizeMachineLogPath(candidatePath);
+    if (!relativePath || relativePath.endsWith("/")) return;
+
+    const sizeValue = Number(entry?.size);
+    const size = Number.isFinite(sizeValue) && sizeValue >= 0 ? sizeValue : null;
+    const modifiedMs = toMachineLogTimestampMs(entry?.modified ?? entry?.mtime ?? entry?.date ?? entry?.time);
+
+    byPath.set(relativePath, {
+      relativePath,
+      path: `logs/${relativePath}`,
+      size,
+      modifiedMs,
+    });
+  });
+
+  return [...byPath.values()].sort((a, b) => {
+    const aModified = Number(a.modifiedMs) || 0;
+    const bModified = Number(b.modifiedMs) || 0;
+    if (aModified !== bModified) return bModified - aModified;
+    return a.relativePath.localeCompare(b.relativePath);
+  });
+}
+
+function formatMachineLogTimestamp(modifiedMs) {
+  const numeric = Number(modifiedMs);
+  if (!Number.isFinite(numeric) || numeric <= 0) return "--";
+  return new Date(numeric).toLocaleString();
+}
+
+function setMachineLogFilesStatusMessage(message, level = "info") {
+  if (!els.machineLogFilesStatus) return;
+  els.machineLogFilesStatus.textContent = String(message || "").trim();
+  els.machineLogFilesStatus.dataset.level = level;
+}
+
+async function requestMachineLogFileDownload(relativePath) {
+  const normalizedPath = normalizeMachineLogPath(relativePath);
+  if (!normalizedPath || !state.client || state.connectionStatus !== "connected") return false;
+
+  state.logFiles.actionInFlight = true;
+  renderMachineLogFilesCard();
+
+  try {
+    const fileBlob = await state.client.getFileBlob("logs", normalizedPath);
+    const fileName = normalizedPath.split("/").pop() || "log.txt";
+    const url = URL.createObjectURL(fileBlob);
+
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = fileName;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+
+    URL.revokeObjectURL(url);
+    appendConsole(`Log downloaded: logs/${normalizedPath}`, "info");
+    state.logFiles.lastError = "";
+    return true;
+  } catch (error) {
+    const message = error?.message || String(error);
+    state.logFiles.lastError = message;
+    appendConsole(`Log download failed (${normalizedPath}): ${message}`, "error");
+    return false;
+  } finally {
+    state.logFiles.actionInFlight = false;
+    renderMachineLogFilesCard();
+  }
+}
+
+async function requestMachineLogFileDelete(relativePath) {
+  const normalizedPath = normalizeMachineLogPath(relativePath);
+  if (!normalizedPath || !state.client || state.connectionStatus !== "connected") return false;
+
+  const confirmed = window.confirm(`Delete log file logs/${normalizedPath}? This cannot be undone.`);
+  if (!confirmed) return false;
+
+  state.logFiles.actionInFlight = true;
+  renderMachineLogFilesCard();
+
+  try {
+    await state.client.deleteLogFile(normalizedPath);
+    appendConsole(`Log deleted: logs/${normalizedPath}`, "warn");
+    state.logFiles.lastError = "";
+    await loadMachineLogFiles({ source: "delete", silent: true });
+    return true;
+  } catch (error) {
+    const message = error?.message || String(error);
+    state.logFiles.lastError = message;
+    appendConsole(`Log delete failed (${normalizedPath}): ${message}`, "error");
+    renderMachineLogFilesCard();
+    return false;
+  } finally {
+    state.logFiles.actionInFlight = false;
+    renderMachineLogFilesCard();
+  }
+}
+
+async function requestMachineLogFilesDeleteAll() {
+  if (!state.client || state.connectionStatus !== "connected") return false;
+
+  const files = [...(state.logFiles.files || [])];
+  if (!files.length) return false;
+
+  const confirmed = window.confirm(`Delete all ${files.length} log file${files.length === 1 ? "" : "s"}? This cannot be undone.`);
+  if (!confirmed) return false;
+
+  state.logFiles.actionInFlight = true;
+  renderMachineLogFilesCard();
+
+  let deletedCount = 0;
+  let failedCount = 0;
+
+  try {
+    for (const entry of files) {
+      try {
+        await state.client.deleteLogFile(entry.relativePath);
+        deletedCount += 1;
+      } catch {
+        failedCount += 1;
+      }
+    }
+
+    state.logFiles.lastError = "";
+    appendConsole(`Log cleanup complete: ${deletedCount} deleted${failedCount ? `, ${failedCount} failed` : ""}.`, failedCount ? "warn" : "info");
+    await loadMachineLogFiles({ source: "delete", silent: true });
+    return failedCount === 0;
+  } catch (error) {
+    const message = error?.message || String(error);
+    state.logFiles.lastError = message;
+    appendConsole(`Delete all logs failed: ${message}`, "error");
+    renderMachineLogFilesCard();
+    return false;
+  } finally {
+    state.logFiles.actionInFlight = false;
+    renderMachineLogFilesCard();
+  }
+}
+
+function renderMachineLogFilesCard() {
+  const logState = state.logFiles || createDefaultMachineLogFilesState();
+  const isConnected = state.connectionStatus === "connected";
+  const files = Array.isArray(logState.files) ? logState.files : [];
+  const busy = logState.isLoading || logState.actionInFlight;
+
+  if (els.machineLogFilesRefresh) {
+    els.machineLogFilesRefresh.disabled = !isConnected || busy;
+    els.machineLogFilesRefresh.textContent = logState.isLoading ? "Loading..." : "Refresh";
+  }
+
+  if (els.machineLogFilesDeleteAll) {
+    els.machineLogFilesDeleteAll.disabled = !isConnected || busy || !files.length;
+  }
+
+  if (els.machineLogFilesSummary) {
+    if (!files.length) {
+      els.machineLogFilesSummary.textContent = "No log files loaded.";
+    } else {
+      const sizeTotal = files.reduce((sum, entry) => sum + (Number(entry.size) || 0), 0);
+      const latestModified = files.reduce((max, entry) => Math.max(max, Number(entry.modifiedMs) || 0), 0);
+      const latestLabel = latestModified > 0 ? ` | Latest: ${formatMachineLogTimestamp(latestModified)}` : "";
+      const sizeLabel = sizeTotal > 0 ? ` | Total: ${formatFileSize(sizeTotal)}` : "";
+      els.machineLogFilesSummary.textContent = `${files.length} log file${files.length === 1 ? "" : "s"}${sizeLabel}${latestLabel}`;
+    }
+  }
+
+  if (els.machineLogFilesList) {
+    els.machineLogFilesList.innerHTML = "";
+
+    if (!files.length) {
+      const empty = document.createElement("p");
+      empty.className = "muted";
+      empty.textContent = isConnected ? "No log files reported in logs/." : "Log files are unavailable while disconnected.";
+      els.machineLogFilesList.appendChild(empty);
+    } else {
+      files.forEach((entry) => {
+        const row = document.createElement("article");
+        row.className = "machine-log-file-item";
+
+        const metaWrap = document.createElement("div");
+        metaWrap.className = "machine-log-file-meta";
+
+        const title = document.createElement("p");
+        title.className = "machine-log-file-name";
+        title.textContent = entry.relativePath;
+
+        const detail = document.createElement("p");
+        detail.className = "machine-log-file-detail muted";
+        const sizeLabel = formatFileSize(entry.size) || "--";
+        const modifiedLabel = formatMachineLogTimestamp(entry.modifiedMs);
+        detail.textContent = `${sizeLabel} | Modified: ${modifiedLabel}`;
+
+        metaWrap.append(title, detail);
+
+        const actions = document.createElement("div");
+        actions.className = "machine-log-file-row-actions";
+
+        const downloadButton = document.createElement("button");
+        downloadButton.type = "button";
+        downloadButton.className = "machine-log-file-btn";
+        downloadButton.textContent = "Download";
+        downloadButton.disabled = busy;
+        downloadButton.addEventListener("click", async () => {
+          await requestMachineLogFileDownload(entry.relativePath);
+        });
+
+        const deleteButton = document.createElement("button");
+        deleteButton.type = "button";
+        deleteButton.className = "machine-log-file-btn danger";
+        deleteButton.textContent = "Delete";
+        deleteButton.disabled = busy;
+        deleteButton.addEventListener("click", async () => {
+          await requestMachineLogFileDelete(entry.relativePath);
+        });
+
+        actions.append(downloadButton, deleteButton);
+        row.append(metaWrap, actions);
+        els.machineLogFilesList.appendChild(row);
+      });
+    }
+  }
+
+  if (!state.client) {
+    setMachineLogFilesStatusMessage("Connect to Moonraker to manage logs.", "warn");
+  } else if (!isConnected) {
+    setMachineLogFilesStatusMessage("Moonraker disconnected. Reconnect to manage logs.", "warn");
+  } else if (logState.isLoading) {
+    setMachineLogFilesStatusMessage("Loading log files...", "info");
+  } else if (logState.actionInFlight) {
+    setMachineLogFilesStatusMessage("Running log file action...", "warn");
+  } else if (logState.lastError) {
+    setMachineLogFilesStatusMessage(`Log files action failed: ${logState.lastError}`, "error");
+  } else if (logState.lastUpdatedMs) {
+    setMachineLogFilesStatusMessage(`Last refreshed: ${new Date(logState.lastUpdatedMs).toLocaleTimeString()}`, "info");
+  } else {
+    setMachineLogFilesStatusMessage("Press Refresh to load log files.", "info");
+  }
+}
+
+async function loadMachineLogFiles({ source = "user", silent = false } = {}) {
+  if (!state.client || state.connectionStatus !== "connected") {
+    renderMachineLogFilesCard();
+    return [];
+  }
+
+  if (state.logFiles.isLoading) {
+    return state.logFiles.files || [];
+  }
+
+  state.logFiles.isLoading = true;
+  state.logFiles.lastError = "";
+  renderMachineLogFilesCard();
+
+  try {
+    const response = await state.client.getLogFiles();
+    const files = extractMachineLogFiles(response);
+
+    state.logFiles.files = files;
+    state.logFiles.lastError = "";
+    state.logFiles.lastUpdatedMs = Date.now();
+
+    if (source === "user") {
+      appendConsole(`Loaded ${files.length} log file${files.length === 1 ? "" : "s"}.`, "info");
+    }
+
+    renderMachineLogFilesCard();
+    return files;
+  } catch (error) {
+    const message = error?.message || String(error);
+    state.logFiles.lastError = message;
+
+    if (!silent) {
+      appendConsole(`Log files load failed: ${message}`, "error");
+    }
+
+    renderMachineLogFilesCard();
+    return [];
+  } finally {
+    state.logFiles.isLoading = false;
+    renderMachineLogFilesCard();
+  }
+}
+
+function resetMachineLogFilesState() {
+  state.logFiles = createDefaultMachineLogFilesState();
+  renderMachineLogFilesCard();
 }
 
 function normalizeUpdaterName(value) {
@@ -3398,6 +3959,8 @@ async function connectMoonraker() {
   stopUpdateManagerPolling();
   resetMachineLoadsState();
   resetUpdateManagerState();
+  resetEndstopsState();
+  resetMachineLogFilesState();
 
   if (state.client?.ws && state.client.ws.readyState <= 1) {
     try {
@@ -3423,6 +3986,8 @@ async function connectMoonraker() {
       startUpdateManagerPolling();
       void refreshMachineLoadsSnapshot({ fetchStatic: true });
       void refreshUpdateManagerStatus({ forceRefresh: false, source: "connect" });
+      void requestEndstopsStatus({ source: "connect", silent: true });
+      void loadMachineLogFiles({ source: "connect", silent: true });
       log.info("Moonraker websocket connected.");
       return;
     }
@@ -3435,8 +4000,13 @@ async function connectMoonraker() {
       state.machineLoads.lastError = "Moonraker disconnected.";
       state.updateManager.lastError = "Moonraker disconnected.";
       state.updateManager.statusMessage = "";
+      state.endstops.queryInFlight = false;
+      state.logFiles.isLoading = false;
+      state.logFiles.actionInFlight = false;
       renderMachineLoadsCard();
       renderUpdateManagerCard();
+      renderEndstopsCard();
+      renderMachineLogFilesCard();
       log.warn("Moonraker websocket disconnected.");
       return;
     }
@@ -3449,8 +4019,13 @@ async function connectMoonraker() {
       state.machineLoads.lastError = "Moonraker websocket error.";
       state.updateManager.lastError = "Moonraker websocket error.";
       state.updateManager.statusMessage = "";
+      state.endstops.queryInFlight = false;
+      state.logFiles.isLoading = false;
+      state.logFiles.actionInFlight = false;
       renderMachineLoadsCard();
       renderUpdateManagerCard();
+      renderEndstopsCard();
+      renderMachineLogFilesCard();
       log.error("Moonraker websocket error.");
       return;
     }
@@ -3731,6 +4306,208 @@ function getConfigFileEntry(path) {
   return state.config.files.find((entry) => entry.path === normalizedPath) || null;
 }
 
+function escapeConfigSearchPattern(value) {
+  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function syncConfigSearchToggleUi(button, isActive) {
+  if (!button) return;
+  button.classList.toggle("is-active", !!isActive);
+  button.setAttribute("aria-pressed", String(!!isActive));
+}
+
+function renderConfigSearchUi() {
+  const hasSelection = !!state.config.selectedPath;
+  const hasMatches = state.configSearch.matches.length > 0 && !state.configSearch.invalidRegex;
+
+  if (els.configSearchInput) {
+    els.configSearchInput.disabled = !hasSelection;
+  }
+
+  [els.configSearchPrev, els.configSearchNext].forEach((button) => {
+    if (!button) return;
+    button.disabled = !hasSelection || !hasMatches;
+  });
+
+  [els.configSearchCase, els.configSearchWord, els.configSearchRegex].forEach((button) => {
+    if (!button) return;
+    button.disabled = !hasSelection;
+  });
+
+  syncConfigSearchToggleUi(els.configSearchCase, state.configSearch.caseSensitive);
+  syncConfigSearchToggleUi(els.configSearchWord, state.configSearch.wholeWord);
+  syncConfigSearchToggleUi(els.configSearchRegex, state.configSearch.useRegex);
+
+  if (!els.configSearchCount) return;
+
+  if (!hasSelection) {
+    els.configSearchCount.textContent = "0/0";
+    return;
+  }
+
+  if (state.configSearch.invalidRegex) {
+    els.configSearchCount.textContent = "Invalid";
+    return;
+  }
+
+  const total = state.configSearch.matches.length;
+  const current = state.configSearch.activeIndex;
+  els.configSearchCount.textContent = total > 0 && current >= 0
+    ? `${current + 1}/${total}`
+    : `0/${total}`;
+}
+
+function clearConfigSearch({ clearQuery = false } = {}) {
+  if (clearQuery && els.configSearchInput) {
+    els.configSearchInput.value = "";
+  }
+
+  if (clearQuery) {
+    state.configSearch.query = "";
+  }
+
+  state.configSearch.matches = [];
+  state.configSearch.activeIndex = -1;
+  state.configSearch.invalidRegex = false;
+  renderConfigSearchUi();
+}
+
+function buildConfigSearchRegex() {
+  if (!state.configSearch.query) return null;
+
+  const basePattern = state.configSearch.useRegex
+    ? state.configSearch.query
+    : escapeConfigSearchPattern(state.configSearch.query);
+
+  const pattern = state.configSearch.wholeWord ? `\\b${basePattern}\\b` : basePattern;
+  const flags = state.configSearch.caseSensitive ? "g" : "gi";
+
+  try {
+    return new RegExp(pattern, flags);
+  } catch {
+    state.configSearch.invalidRegex = true;
+    return null;
+  }
+}
+
+function computeConfigSearchMatches(content, regex) {
+  const matches = [];
+  let guard = 0;
+  let match;
+
+  while ((match = regex.exec(content)) !== null) {
+    if (guard > 20000) break;
+    guard += 1;
+
+    const value = String(match[0] || "");
+    if (!value.length) {
+      regex.lastIndex += 1;
+      continue;
+    }
+
+    matches.push({
+      start: match.index,
+      end: match.index + value.length,
+    });
+  }
+
+  return matches;
+}
+
+function focusActiveConfigSearchMatch() {
+  const editor = els.configEditor;
+  if (!editor || editor.disabled) return;
+
+  const active = state.configSearch.matches[state.configSearch.activeIndex];
+  if (!active) return;
+
+  editor.focus();
+  editor.setSelectionRange(active.start, active.end, "forward");
+}
+
+function refreshConfigSearchMatches({ preserveActive = false, focusActive = false } = {}) {
+  const editor = els.configEditor;
+  const hasSelection = !!state.config.selectedPath;
+  const rawQuery = String(els.configSearchInput?.value || "").trim();
+
+  state.configSearch.query = rawQuery;
+  state.configSearch.invalidRegex = false;
+
+  if (!hasSelection || !editor || !rawQuery) {
+    state.configSearch.matches = [];
+    state.configSearch.activeIndex = -1;
+    renderConfigSearchUi();
+    return;
+  }
+
+  const previousMatch = preserveActive && state.configSearch.activeIndex >= 0
+    ? state.configSearch.matches[state.configSearch.activeIndex]
+    : null;
+
+  const regex = buildConfigSearchRegex();
+  if (!regex) {
+    state.configSearch.matches = [];
+    state.configSearch.activeIndex = -1;
+    renderConfigSearchUi();
+    return;
+  }
+
+  const matches = computeConfigSearchMatches(editor.value || "", regex);
+  state.configSearch.matches = matches;
+
+  if (!matches.length) {
+    state.configSearch.activeIndex = -1;
+    renderConfigSearchUi();
+    return;
+  }
+
+  if (previousMatch) {
+    const previousIndex = matches.findIndex((entry) => entry.start === previousMatch.start && entry.end === previousMatch.end);
+    state.configSearch.activeIndex = previousIndex >= 0 ? previousIndex : 0;
+  } else {
+    const cursor = Number(editor.selectionStart);
+    const initialIndex = matches.findIndex((entry) => entry.start >= cursor);
+    state.configSearch.activeIndex = initialIndex >= 0 ? initialIndex : 0;
+  }
+
+  renderConfigSearchUi();
+
+  if (focusActive) {
+    focusActiveConfigSearchMatch();
+  }
+}
+
+function navigateConfigSearch(direction = 1) {
+  const hasSelection = !!state.config.selectedPath;
+  if (!hasSelection) return;
+
+  if (!state.configSearch.matches.length || state.configSearch.invalidRegex) {
+    refreshConfigSearchMatches({ preserveActive: false, focusActive: true });
+    return;
+  }
+
+  const total = state.configSearch.matches.length;
+  const nextIndex = state.configSearch.activeIndex < 0
+    ? 0
+    : (state.configSearch.activeIndex + direction + total) % total;
+
+  state.configSearch.activeIndex = nextIndex;
+  renderConfigSearchUi();
+  focusActiveConfigSearchMatch();
+}
+
+function setConfigSearchMode(modeKey, value) {
+  state.configSearch[modeKey] = !!value;
+  renderConfigSearchUi();
+  refreshConfigSearchMatches({ preserveActive: false, focusActive: false });
+}
+
+function focusConfigSearchInput() {
+  if (!els.configSearchInput || els.configSearchInput.disabled) return;
+  els.configSearchInput.focus();
+  els.configSearchInput.select();
+}
+
 function setConfigStatus(message, level = "info") {
   if (!els.configStatus) return;
   els.configStatus.textContent = message;
@@ -3774,16 +4551,39 @@ function syncConfigSelectionUi() {
   }
 
   setConfigDirtyState(state.config.isDirty);
+
+  if (!hasSelection) {
+    clearConfigSearch({ clearQuery: true });
+  } else {
+    refreshConfigSearchMatches({ preserveActive: false, focusActive: false });
+  }
 }
 
 function applyConfigFilter() {
   const selectedType = normalizeConfigFileType(state.config.fileTypeFilter);
+  const rawSearchQuery = String(state.config.fileSearchQuery || "").trim();
+  const searchTokens = rawSearchQuery.toLowerCase().split(/\s+/).filter(Boolean);
+
   state.config.fileTypeFilter = selectedType;
+  state.config.fileSearchQuery = rawSearchQuery;
+
+  if (els.configFileSearch && els.configFileSearch.value !== rawSearchQuery) {
+    els.configFileSearch.value = rawSearchQuery;
+  }
+
   persistConfigViewState();
 
   state.config.filteredFiles = state.config.files.filter((entry) => {
-    if (selectedType === CONFIG_FILE_TYPES.ALL) return true;
-    return entry.fileType === selectedType;
+    if (selectedType !== CONFIG_FILE_TYPES.ALL && entry.fileType !== selectedType) {
+      return false;
+    }
+
+    if (!searchTokens.length) {
+      return true;
+    }
+
+    const haystack = `${entry.path} ${entry.relativePath}`.toLowerCase();
+    return searchTokens.every((token) => haystack.includes(token));
   });
 
   renderConfigFileList();
@@ -3799,10 +4599,19 @@ function renderConfigFileList() {
     empty.className = "muted";
 
     const selectedType = normalizeConfigFileType(state.config.fileTypeFilter);
+    const searchQuery = String(state.config.fileSearchQuery || "").trim();
+
     if (!state.config.files.length) {
       empty.textContent = "No supported files found (.conf, .cfg, .config, .log, .bak, .bkp, .doc, .md).";
+    } else if (searchQuery) {
+      if (selectedType === CONFIG_FILE_TYPES.ALL) {
+        empty.textContent = `No files match "${searchQuery}".`;
+      } else {
+        const label = CONFIG_FILE_TYPE_LABELS[selectedType] || "files";
+        empty.textContent = `No ${label.toLowerCase()} match "${searchQuery}".`;
+      }
     } else if (selectedType === CONFIG_FILE_TYPES.ALL) {
-      empty.textContent = "No files found for the selected file type.";
+      empty.textContent = "No files found for the selected filters.";
     } else {
       const label = CONFIG_FILE_TYPE_LABELS[selectedType] || "files";
       empty.textContent = `No ${label.toLowerCase()} found.`;
@@ -4175,6 +4984,18 @@ async function requestViewChange(viewName) {
   } else {
     renderUpdateManagerCard();
   }
+
+  if (state.connectionStatus === "connected" && !state.endstops.lastUpdatedMs && !state.endstops.queryInFlight) {
+    void requestEndstopsStatus({ source: "view", silent: true });
+  } else {
+    renderEndstopsCard();
+  }
+
+  if (state.connectionStatus === "connected" && !state.logFiles.lastUpdatedMs && !state.logFiles.isLoading) {
+    void loadMachineLogFiles({ source: "view", silent: true });
+  } else {
+    renderMachineLogFilesCard();
+  }
 }
 
 async function handleConfigUpload(file) {
@@ -4407,6 +5228,58 @@ function wireEvents() {
     await requestUpdateManagerUpgrade();
   });
 
+  els.machineEndstopsQuery?.addEventListener("click", async () => {
+    await requestEndstopsStatus({ source: "user" });
+  });
+
+  els.machineLogFilesRefresh?.addEventListener("click", async () => {
+    await loadMachineLogFiles({ source: "user" });
+  });
+
+  els.machineLogFilesDeleteAll?.addEventListener("click", async () => {
+    await requestMachineLogFilesDeleteAll();
+  });
+
+  els.configSearchInput?.addEventListener("input", () => {
+    refreshConfigSearchMatches({ preserveActive: false, focusActive: false });
+  });
+
+  els.configSearchInput?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      navigateConfigSearch(event.shiftKey ? -1 : 1);
+      return;
+    }
+
+    if (event.key === "Escape") {
+      event.preventDefault();
+      clearConfigSearch({ clearQuery: true });
+      if (els.configEditor && !els.configEditor.disabled) {
+        els.configEditor.focus();
+      }
+    }
+  });
+
+  els.configSearchPrev?.addEventListener("click", () => {
+    navigateConfigSearch(-1);
+  });
+
+  els.configSearchNext?.addEventListener("click", () => {
+    navigateConfigSearch(1);
+  });
+
+  els.configSearchCase?.addEventListener("click", () => {
+    setConfigSearchMode("caseSensitive", !state.configSearch.caseSensitive);
+  });
+
+  els.configSearchWord?.addEventListener("click", () => {
+    setConfigSearchMode("wholeWord", !state.configSearch.wholeWord);
+  });
+
+  els.configSearchRegex?.addEventListener("click", () => {
+    setConfigSearchMode("useRegex", !state.configSearch.useRegex);
+  });
+
   els.configUploadBtn?.addEventListener("click", () => {
     els.configUploadInput?.click();
   });
@@ -4433,6 +5306,21 @@ function wireEvents() {
     applyConfigFilter();
   });
 
+  els.configFileSearch?.addEventListener("input", () => {
+    state.config.fileSearchQuery = String(els.configFileSearch.value || "");
+    applyConfigFilter();
+  });
+
+  els.configFileSearch?.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      els.configFileSearch.value = "";
+      state.config.fileSearchQuery = "";
+      applyConfigFilter();
+      els.configFileSearch.blur();
+    }
+  });
+
   els.configDownload?.addEventListener("click", () => {
     downloadActiveConfigFile();
   });
@@ -4456,6 +5344,21 @@ function wireEvents() {
       setConfigStatus(`Unsaved changes in ${state.config.selectedPath}. Choose Ignore Changes or Save & Restart Firmware.`, "warn");
     } else {
       setConfigStatus(`Loaded ${state.config.selectedPath}.`);
+    }
+
+    refreshConfigSearchMatches({ preserveActive: true, focusActive: false });
+  });
+
+  els.configEditor?.addEventListener("keydown", (event) => {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {
+      event.preventDefault();
+      focusConfigSearchInput();
+      return;
+    }
+
+    if (event.key === "F3") {
+      event.preventDefault();
+      navigateConfigSearch(event.shiftKey ? -1 : 1);
     }
   });
 
@@ -4611,14 +5514,22 @@ async function init() {
   if (els.configFilter) {
     els.configFilter.value = normalizeConfigFileType(state.config.fileTypeFilter);
   }
+
+  if (els.configFileSearch) {
+    els.configFileSearch.value = String(state.config.fileSearchQuery || "");
+  }
+
   switchView(state.activeView);
   syncConfigSelectionUi();
+  clearConfigSearch({ clearQuery: true });
   setConfigStatus("Connect to Moonraker from Settings to manage configuration files.", "warn");
 
   applyDashboardLayout();
   setupCollapsibleCards();
   renderMachineLoadsCard();
   renderUpdateManagerCard();
+  renderEndstopsCard();
+  renderMachineLogFilesCard();
 
   try {
     await restoreTemperatureHistoryForSession();
@@ -4646,6 +5557,15 @@ init().catch((error) => {
   setConnectionUi("error");
   appendConsole(`Init failed: ${message}`, "error");
 });
+
+
+
+
+
+
+
+
+
 
 
 

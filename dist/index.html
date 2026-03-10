@@ -7,8 +7,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
-  <script type="module" crossorigin src="/assets/index-C7zvhRL1.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-i3puWPo4.css">
+  <script type="module" crossorigin src="/assets/index-nivd0oy7.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-3oz8dHHj.css">
 </head>
 <body>
   <div class="shell">
@@ -357,6 +357,7 @@
                     <option value="config">Configs</option>
                     <option value="doc">Other docs</option>
                   </select>
+                  <input id="config-file-search" type="search" placeholder="Search files" aria-label="Search configuration files" />
                   <div id="config-file-list" class="config-file-list"></div>
                 </aside>
                 <section class="config-editor-panel">
@@ -364,6 +365,15 @@
                     <div class="config-editor-meta">
                       <strong id="config-current-file">No file selected</strong>
                       <p id="config-status" class="muted">Select a configuration file to view and edit.</p>
+                    </div>
+                    <div class="config-search-bar" id="config-search-bar">
+                      <input id="config-search-input" type="search" placeholder="Search in file" aria-label="Search in config file" />
+                      <button type="button" id="config-search-prev" class="config-search-nav" aria-label="Previous match">Prev</button>
+                      <button type="button" id="config-search-next" class="config-search-nav" aria-label="Next match">Next</button>
+                      <span id="config-search-count" class="muted config-search-count">0/0</span>
+                      <button type="button" id="config-search-case" class="config-search-toggle" aria-pressed="false" title="Case sensitive">Aa</button>
+                      <button type="button" id="config-search-word" class="config-search-toggle" aria-pressed="false" title="Whole word">W</button>
+                      <button type="button" id="config-search-regex" class="config-search-toggle" aria-pressed="false" title="Regex">.*</button>
                     </div>
                   </div>
                   <div id="config-dirty-prompt" class="config-dirty-prompt" hidden>
@@ -461,6 +471,56 @@
                   </div>
                 </section>
                 <p id="machine-system-status" class="muted machine-system-status">Connect to Moonraker to load system stats.</p>
+              </div>
+            </article>
+            <article class="card machine-endstops-card" id="card-machine-endstops">
+              <div class="card-head machine-endstops-head">
+                <h3>
+                  <span class="machine-endstops-title-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M5 5h6v6H5z"></path>
+                      <path d="M13 13h6v6h-6z"></path>
+                      <path d="M8 11V8m0 8v-3m3-5h3m-8 5H3m13 5h3m-8 0h3"></path>
+                    </svg>
+                  </span>
+                  Endstops
+                </h3>
+                <div class="actions machine-endstops-actions">
+                  <button type="button" id="machine-endstops-query" class="machine-endstops-query-btn">Query</button>
+                </div>
+              </div>
+              <div class="machine-endstops-body">
+                <p id="machine-endstops-summary" class="muted machine-endstops-summary">Press Query to check current endstop states.</p>
+                <div id="machine-endstops-list" class="machine-endstops-list">
+                  <p class="muted">No endstop data available yet.</p>
+                </div>
+                <p id="machine-endstops-status" class="muted machine-endstops-status">Connect to Moonraker to query endstops.</p>
+              </div>
+            </article>
+            <article class="card machine-log-files-card" id="card-machine-log-files">
+              <div class="card-head machine-log-files-head">
+                <h3>
+                  <span class="machine-log-files-title-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                      <polyline points="14 2 14 8 20 8"></polyline>
+                      <line x1="8" y1="13" x2="16" y2="13"></line>
+                      <line x1="8" y1="17" x2="13" y2="17"></line>
+                    </svg>
+                  </span>
+                  Log Files
+                </h3>
+                <div class="actions machine-log-files-actions">
+                  <button type="button" id="machine-log-files-refresh" class="machine-log-files-action-btn">Refresh</button>
+                  <button type="button" id="machine-log-files-delete-all" class="machine-log-files-action-btn danger">Delete All</button>
+                </div>
+              </div>
+              <div class="machine-log-files-body">
+                <p id="machine-log-files-summary" class="muted machine-log-files-summary">Connect to Moonraker to load log files.</p>
+                <div id="machine-log-files-list" class="machine-log-files-list">
+                  <p class="muted">No log files loaded.</p>
+                </div>
+                <p id="machine-log-files-status" class="muted machine-log-files-status">Connect to Moonraker to manage logs.</p>
               </div>
             </article>
           </aside>
@@ -610,5 +670,7 @@
 
 </body>
 </html>
+
+
 
 

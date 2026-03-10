@@ -150,6 +150,10 @@ export class MoonrakerClient {
     return this.getFilesByRoot("config");
   }
 
+  async getLogFiles() {
+    return this.getFilesByRoot("logs");
+  }
+
   async getServerInfo() {
     return this.call("/server/info");
   }
@@ -164,6 +168,10 @@ export class MoonrakerClient {
 
   async getMcuAndSystemStats() {
     return this.call("/printer/objects/query?mcu&system_stats");
+  }
+
+  async getEndstopsStatus() {
+    return this.call("/printer/query_endstops/status");
   }
 
   async getMachineUpdateStatus() {
@@ -263,6 +271,24 @@ export class MoonrakerClient {
     return response.text();
   }
 
+  async getFileBlob(root, path) {
+    const normalizedRoot = String(root || "").trim();
+    const encodedPath = encodePathForUrl(path);
+    if (!normalizedRoot || !encodedPath) {
+      throw new Error("A file root and path are required.");
+    }
+
+    const response = await fetch(`${this.baseUrl}/server/files/${encodeURIComponent(normalizedRoot)}/${encodedPath}`, {
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      throw new Error(`Moonraker call failed: /server/files/${normalizedRoot}/${encodedPath}`);
+    }
+
+    return response.blob();
+  }
+
   async getConfigFileText(path) {
     return this.getFileText("config", path);
   }
@@ -295,17 +321,19 @@ export class MoonrakerClient {
     return this.uploadFile("config", blob, directory.length ? directory : "", filename);
   }
 
-  async deleteConfigFile(path) {
+  async deleteFile(root, path) {
+    const normalizedRoot = String(root || "").trim();
     const normalizedPath = normalizePathSegments(path).join("/");
-    if (!normalizedPath) {
-      throw new Error("A config file path is required.");
+
+    if (!normalizedRoot || !normalizedPath) {
+      throw new Error("A file root and path are required.");
     }
 
     const encodedPath = encodePathForUrl(normalizedPath);
-    const prefixedPath = `config/${normalizedPath}`;
+    const prefixedPath = `${normalizedRoot}/${normalizedPath}`;
     const attempts = [
-      { path: `/server/files/config/${encodedPath}`, method: "DELETE" },
-      { path: `/server/files/config/${encodedPath}`, method: "POST" },
+      { path: `/server/files/${encodeURIComponent(normalizedRoot)}/${encodedPath}`, method: "DELETE" },
+      { path: `/server/files/${encodeURIComponent(normalizedRoot)}/${encodedPath}`, method: "POST" },
       { path: `/server/files/delete_file?path=${encodeURIComponent(normalizedPath)}`, method: "DELETE" },
       { path: `/server/files/delete_file?path=${encodeURIComponent(prefixedPath)}`, method: "DELETE" },
       { path: `/server/files/delete?path=${encodeURIComponent(normalizedPath)}`, method: "DELETE" },
@@ -338,9 +366,16 @@ export class MoonrakerClient {
       throw lastError;
     }
 
-    throw new Error(`Failed to delete config file: ${normalizedPath}`);
+    throw new Error(`Failed to delete file: ${normalizedRoot}/${normalizedPath}`);
+  }
+
+  async deleteConfigFile(path) {
+    return this.deleteFile("config", path);
+  }
+
+  async deleteLogFile(path) {
+    return this.deleteFile("logs", path);
   }
 }
-
 
 

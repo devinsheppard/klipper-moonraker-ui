@@ -1451,6 +1451,278 @@ select {
   color: color-mix(in srgb, var(--danger) 88%, #ffffff 12%);
 }
 
+.machine-endstops-card {
+  padding: 0;
+  overflow: hidden;
+}
+
+.machine-endstops-head {
+  margin: 0;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--bg-soft) 78%, rgba(2, 6, 23, 0.4)),
+    color-mix(in srgb, var(--bg) 80%, rgba(2, 6, 23, 0.44))
+  );
+}
+
+.machine-endstops-head h3 {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1.08rem;
+  letter-spacing: 0.02em;
+}
+
+.machine-endstops-title-icon {
+  width: 19px;
+  height: 19px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.machine-endstops-title-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.machine-endstops-actions {
+  align-items: center;
+}
+
+.machine-endstops-query-btn {
+  min-width: 92px;
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--line) 58%);
+  background: linear-gradient(
+    120deg,
+    color-mix(in srgb, var(--accent) 18%, rgba(2, 6, 23, 0.86)),
+    color-mix(in srgb, var(--accent-2) 15%, rgba(2, 6, 23, 0.84))
+  );
+}
+
+.machine-endstops-query-btn:disabled {
+  opacity: 0.56;
+  cursor: not-allowed;
+}
+
+.machine-endstops-body {
+  display: grid;
+  gap: 9px;
+  padding: 12px 14px 14px;
+}
+
+.machine-endstops-summary,
+.machine-endstops-status {
+  margin: 0;
+  font-size: 0.8rem;
+}
+
+.machine-endstops-list {
+  display: grid;
+  gap: 8px;
+}
+
+.machine-endstop-item {
+  border: 1px solid color-mix(in srgb, var(--line) 86%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg-soft) 43%, rgba(2, 6, 23, 0.32));
+  padding: 9px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.machine-endstop-name {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.84rem;
+  color: color-mix(in srgb, var(--text) 94%, #ffffff 6%);
+  overflow-wrap: anywhere;
+}
+
+.machine-endstop-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  padding: 2px 8px;
+  min-width: 86px;
+  font-size: 0.72rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.machine-endstop-pill-open {
+  border-color: color-mix(in srgb, #22c55e 72%, var(--line) 28%);
+  color: color-mix(in srgb, #22c55e 84%, #ffffff 16%);
+}
+
+.machine-endstop-pill-triggered {
+  border-color: color-mix(in srgb, var(--danger) 72%, var(--line) 28%);
+  color: color-mix(in srgb, var(--danger) 88%, #ffffff 12%);
+}
+
+.machine-endstop-pill-unknown {
+  border-color: color-mix(in srgb, #f59e0b 65%, var(--line) 35%);
+  color: color-mix(in srgb, #f59e0b 84%, #ffffff 16%);
+}
+
+.machine-endstops-status[data-level="warn"] {
+  color: color-mix(in srgb, #f59e0b 86%, #ffffff 14%);
+}
+
+.machine-endstops-status[data-level="error"] {
+  color: color-mix(in srgb, var(--danger) 88%, #ffffff 12%);
+}
+
+.machine-log-files-card {
+  padding: 0;
+  overflow: hidden;
+}
+
+.machine-log-files-head {
+  margin: 0;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--bg-soft) 78%, rgba(2, 6, 23, 0.4)),
+    color-mix(in srgb, var(--bg) 80%, rgba(2, 6, 23, 0.44))
+  );
+}
+
+.machine-log-files-head h3 {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1.08rem;
+  letter-spacing: 0.02em;
+}
+
+.machine-log-files-title-icon {
+  width: 19px;
+  height: 19px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.machine-log-files-title-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.machine-log-files-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.machine-log-files-action-btn {
+  min-width: 88px;
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--line) 58%);
+  background: linear-gradient(
+    120deg,
+    color-mix(in srgb, var(--accent) 18%, rgba(2, 6, 23, 0.86)),
+    color-mix(in srgb, var(--accent-2) 15%, rgba(2, 6, 23, 0.84))
+  );
+}
+
+.machine-log-files-action-btn.danger {
+  border-color: color-mix(in srgb, var(--danger) 66%, var(--line) 34%);
+  color: color-mix(in srgb, var(--danger) 84%, #ffffff 16%);
+}
+
+.machine-log-files-action-btn:disabled {
+  opacity: 0.56;
+  cursor: not-allowed;
+}
+
+.machine-log-files-body {
+  display: grid;
+  gap: 9px;
+  padding: 12px 14px 14px;
+}
+
+.machine-log-files-summary,
+.machine-log-files-status {
+  margin: 0;
+  font-size: 0.8rem;
+}
+
+.machine-log-files-list {
+  display: grid;
+  gap: 8px;
+}
+
+.machine-log-file-item {
+  border: 1px solid color-mix(in srgb, var(--line) 86%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg-soft) 43%, rgba(2, 6, 23, 0.32));
+  padding: 9px 10px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.machine-log-file-meta {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.machine-log-file-name,
+.machine-log-file-detail {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.machine-log-file-name {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.84rem;
+  color: color-mix(in srgb, var(--text) 94%, #ffffff 6%);
+}
+
+.machine-log-file-detail {
+  font-size: 0.74rem;
+  margin-top: 4px;
+}
+
+.machine-log-file-row-actions {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.machine-log-file-btn {
+  padding: 6px 10px;
+  font-size: 0.78rem;
+  border-radius: 8px;
+}
+
+.machine-log-file-btn.danger {
+  border-color: color-mix(in srgb, var(--danger) 66%, var(--line) 34%);
+  color: color-mix(in srgb, var(--danger) 84%, #ffffff 16%);
+}
+
+.machine-log-file-btn:disabled {
+  opacity: 0.56;
+  cursor: not-allowed;
+}
+
+.machine-log-files-status[data-level="warn"] {
+  color: color-mix(in srgb, #f59e0b 86%, #ffffff 14%);
+}
+
+.machine-log-files-status[data-level="error"] {
+  color: color-mix(in srgb, var(--danger) 88%, #ffffff 12%);
+}
+
 .config-layout {
   display: grid;
   grid-template-columns: minmax(220px, 320px) 1fr;
@@ -1468,9 +1740,17 @@ select {
 
 .config-files-panel {
   display: grid;
-  grid-template-rows: auto auto 1fr;
+  grid-template-rows: auto auto auto 1fr;
   gap: 10px;
   padding: 12px;
+}
+
+.config-files-panel input[type="search"] {
+  width: 100%;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.8rem;
+  padding: 7px 9px;
+  border-radius: 8px;
 }
 
 .config-file-list {
@@ -1552,6 +1832,52 @@ select {
 
 .config-editor-meta p {
   margin: 4px 0 0;
+}
+
+.config-search-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.config-search-bar input {
+  width: min(260px, 56vw);
+  min-width: 160px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.8rem;
+  padding: 6px 9px;
+  border-radius: 8px;
+}
+
+.config-search-nav,
+.config-search-toggle {
+  border-radius: 8px;
+  padding: 6px 9px;
+  font-size: 0.76rem;
+  min-width: 44px;
+}
+
+.config-search-toggle {
+  font-family: "JetBrains Mono", monospace;
+  letter-spacing: 0.02em;
+}
+
+.config-search-toggle.is-active {
+  border-color: color-mix(in srgb, var(--accent) 80%, var(--line) 20%);
+  background: linear-gradient(
+    120deg,
+    color-mix(in srgb, var(--accent) 24%, transparent),
+    color-mix(in srgb, var(--accent-2) 18%, transparent)
+  );
+}
+
+.config-search-count {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.76rem;
+  min-width: 50px;
+  text-align: center;
 }
 
 #config-status[data-level="warn"] {
@@ -1938,6 +2264,44 @@ select {
     min-width: 0;
   }
 
+  .machine-endstops-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .machine-endstops-actions {
+    width: 100%;
+  }
+
+  .machine-endstops-query-btn {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .machine-log-files-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .machine-log-files-actions {
+    width: 100%;
+  }
+
+  .machine-log-files-action-btn {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .machine-log-file-item {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .machine-log-file-row-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
   .machine-update-item-head {
     flex-direction: column;
     align-items: flex-start;
@@ -1959,6 +2323,16 @@ select {
 
   .config-editor {
     min-height: 300px;
+  }
+
+  .config-search-bar {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .config-search-bar input {
+    width: 100%;
+    min-width: 0;
   }
 
   .config-dirty-prompt {
@@ -2034,6 +2408,9 @@ select {
     padding: 8px 10px;
   }
 }
+
+
+
 
 
 
