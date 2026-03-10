@@ -65,6 +65,8 @@ const TEMPERATURE_PRESETS = {
 const TEMPERATURE_DEFAULT_MAX = 250;
 const TEMPERATURE_POLL_INTERVAL_MS = 800;
 const SYSTEM_LOAD_POLL_INTERVAL_MS = 2000;
+const UPDATE_MANAGER_POLL_INTERVAL_MS = 10000;
+const UPDATE_MANAGER_LOG_LIMIT = 140;
 const TEMPERATURE_HISTORY_SAMPLE_MS = 800;
 const TEMPERATURE_CHART_WINDOW_MS = 10 * 60 * 1000;
 const TEMPERATURE_CHART_SCROLL_STEP_RATIO = 0.18;
@@ -100,6 +102,7 @@ const CONFIG_FILE_TYPE_RANK = {
 };
 const CONFIG_FILE_HIDDEN_ROOTS = new Set(["gcodes", "timelapse", "timelapse_frames"]);
 const CONFIG_FILE_FALLBACK_ROOTS = ["config", "logs", "docs", "config_example", "config_examples"];
+const UPDATE_MANAGER_PRIMARY_ORDER = ["system", "klipper", "moonraker", "fluidd", "mainsail"];
 function getThemeColorValue(cssVarName, fallback) {
   const value = getComputedStyle(document.documentElement).getPropertyValue(cssVarName).trim();
   return value || fallback;
@@ -196,6 +199,13 @@ const els = {
   machineCpuGaugeValue: document.getElementById("machine-cpu-gauge-value"),
   machineMemGauge: document.getElementById("machine-mem-gauge"),
   machineMemGaugeValue: document.getElementById("machine-mem-gauge-value"),
+  machineUpdateRefresh: document.getElementById("machine-update-refresh"),
+  machineUpdateUpgradeAll: document.getElementById("machine-update-upgrade-all"),
+  machineUpdateSummary: document.getElementById("machine-update-summary"),
+  machineUpdateRate: document.getElementById("machine-update-rate"),
+  machineUpdateList: document.getElementById("machine-update-list"),
+  machineUpdateLog: document.getElementById("machine-update-log"),
+  machineUpdateStatus: document.getElementById("machine-update-status"),
   settingsForm: document.getElementById("settings-form"),
   moonrakerUrl: document.getElementById("moonraker-url"),
   interfaceTheme: document.getElementById("interface-theme"),
@@ -247,6 +257,7 @@ let layoutDraggedCardId = null;
 let layoutDraggedFromColumn = null;
 let temperaturePollTimer = null;
 let machineLoadPollTimer = null;
+let updateManagerPollTimer = null;
 let temperatureHistorySessionId = null;
 let temperatureHistoryDbPromise = null;
 let statusCountdownTimer = null;
@@ -532,6 +543,22 @@ function createDefaultMachineLoadsState() {
   };
 }
 
+function createDefaultUpdateManagerState() {
+  return {
+    busy: false,
+    versionInfo: {},
+    githubRateLimit: null,
+    githubRequestsRemaining: null,
+    githubLimitResetTime: null,
+    lastError: "",
+    statusMessage: "",
+    actionInFlight: false,
+    activeActionLabel: "",
+    lastUpdatedMs: null,
+    activityLog: [],
+  };
+}
+
 const state = {
   client: null,
   activeView: loadStoredView(),
@@ -593,6 +620,7 @@ const state = {
     },
   },
   machineLoads: createDefaultMachineLoadsState(),
+  updateManager: createDefaultUpdateManagerState(),
   printStatus: {
     filename: "",
     thumbnailPath: "",
@@ -1908,6 +1936,636 @@ function resetMachineLoadsState() {
   renderMachineLoadsCard();
 }
 
+function normalizeUpdaterName(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function formatUpdaterDisplayName(name) {
+  const normalized = normalizeUpdaterName(name);
+  if (!normalized) return "Unknown";
+  if (normalized === "klipper") return "Klipper";
+  if (normalized === "moonraker") return "Moonraker";
+  if (normalized === "fluidd") return "Fluidd";
+  if (normalized === "mainsail") return "Mainsail";
+  if (normalized === "system") return "System";
+  return normalized
+    .split(/[\s_-]+/)
+    .filter(Boolean)
+    .map((part) => part.slice(0, 1).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function toArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function deriveUpdateManagerEntries() {
+  const versionInfo = state.updateManager.versionInfo;
+  if (!versionInfo || typeof versionInfo !== "object") return [];
+
+  const entries = Object.entries(versionInfo)
+    .map(([key, rawEntry]) => {
+      if (!rawEntry || typeof rawEntry !== "object") return null;
+      const name = String(rawEntry.name || key).trim();
+      if (!name) return null;
+      return {
+        ...rawEntry,
+        name,
+      };
+    })
+    .filter(Boolean);
+
+  entries.sort((a, b) => {
+    const nameA = normalizeUpdaterName(a.name);
+    const nameB = normalizeUpdaterName(b.name);
+    const rankA = UPDATE_MANAGER_PRIMARY_ORDER.indexOf(nameA);
+    const rankB = UPDATE_MANAGER_PRIMARY_ORDER.indexOf(nameB);
+    const weightedA = rankA >= 0 ? rankA : UPDATE_MANAGER_PRIMARY_ORDER.length + 10;
+    const weightedB = rankB >= 0 ? rankB : UPDATE_MANAGER_PRIMARY_ORDER.length + 10;
+
+    if (weightedA !== weightedB) return weightedA - weightedB;
+    return nameA.localeCompare(nameB);
+  });
+
+  return entries;
+}
+
+function hasUpdaterUpdateAvailable(entry) {
+  if (!entry || typeof entry !== "object") return false;
+
+  const name = normalizeUpdaterName(entry.name);
+  const configuredType = normalizeUpdaterName(entry.configured_type);
+
+  if (name === "system" || configuredType === "system") {
+    const packageCount = asFiniteNumber(entry.package_count, 0);
+    return Number.isFinite(packageCount) && packageCount > 0;
+  }
+
+  const remoteHash = String(entry.remote_hash || "").trim().toLowerCase();
+  const currentHash = String(entry.current_hash || "").trim().toLowerCase();
+  if (remoteHash === "update-available") return true;
+  if (remoteHash && currentHash && remoteHash !== currentHash) return true;
+
+  const commitsBehind = toArray(entry.commits_behind).length;
+  if (commitsBehind > 0) return true;
+
+  const remoteVersion = String(entry.remote_version || "").trim();
+  const currentVersion = String(entry.version || "").trim();
+  if (remoteVersion && currentVersion && remoteVersion !== currentVersion) return true;
+
+  return false;
+}
+
+function canRecoverUpdater(entry) {
+  if (!entry || typeof entry !== "object") return false;
+
+  const name = normalizeUpdaterName(entry.name);
+  if (name === "system") return false;
+
+  const configuredType = normalizeUpdaterName(entry.configured_type);
+  if (configuredType === "git_repo" || configuredType === "zip" || configuredType === "web") return true;
+
+  if (entry.is_valid === false) return true;
+  if (entry.is_dirty === true) return true;
+  if (entry.corrupt === true) return true;
+  return false;
+}
+
+function canRollbackUpdater(entry) {
+  if (!entry || typeof entry !== "object") return false;
+  const rollbackVersion = String(entry.rollback_version || "").trim();
+  return !!rollbackVersion;
+}
+
+function getUpdaterIssueMessages(entry) {
+  if (!entry || typeof entry !== "object") return [];
+
+  const messages = [];
+  toArray(entry.warnings).forEach((msg) => {
+    const normalized = String(msg || "").trim();
+    if (normalized) messages.push(normalized);
+  });
+  toArray(entry.anomalies).forEach((msg) => {
+    const normalized = String(msg || "").trim();
+    if (normalized) messages.push(normalized);
+  });
+  toArray(entry.recovery_messages).forEach((msg) => {
+    const normalized = String(msg || "").trim();
+    if (normalized) messages.push(normalized);
+  });
+
+  return [...new Set(messages)];
+}
+
+function formatUpdateLogTime(timestamp) {
+  const time = Number(timestamp);
+  if (!Number.isFinite(time)) return "--:--:--";
+  return new Date(time).toLocaleTimeString();
+}
+
+function setUpdateManagerStatusMessage(message, level = "info") {
+  const normalized = String(message || "").trim();
+  state.updateManager.statusMessage = normalized;
+
+  if (!els.machineUpdateStatus) return;
+  els.machineUpdateStatus.textContent = normalized;
+  els.machineUpdateStatus.dataset.level = level;
+}
+
+function appendUpdateManagerActivity(message, level = "info") {
+  const normalized = String(message || "").trim();
+  if (!normalized) return;
+
+  state.updateManager.activityLog.push({
+    time: Date.now(),
+    message: normalized,
+    level,
+  });
+
+  if (state.updateManager.activityLog.length > UPDATE_MANAGER_LOG_LIMIT) {
+    state.updateManager.activityLog.splice(0, state.updateManager.activityLog.length - UPDATE_MANAGER_LOG_LIMIT);
+  }
+
+  renderUpdateManagerCard();
+}
+
+function renderUpdateManagerLog() {
+  if (!els.machineUpdateLog) return;
+
+  els.machineUpdateLog.innerHTML = "";
+
+  const logs = state.updateManager.activityLog;
+  if (!logs.length) {
+    const empty = document.createElement("p");
+    empty.className = "muted";
+    empty.textContent = "No update activity yet.";
+    els.machineUpdateLog.appendChild(empty);
+    return;
+  }
+
+  const recentLogs = logs.slice(-60);
+  recentLogs.forEach((entry) => {
+    const line = document.createElement("p");
+    line.className = "machine-update-log-line";
+    if (entry.level === "error") {
+      line.classList.add("machine-update-log-line-error");
+    }
+
+    line.textContent = `[${formatUpdateLogTime(entry.time)}] ${entry.message}`;
+    els.machineUpdateLog.appendChild(line);
+  });
+
+  els.machineUpdateLog.scrollTop = els.machineUpdateLog.scrollHeight;
+}
+
+function buildUpdateActionButton({ label, kind = "default", disabled = false, onClick }) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = `machine-update-btn machine-update-btn-${kind}`;
+  button.textContent = label;
+  button.disabled = disabled;
+  button.addEventListener("click", onClick);
+  return button;
+}
+
+function renderUpdateManagerEntry(entry, actionsDisabled) {
+  const item = document.createElement("article");
+  item.className = "machine-update-item";
+
+  const head = document.createElement("div");
+  head.className = "machine-update-item-head";
+
+  const titleWrap = document.createElement("div");
+  titleWrap.className = "machine-update-title-wrap";
+
+  const title = document.createElement("h4");
+  title.textContent = formatUpdaterDisplayName(entry.name);
+  titleWrap.appendChild(title);
+
+  const statusPill = document.createElement("span");
+  statusPill.className = "machine-update-pill";
+
+  const hasUpdate = hasUpdaterUpdateAvailable(entry);
+  const isValid = entry.is_valid !== false;
+  const packageCount = asFiniteNumber(entry.package_count, 0);
+
+  if (!isValid) {
+    statusPill.classList.add("machine-update-pill-danger");
+    statusPill.textContent = "Invalid";
+  } else if (packageCount > 0 && normalizeUpdaterName(entry.name) === "system") {
+    statusPill.classList.add("machine-update-pill-warn");
+    statusPill.textContent = `${Math.round(packageCount)} packages`;
+  } else if (hasUpdate) {
+    statusPill.classList.add("machine-update-pill-warn");
+    statusPill.textContent = "Update available";
+  } else {
+    statusPill.classList.add("machine-update-pill-ok");
+    statusPill.textContent = "Up to date";
+  }
+
+  titleWrap.appendChild(statusPill);
+  head.appendChild(titleWrap);
+
+  const actionWrap = document.createElement("div");
+  actionWrap.className = "machine-update-item-actions";
+
+  const entryName = String(entry.name || "").trim();
+  if (entryName && hasUpdate) {
+    actionWrap.appendChild(buildUpdateActionButton({
+      label: "Update",
+      kind: "accent",
+      disabled: actionsDisabled || !isValid,
+      onClick: async () => {
+        await requestUpdateManagerUpgrade(entryName);
+      },
+    }));
+  }
+
+  if (entryName && canRecoverUpdater(entry)) {
+    actionWrap.appendChild(buildUpdateActionButton({
+      label: "Recover",
+      kind: "warning",
+      disabled: actionsDisabled,
+      onClick: async () => {
+        const label = formatUpdaterDisplayName(entryName);
+        const confirmed = window.confirm(`Recover ${label}?`);
+        if (!confirmed) return;
+
+        const hardRecover = window.confirm(
+          `Use hard recover for ${label}?\n\nPress OK for hard recover, or Cancel for standard recover.`
+        );
+
+        await requestUpdateManagerRecover(entryName, { hard: hardRecover });
+      },
+    }));
+  }
+
+  if (entryName && canRollbackUpdater(entry)) {
+    actionWrap.appendChild(buildUpdateActionButton({
+      label: "Rollback",
+      kind: "default",
+      disabled: actionsDisabled,
+      onClick: async () => {
+        const label = formatUpdaterDisplayName(entryName);
+        const confirmed = window.confirm(`Rollback ${label} to ${entry.rollback_version}?`);
+        if (!confirmed) return;
+        await requestUpdateManagerRollback(entryName);
+      },
+    }));
+  }
+
+  if (actionWrap.childElementCount) {
+    head.appendChild(actionWrap);
+  }
+
+  item.appendChild(head);
+
+  const detail = document.createElement("p");
+  detail.className = "machine-update-detail";
+
+  const currentVersion = String(entry.version || entry.full_version_string || "--").trim() || "--";
+  const remoteVersion = String(entry.remote_version || "--").trim() || "--";
+  const configuredType = String(entry.configured_type || "").trim();
+  const channel = String(entry.channel || "").trim();
+  const branch = String(entry.branch || "").trim();
+
+  if (normalizeUpdaterName(entry.name) === "system") {
+    detail.textContent = `Package updates: ${Number.isFinite(packageCount) ? Math.max(0, Math.round(packageCount)) : 0}`;
+  } else {
+    detail.textContent = `Current: ${currentVersion}  |  Latest: ${remoteVersion}`;
+  }
+
+  item.appendChild(detail);
+
+  const metaParts = [];
+  if (configuredType) metaParts.push(`Type: ${configuredType}`);
+  if (channel) metaParts.push(`Channel: ${channel}`);
+  if (branch) metaParts.push(`Branch: ${branch}`);
+
+  const commitsBehind = toArray(entry.commits_behind).length;
+  if (commitsBehind > 0) {
+    metaParts.push(`${commitsBehind} commit${commitsBehind === 1 ? "" : "s"} behind`);
+  }
+
+  if (entry.is_dirty === true) metaParts.push("Dirty working tree");
+  if (entry.is_valid === false) metaParts.push("Invalid state");
+
+  if (metaParts.length) {
+    const metaLine = document.createElement("p");
+    metaLine.className = "machine-update-meta";
+    metaLine.textContent = metaParts.join(" | ");
+    item.appendChild(metaLine);
+  }
+
+  const issues = getUpdaterIssueMessages(entry);
+  if (issues.length) {
+    const issueList = document.createElement("div");
+    issueList.className = "machine-update-issues";
+
+    issues.slice(0, 3).forEach((issue) => {
+      const issueLine = document.createElement("p");
+      issueLine.textContent = issue;
+      issueList.appendChild(issueLine);
+    });
+
+    item.appendChild(issueList);
+  }
+
+  return item;
+}
+
+function renderUpdateManagerCard() {
+  const updateState = state.updateManager;
+  const entries = deriveUpdateManagerEntries();
+  const updatableCount = entries.filter((entry) => hasUpdaterUpdateAvailable(entry)).length;
+  const hasClient = !!state.client;
+
+  if (els.machineUpdateRefresh) {
+    els.machineUpdateRefresh.disabled = !hasClient || updateState.actionInFlight;
+  }
+
+  if (els.machineUpdateUpgradeAll) {
+    els.machineUpdateUpgradeAll.disabled = !hasClient || updateState.actionInFlight || updateState.busy || !updatableCount;
+  }
+
+  if (els.machineUpdateSummary) {
+    if (!hasClient) {
+      els.machineUpdateSummary.textContent = "Connect to Moonraker to check update status.";
+    } else if (!entries.length) {
+      els.machineUpdateSummary.textContent = "No updaters reported by Moonraker.";
+    } else if (!updatableCount) {
+      els.machineUpdateSummary.textContent = `All ${entries.length} updater${entries.length === 1 ? "" : "s"} are up to date.`;
+    } else {
+      els.machineUpdateSummary.textContent = `${updatableCount} updater${updatableCount === 1 ? "" : "s"} need attention.`;
+    }
+  }
+
+  if (els.machineUpdateRate) {
+    const remaining = asFiniteNumber(updateState.githubRequestsRemaining, null);
+    const limit = asFiniteNumber(updateState.githubRateLimit, null);
+    const resetTime = asFiniteNumber(updateState.githubLimitResetTime, null);
+
+    if (Number.isFinite(remaining) && Number.isFinite(limit)) {
+      const resetLabel = Number.isFinite(resetTime)
+        ? ` | Reset: ${new Date(resetTime * 1000).toLocaleTimeString()}`
+        : "";
+      els.machineUpdateRate.textContent = `GitHub API: ${Math.round(remaining)}/${Math.round(limit)}${resetLabel}`;
+    } else {
+      els.machineUpdateRate.textContent = "";
+    }
+  }
+
+  if (els.machineUpdateList) {
+    els.machineUpdateList.innerHTML = "";
+
+    if (!hasClient) {
+      const message = document.createElement("p");
+      message.className = "muted";
+      message.textContent = "Update controls are available after Moonraker connects.";
+      els.machineUpdateList.appendChild(message);
+    } else if (!entries.length) {
+      const message = document.createElement("p");
+      message.className = "muted";
+      message.textContent = "No updater entries found in Moonraker update status.";
+      els.machineUpdateList.appendChild(message);
+    } else {
+      const actionsDisabled = updateState.actionInFlight || updateState.busy;
+      entries.forEach((entry) => {
+        els.machineUpdateList.appendChild(renderUpdateManagerEntry(entry, actionsDisabled));
+      });
+    }
+  }
+
+  renderUpdateManagerLog();
+
+  if (!updateState.statusMessage) {
+    if (!hasClient) {
+      setUpdateManagerStatusMessage("Connect to Moonraker to use Update Manager.", "warn");
+    } else if (updateState.lastError) {
+      setUpdateManagerStatusMessage(`Update manager error: ${updateState.lastError}`, "error");
+    } else if (updateState.busy) {
+      setUpdateManagerStatusMessage("Update process running...", "warn");
+    } else if (updateState.lastUpdatedMs) {
+      setUpdateManagerStatusMessage(`Last checked: ${new Date(updateState.lastUpdatedMs).toLocaleTimeString()}`, "info");
+    } else {
+      setUpdateManagerStatusMessage("Loading update status...", "info");
+    }
+  }
+}
+
+function applyUpdateManagerSnapshot(payload, { keepStatusMessage = false } = {}) {
+  const normalized = payload && typeof payload === "object" ? payload : {};
+  const versionInfo = normalized.version_info && typeof normalized.version_info === "object"
+    ? normalized.version_info
+    : {};
+
+  state.updateManager.busy = !!normalized.busy;
+  state.updateManager.versionInfo = versionInfo;
+  state.updateManager.githubRateLimit = asFiniteNumber(normalized.github_rate_limit, null);
+  state.updateManager.githubRequestsRemaining = asFiniteNumber(normalized.github_requests_remaining, null);
+  state.updateManager.githubLimitResetTime = asFiniteNumber(normalized.github_limit_reset_time, null);
+  state.updateManager.lastError = "";
+  state.updateManager.lastUpdatedMs = Date.now();
+
+  if (!keepStatusMessage) {
+    state.updateManager.statusMessage = "";
+  }
+}
+
+async function refreshUpdateManagerStatus({ forceRefresh = false, source = "poll", name = null } = {}) {
+  if (!state.client) {
+    renderUpdateManagerCard();
+    return null;
+  }
+
+  try {
+    const response = forceRefresh
+      ? await state.client.refreshMachineUpdates(name)
+      : await state.client.getMachineUpdateStatus();
+
+    const snapshot = response?.result && typeof response.result === "object"
+      ? response.result
+      : response;
+
+    applyUpdateManagerSnapshot(snapshot);
+
+    if (forceRefresh && source !== "poll") {
+      setUpdateManagerStatusMessage("Update status refreshed.", "info");
+      appendUpdateManagerActivity("Update status refreshed.");
+    }
+
+    renderUpdateManagerCard();
+    return snapshot;
+  } catch (error) {
+    const message = error?.message || String(error);
+    state.updateManager.lastError = message;
+
+    if (source !== "poll") {
+      appendConsole(`Update manager refresh failed: ${message}`, "error");
+      appendUpdateManagerActivity(`Refresh failed: ${message}`, "error");
+      setUpdateManagerStatusMessage(`Update manager refresh failed: ${message}`, "error");
+    } else if (!state.updateManager.lastUpdatedMs) {
+      setUpdateManagerStatusMessage(`Update manager refresh failed: ${message}`, "error");
+    }
+
+    renderUpdateManagerCard();
+    throw error;
+  }
+}
+
+function stopUpdateManagerPolling() {
+  if (updateManagerPollTimer) {
+    clearInterval(updateManagerPollTimer);
+    updateManagerPollTimer = null;
+  }
+}
+
+function startUpdateManagerPolling() {
+  stopUpdateManagerPolling();
+  if (!state.client) return;
+
+  let inFlight = false;
+
+  const poll = async () => {
+    if (!state.client || inFlight) return;
+    inFlight = true;
+
+    try {
+      await refreshUpdateManagerStatus({ forceRefresh: false, source: "poll" });
+    } catch (error) {
+      log.debug("Update manager poll failed.", { error: error?.message || String(error) });
+    } finally {
+      inFlight = false;
+    }
+  };
+
+  poll();
+  updateManagerPollTimer = setInterval(poll, UPDATE_MANAGER_POLL_INTERVAL_MS);
+}
+
+function resetUpdateManagerState() {
+  state.updateManager = createDefaultUpdateManagerState();
+  renderUpdateManagerCard();
+}
+
+async function runUpdateManagerAction(actionLabel, action) {
+  if (!state.client) {
+    setUpdateManagerStatusMessage("Connect to Moonraker to run updater actions.", "warn");
+    return false;
+  }
+
+  if (state.updateManager.actionInFlight) {
+    setUpdateManagerStatusMessage("Another update action is currently running.", "warn");
+    return false;
+  }
+
+  state.updateManager.actionInFlight = true;
+  state.updateManager.activeActionLabel = actionLabel;
+  setUpdateManagerStatusMessage(`${actionLabel} requested...`, "warn");
+  appendUpdateManagerActivity(`${actionLabel} requested.`);
+  renderUpdateManagerCard();
+
+  try {
+    await action();
+    appendUpdateManagerActivity(`${actionLabel} accepted.`);
+
+    // Refresh quickly in case websocket update notifications are unavailable.
+    try {
+      await refreshUpdateManagerStatus({ forceRefresh: false, source: "action" });
+    } catch (refreshError) {
+      const refreshMessage = refreshError?.message || String(refreshError);
+      log.debug("Update manager post-action refresh failed.", { actionLabel, error: refreshMessage });
+    }
+
+    return true;
+  } catch (error) {
+    const message = error?.message || String(error);
+    state.updateManager.lastError = message;
+    appendUpdateManagerActivity(`${actionLabel} failed: ${message}`, "error");
+    appendConsole(`${actionLabel} failed: ${message}`, "error");
+    setUpdateManagerStatusMessage(`${actionLabel} failed: ${message}`, "error");
+    renderUpdateManagerCard();
+    return false;
+  } finally {
+    state.updateManager.actionInFlight = false;
+    state.updateManager.activeActionLabel = "";
+    renderUpdateManagerCard();
+  }
+}
+
+async function requestUpdateManagerRefresh() {
+  await refreshUpdateManagerStatus({ forceRefresh: true, source: "user" });
+}
+
+async function requestUpdateManagerUpgrade(name = null) {
+  const actionLabel = name
+    ? `Update ${formatUpdaterDisplayName(name)}`
+    : "Update all components";
+
+  return runUpdateManagerAction(actionLabel, async () => {
+    await state.client.upgradeMachineUpdates(name);
+  });
+}
+
+async function requestUpdateManagerRecover(name, { hard = false } = {}) {
+  const actionLabel = `${hard ? "Hard recover" : "Recover"} ${formatUpdaterDisplayName(name)}`;
+
+  return runUpdateManagerAction(actionLabel, async () => {
+    await state.client.recoverMachineUpdater(name, { hard });
+  });
+}
+
+async function requestUpdateManagerRollback(name) {
+  const actionLabel = `Rollback ${formatUpdaterDisplayName(name)}`;
+
+  return runUpdateManagerAction(actionLabel, async () => {
+    await state.client.rollbackMachineUpdater(name);
+  });
+}
+
+function handleUpdateManagerResponseNotification(payload) {
+  const [response] = Array.isArray(payload?.params) ? payload.params : [];
+  if (!response || typeof response !== "object") return;
+
+  const applicationName = String(response.application || response.name || "update").trim();
+  const applicationLabel = formatUpdaterDisplayName(applicationName);
+  const message = String(response.message || "").trim();
+  const isComplete = response.complete === true;
+  const isError = response.error === true;
+
+  if (message) {
+    appendUpdateManagerActivity(`${applicationLabel}: ${message}`, isError ? "error" : "info");
+  }
+
+  if (isError) {
+    state.updateManager.lastError = message || "Update manager reported an error.";
+    setUpdateManagerStatusMessage(state.updateManager.lastError, "error");
+  } else if (isComplete) {
+    state.updateManager.busy = false;
+    state.updateManager.actionInFlight = false;
+    state.updateManager.activeActionLabel = "";
+    setUpdateManagerStatusMessage(`${applicationLabel} update completed.`, "info");
+    void refreshUpdateManagerStatus({ forceRefresh: false, source: "notify" });
+  } else {
+    state.updateManager.busy = true;
+    if (message) {
+      setUpdateManagerStatusMessage(`${applicationLabel}: ${message}`, "warn");
+    }
+  }
+
+  renderUpdateManagerCard();
+}
+
+function handleUpdateManagerRefreshedNotification(payload) {
+  const [status] = Array.isArray(payload?.params) ? payload.params : [];
+  if (!status || typeof status !== "object") return;
+
+  applyUpdateManagerSnapshot(status);
+  setUpdateManagerStatusMessage("Update status refreshed.", "info");
+  appendUpdateManagerActivity("Moonraker pushed refreshed update status.");
+  renderUpdateManagerCard();
+}
+
 function updateTemperatureSnapshotFromStatus(status, { recordHistory = true } = {}) {
   const extruder = status?.extruder || {};
   const bed = status?.heater_bed || {};
@@ -2737,7 +3395,9 @@ async function connectMoonraker() {
   log.info("Connecting to Moonraker.", { baseUrl: state.moonrakerUrl });
   stopTemperaturePolling();
   stopMachineLoadPolling();
+  stopUpdateManagerPolling();
   resetMachineLoadsState();
+  resetUpdateManagerState();
 
   if (state.client?.ws && state.client.ws.readyState <= 1) {
     try {
@@ -2760,7 +3420,9 @@ async function connectMoonraker() {
       appendConsole("Moonraker connected.", "info");
       startTemperaturePolling();
       startMachineLoadPolling();
+      startUpdateManagerPolling();
       void refreshMachineLoadsSnapshot({ fetchStatic: true });
+      void refreshUpdateManagerStatus({ forceRefresh: false, source: "connect" });
       log.info("Moonraker websocket connected.");
       return;
     }
@@ -2769,8 +3431,12 @@ async function connectMoonraker() {
       appendConsole("Moonraker disconnected.", "warn");
       stopTemperaturePolling();
       stopMachineLoadPolling();
+      stopUpdateManagerPolling();
       state.machineLoads.lastError = "Moonraker disconnected.";
+      state.updateManager.lastError = "Moonraker disconnected.";
+      state.updateManager.statusMessage = "";
       renderMachineLoadsCard();
+      renderUpdateManagerCard();
       log.warn("Moonraker websocket disconnected.");
       return;
     }
@@ -2779,8 +3445,12 @@ async function connectMoonraker() {
       appendConsole("Moonraker websocket error.", "error");
       stopTemperaturePolling();
       stopMachineLoadPolling();
+      stopUpdateManagerPolling();
       state.machineLoads.lastError = "Moonraker websocket error.";
+      state.updateManager.lastError = "Moonraker websocket error.";
+      state.updateManager.statusMessage = "";
       renderMachineLoadsCard();
+      renderUpdateManagerCard();
       log.error("Moonraker websocket error.");
       return;
     }
@@ -2789,33 +3459,43 @@ async function connectMoonraker() {
   });
 
   state.client.onMessage((payload) => {
-    if (payload.method !== "notify_status_update") return;
+    if (payload.method === "notify_status_update") {
+      const [status] = payload.params || [];
+      const printStats = status?.print_stats || {};
+      const virtualSd = mergeVirtualSdSnapshot(status?.virtual_sdcard || null);
+      renderStatusProgress(virtualSd);
 
-    const [status] = payload.params || [];
-    const printStats = status?.print_stats || {};
-    const virtualSd = mergeVirtualSdSnapshot(status?.virtual_sdcard || null);
-    renderStatusProgress(virtualSd);
+      updateStatusFileInfo(printStats, status?.gcode_move || null, status?.motion_report || null);
 
-    updateStatusFileInfo(printStats, status?.gcode_move || null, status?.motion_report || null);
+      updateTemperatureSnapshotFromStatus(status);
 
-    updateTemperatureSnapshotFromStatus(status);
+      const reportedPrinterState = printStats.state || printStats.status;
+      if (reportedPrinterState) {
+        setPrinterState(reportedPrinterState);
+      }
 
-    const reportedPrinterState = printStats.state || printStats.status;
-    if (reportedPrinterState) {
-      setPrinterState(reportedPrinterState);
+      const extruder = status?.extruder || {};
+      const bed = status?.heater_bed || {};
+
+      log.debug("Status update received.", {
+        printerState: reportedPrinterState || null,
+        progress: state.printStatus.lastVirtualSd?.progress ?? null,
+        hotend: extruder.temperature ?? null,
+        hotendTarget: extruder.target ?? null,
+        bed: bed.temperature ?? null,
+        bedTarget: bed.target ?? null,
+      });
+      return;
     }
 
-    const extruder = status?.extruder || {};
-    const bed = status?.heater_bed || {};
+    if (payload.method === "notify_update_response") {
+      handleUpdateManagerResponseNotification(payload);
+      return;
+    }
 
-    log.debug("Status update received.", {
-      printerState: reportedPrinterState || null,
-      progress: state.printStatus.lastVirtualSd?.progress ?? null,
-      hotend: extruder.temperature ?? null,
-      hotendTarget: extruder.target ?? null,
-      bed: bed.temperature ?? null,
-      bedTarget: bed.target ?? null,
-    });
+    if (payload.method === "notify_update_refreshed") {
+      handleUpdateManagerRefreshedNotification(payload);
+    }
   });
 
   state.client.connectWebSocket();
@@ -3485,6 +4165,16 @@ async function requestViewChange(viewName) {
     applyConfigFilter();
     syncConfigSelectionUi();
   }
+
+  if (!state.updateManager.lastUpdatedMs) {
+    try {
+      await refreshUpdateManagerStatus({ forceRefresh: false, source: "view" });
+    } catch {
+      // Status message is handled inside refreshUpdateManagerStatus.
+    }
+  } else {
+    renderUpdateManagerCard();
+  }
 }
 
 async function handleConfigUpload(file) {
@@ -3707,6 +4397,16 @@ function wireEvents() {
     await loadConfigFiles({ preserveSelection: true });
   });
 
+  els.machineUpdateRefresh?.addEventListener("click", async () => {
+    await requestUpdateManagerRefresh();
+  });
+
+  els.machineUpdateUpgradeAll?.addEventListener("click", async () => {
+    const confirmed = window.confirm("Run Update All for every updater with available updates?");
+    if (!confirmed) return;
+    await requestUpdateManagerUpgrade();
+  });
+
   els.configUploadBtn?.addEventListener("click", () => {
     els.configUploadInput?.click();
   });
@@ -3918,6 +4618,7 @@ async function init() {
   applyDashboardLayout();
   setupCollapsibleCards();
   renderMachineLoadsCard();
+  renderUpdateManagerCard();
 
   try {
     await restoreTemperatureHistoryForSession();
@@ -3945,4 +4646,18 @@ init().catch((error) => {
   setConnectionUi("error");
   appendConsole(`Init failed: ${message}`, "error");
 });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 

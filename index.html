@@ -376,6 +376,39 @@
                 </section>
               </div>
             </article>
+            <article class="card machine-update-card" id="card-machine-update-manager">
+              <div class="card-head machine-update-head">
+                <h3>
+                  <span class="machine-update-title-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M4 13a8 8 0 1 0 2.34-5.66L4 10"></path>
+                      <polyline points="4 4 4 10 10 10"></polyline>
+                      <path d="m14 11-2 2 2 2"></path>
+                      <path d="m10 11 2 2-2 2"></path>
+                    </svg>
+                  </span>
+                  Update Manager
+                </h3>
+                <div class="actions machine-update-actions">
+                  <button type="button" id="machine-update-refresh" class="machine-update-action-btn">Refresh</button>
+                  <button type="button" id="machine-update-upgrade-all" class="machine-update-action-btn">Update All</button>
+                </div>
+              </div>
+              <div class="machine-update-summary-row">
+                <p id="machine-update-summary" class="muted">Connect to Moonraker to check update status.</p>
+                <p id="machine-update-rate" class="muted machine-update-rate"></p>
+              </div>
+              <div id="machine-update-list" class="machine-update-list">
+                <p class="muted">No updater data available.</p>
+              </div>
+              <details class="machine-update-log-wrap">
+                <summary>Update Activity</summary>
+                <div id="machine-update-log" class="machine-update-log">
+                  <p class="muted">No update activity yet.</p>
+                </div>
+              </details>
+              <p id="machine-update-status" class="muted machine-update-status">Connect to Moonraker to use Update Manager.</p>
+            </article>
           </div>
           <aside class="machine-side-column">
             <article class="card machine-system-loads-card" id="card-machine-system-loads">
@@ -577,4 +610,5 @@
   <script type="module" src="./src/app.js"></script>
 </body>
 </html>
+
 

@@ -65,9 +65,27 @@ export class MoonrakerClient {
   async call(path, options = {}) {
     const response = await fetch(`${this.baseUrl}${path}`, options);
     if (!response.ok) {
-      throw new Error(`Moonraker call failed: ${path}`);
+      const text = await response.text().catch(() => "");
+      const details = text ? `: ${text.slice(0, 200)}` : "";
+      const error = new Error(`Moonraker call failed (${response.status}): ${path}${details}`);
+      error.status = response.status;
+      throw error;
     }
-    return response.json();
+
+    if (response.status === 204) {
+      return null;
+    }
+
+    const text = await response.text();
+    if (!text) {
+      return null;
+    }
+
+    try {
+      return JSON.parse(text);
+    } catch {
+      return text;
+    }
   }
 
   connectWebSocket() {
@@ -146,6 +164,85 @@ export class MoonrakerClient {
 
   async getMcuAndSystemStats() {
     return this.call("/printer/objects/query?mcu&system_stats");
+  }
+
+  async getMachineUpdateStatus() {
+    return this.call("/machine/update/status");
+  }
+
+  async refreshMachineUpdates(name = null) {
+    const payload = name ? { name: String(name).trim() } : {};
+    return this.call("/machine/update/refresh", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async upgradeMachineUpdates(name = null) {
+    const payload = name ? { name: String(name).trim() } : {};
+
+    try {
+      return await this.call("/machine/update/upgrade", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    } catch (error) {
+      const status = Number(error?.status);
+      if (!Number.isFinite(status) || ![404, 405, 501].includes(status)) {
+        throw error;
+      }
+
+      const normalizedName = String(name || "").trim().toLowerCase();
+
+      if (!normalizedName) {
+        return this.call("/machine/update/full", {
+          method: "POST",
+        });
+      }
+
+      if (normalizedName === "system" || normalizedName === "moonraker" || normalizedName === "klipper") {
+        return this.call(`/machine/update/${normalizedName}`, {
+          method: "POST",
+        });
+      }
+
+      return this.call("/machine/update/client", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: normalizedName }),
+      });
+    }
+  }
+
+  async recoverMachineUpdater(name, { hard = false } = {}) {
+    const normalizedName = String(name || "").trim();
+    if (!normalizedName) {
+      throw new Error("An updater name is required for recover.");
+    }
+
+    return this.call("/machine/update/recover", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: normalizedName,
+        hard: !!hard,
+      }),
+    });
+  }
+
+  async rollbackMachineUpdater(name) {
+    const normalizedName = String(name || "").trim();
+    if (!normalizedName) {
+      throw new Error("An updater name is required for rollback.");
+    }
+
+    return this.call("/machine/update/rollback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: normalizedName }),
+    });
   }
 
   async getFileText(root, path) {
@@ -244,4 +341,6 @@ export class MoonrakerClient {
     throw new Error(`Failed to delete config file: ${normalizedPath}`);
   }
 }
+
+
 
