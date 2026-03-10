@@ -15,13 +15,14 @@ const DASHBOARD_CARD_IDS = [
   "card-motion",
   "card-quick-commands",
   "card-macros",
+  "card-dashboard-console",
   "camera-main-card",
   "camera-toolhead-card",
 ];
 
 const DASHBOARD_LAYOUT_DEFAULT = {
   left: ["card-print-progress", "card-motion", "camera-main-card", "card-macros"],
-  right: ["card-temperatures", "card-quick-commands", "camera-toolhead-card"],
+  right: ["card-temperatures", "card-quick-commands", "card-dashboard-console", "camera-toolhead-card"],
 };
 
 const DASHBOARD_CARD_LABELS = {
@@ -30,6 +31,7 @@ const DASHBOARD_CARD_LABELS = {
   "card-motion": "Motion",
   "card-quick-commands": "Quick Commands",
   "card-macros": "Macros",
+  "card-dashboard-console": "Console",
   "camera-main-card": "Main Camera",
   "camera-toolhead-card": "Toolhead Cam",
 };
@@ -59,6 +61,25 @@ const CONFIG_FILE_FILTER_STORAGE_KEY = "config_file_type_filter";
 const CONFIG_FILE_SEARCH_STORAGE_KEY = "config_file_search_filter";
 
 const CONSOLE_LOG_LEVELS = new Set(["debug", "info", "warn", "error"]);
+const CONSOLE_MAX_LINES = 1200;
+const CONSOLE_STORE_FETCH_COUNT = 400;
+const CONSOLE_STORE_POLL_INTERVAL_MS = 1200;
+const CONSOLE_STORE_SEEN_KEY_LIMIT = 6000;
+const CONSOLE_PENDING_COMMAND_LIMIT = 250;
+const CONSOLE_HISTORY_STORAGE_KEY = "console_history_v1";
+const CONSOLE_FILTER_STORAGE_KEY = "console_filter_v1";
+const CONSOLE_AUTOSCROLL_STORAGE_KEY = "console_autoscroll_v1";
+const CONSOLE_HIDE_TEMPS_STORAGE_KEY = "console_hide_temps_v1";
+const CONSOLE_RAW_OUTPUT_STORAGE_KEY = "console_raw_output_v1";
+const CONSOLE_HISTORY_LIMIT = 120;
+const CONSOLE_PAUSED_BUFFER_LIMIT = 1500;
+const CONSOLE_FILTER_VALUES = ["all", "command", "response", "error", "system"];
+const CONSOLE_HELPER_BASE_COMMANDS = [
+  "G0", "G1", "G2", "G3", "G4", "G10", "G20", "G21", "G28", "G90", "G91", "G92",
+  "M82", "M83", "M84", "M104", "M105", "M106", "M107", "M109", "M114", "M115", "M117",
+  "M118", "M140", "M141", "M190", "M191", "M220", "M221", "M400",
+];
+const CONSOLE_HELPER_FALLBACK = ["STATUS", "GET_POSITION", "QUERY_ENDSTOPS", "RESTART", "FIRMWARE_RESTART"];
 const TEMPERATURE_PRESETS = {
   hotend: [0, 170, 200, 215, 240, 260],
   bed: [0, 45, 60, 80, 100],
@@ -167,6 +188,35 @@ const els = {
   consoleLog: document.getElementById("console-log"),
   consoleForm: document.getElementById("console-form"),
   consoleInput: document.getElementById("console-input"),
+  consoleClear: document.getElementById("console-clear"),
+  consoleHelperToggle: document.getElementById("console-helper-toggle"),
+  consoleSettingsToggle: document.getElementById("console-settings-toggle"),
+  consoleHelperPanel: document.getElementById("console-helper-panel"),
+  consoleSettingsPanel: document.getElementById("console-settings-panel"),
+  consoleHideTemps: document.getElementById("console-hide-temps"),
+  consoleRawOutput: document.getElementById("console-raw-output"),
+  consolePause: document.getElementById("console-pause"),
+  consoleAutoscroll: document.getElementById("console-autoscroll"),
+  consoleFilter: document.getElementById("console-filter"),
+  consoleSearch: document.getElementById("console-search"),
+  consoleMeta: document.getElementById("console-meta"),
+  consoleHelperGrid: document.getElementById("console-helper-grid"),
+  dashboardConsoleLog: document.getElementById("dashboard-console-log"),
+  dashboardConsoleForm: document.getElementById("dashboard-console-form"),
+  dashboardConsoleInput: document.getElementById("dashboard-console-input"),
+  dashboardConsoleClear: document.getElementById("dashboard-console-clear"),
+  dashboardConsoleHelperToggle: document.getElementById("dashboard-console-helper-toggle"),
+  dashboardConsoleSettingsToggle: document.getElementById("dashboard-console-settings-toggle"),
+  dashboardConsoleHelperPanel: document.getElementById("dashboard-console-helper-panel"),
+  dashboardConsoleSettingsPanel: document.getElementById("dashboard-console-settings-panel"),
+  dashboardConsoleHideTemps: document.getElementById("dashboard-console-hide-temps"),
+  dashboardConsoleRawOutput: document.getElementById("dashboard-console-raw-output"),
+  dashboardConsolePause: document.getElementById("dashboard-console-pause"),
+  dashboardConsoleAutoscroll: document.getElementById("dashboard-console-autoscroll"),
+  dashboardConsoleFilter: document.getElementById("dashboard-console-filter"),
+  dashboardConsoleSearch: document.getElementById("dashboard-console-search"),
+  dashboardConsoleMeta: document.getElementById("dashboard-console-meta"),
+  dashboardConsoleHelperGrid: document.getElementById("dashboard-console-helper-grid"),
   macroList: document.getElementById("macro-list"),
   dashboardMacroList: document.getElementById("dashboard-macro-list"),
   fileList: document.getElementById("file-list"),
@@ -236,6 +286,7 @@ const els = {
   dashShowMacros: document.getElementById("dash-show-macros"),
   dashShowMainCamera: document.getElementById("dash-show-main-camera"),
   dashShowToolheadCamera: document.getElementById("dash-show-toolhead-camera"),
+  dashShowConsole: document.getElementById("dash-show-console"),
   openDashboardLayout: document.getElementById("open-dashboard-layout"),
   dashboardLayoutDialog: document.getElementById("dashboard-layout-dialog"),
   dashboardLayoutClose: document.getElementById("dashboard-layout-close"),
@@ -251,6 +302,7 @@ const els = {
   cardMotion: document.getElementById("card-motion"),
   cardQuickCommands: document.getElementById("card-quick-commands"),
   cardMacros: document.getElementById("card-macros"),
+  cardDashboardConsole: document.getElementById("card-dashboard-console"),
   cardMainCamera: document.getElementById("camera-main-card"),
   cardToolheadCamera: document.getElementById("camera-toolhead-card"),
   cameraEnabled: document.getElementById("camera-enabled"),
@@ -276,6 +328,7 @@ let layoutDraggedFromColumn = null;
 let temperaturePollTimer = null;
 let machineLoadPollTimer = null;
 let updateManagerPollTimer = null;
+let consoleStorePollTimer = null;
 let temperatureHistorySessionId = null;
 let temperatureHistoryDbPromise = null;
 let statusCountdownTimer = null;
@@ -640,6 +693,7 @@ const state = {
     showMacros: loadStoredBool("dashboard_show_macros", true),
     showMainCamera: loadStoredBool("dashboard_show_main_camera", true),
     showToolheadCamera: loadStoredBool("dashboard_show_toolhead_camera", true),
+    showConsole: loadStoredBool("dashboard_show_console", true),
     layout: loadDashboardLayout(),
   },
   camera: {
@@ -676,6 +730,24 @@ const state = {
   updateManager: createDefaultUpdateManagerState(),
   endstops: createDefaultEndstopsState(),
   logFiles: createDefaultMachineLogFilesState(),
+  console: {
+    seenStoreEntryKeys: new Set(),
+    pendingCommandCounts: new Map(),
+    storeSyncFailed: false,
+    autoscroll: loadStoredBool(CONSOLE_AUTOSCROLL_STORAGE_KEY, true),
+    filter: normalizeConsoleFilter(localStorage.getItem(CONSOLE_FILTER_STORAGE_KEY)),
+    searchQuery: "",
+    hideTemps: loadStoredBool(CONSOLE_HIDE_TEMPS_STORAGE_KEY, false),
+    rawOutput: loadStoredBool(CONSOLE_RAW_OUTPUT_STORAGE_KEY, false),
+    paused: false,
+    pausedBuffer: [],
+    history: loadStoredConsoleHistory(),
+    historyIndex: 0,
+    historyDraft: "",
+    helperEntries: buildDefaultConsoleHelperEntries(),
+    helperLoading: false,
+    helperLoaded: false,
+  },
   printStatus: {
     filename: "",
     thumbnailPath: "",
@@ -690,14 +762,914 @@ const state = {
   },
 };
 
-function appendConsole(message, level = "info") {
+function formatConsoleTimestamp(timestampMs = Date.now()) {
+  const numeric = Number(timestampMs);
+  const date = Number.isFinite(numeric) ? new Date(numeric) : new Date();
+  return date.toLocaleTimeString();
+}
+
+function loadStoredConsoleHistory() {
+  try {
+    const raw = localStorage.getItem(CONSOLE_HISTORY_STORAGE_KEY);
+    if (!raw) return [];
+
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed
+      .map((entry) => String(entry || "").trim())
+      .filter((entry) => entry.length > 0)
+      .slice(-CONSOLE_HISTORY_LIMIT);
+  } catch {
+    return [];
+  }
+}
+
+function normalizeConsoleFilter(value) {
+  const normalized = String(value || "all").trim().toLowerCase();
+  return CONSOLE_FILTER_VALUES.includes(normalized) ? normalized : "all";
+}
+
+function splitConsoleMessageLines(message) {
+  return String(message || "")
+    .replace(/\r/g, "")
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .filter((line) => line.trim().length > 0);
+}
+
+function getConsoleInstances() {
+  return [
+    {
+      key: "main",
+      log: els.consoleLog,
+      form: els.consoleForm,
+      input: els.consoleInput,
+      clearButton: els.consoleClear,
+      helperToggle: els.consoleHelperToggle,
+      settingsToggle: els.consoleSettingsToggle,
+      helperPanel: els.consoleHelperPanel,
+      settingsPanel: els.consoleSettingsPanel,
+      hideTempsInput: els.consoleHideTemps,
+      rawOutputInput: els.consoleRawOutput,
+      pauseButton: els.consolePause,
+      autoscrollInput: els.consoleAutoscroll,
+      filterSelect: els.consoleFilter,
+      searchInput: els.consoleSearch,
+      meta: els.consoleMeta,
+      helperGrid: els.consoleHelperGrid,
+    },
+    {
+      key: "dashboard",
+      log: els.dashboardConsoleLog,
+      form: els.dashboardConsoleForm,
+      input: els.dashboardConsoleInput,
+      clearButton: els.dashboardConsoleClear,
+      helperToggle: els.dashboardConsoleHelperToggle,
+      settingsToggle: els.dashboardConsoleSettingsToggle,
+      helperPanel: els.dashboardConsoleHelperPanel,
+      settingsPanel: els.dashboardConsoleSettingsPanel,
+      hideTempsInput: els.dashboardConsoleHideTemps,
+      rawOutputInput: els.dashboardConsoleRawOutput,
+      pauseButton: els.dashboardConsolePause,
+      autoscrollInput: els.dashboardConsoleAutoscroll,
+      filterSelect: els.dashboardConsoleFilter,
+      searchInput: els.dashboardConsoleSearch,
+      meta: els.dashboardConsoleMeta,
+      helperGrid: els.dashboardConsoleHelperGrid,
+    },
+  ];
+}
+
+function findConsoleInstance(instanceKey = "main") {
+  return getConsoleInstances().find((instance) => instance.key === instanceKey) || null;
+}
+
+function getConsoleInputElements() {
+  return getConsoleInstances()
+    .map((instance) => instance.input)
+    .filter((input) => input instanceof HTMLInputElement);
+}
+
+function getActiveConsoleInput(preferredInput = null) {
+  if (preferredInput instanceof HTMLInputElement) return preferredInput;
+
+  const inputs = getConsoleInputElements();
+  const focusedInput = inputs.find((input) => input === document.activeElement);
+  return focusedInput || inputs[0] || null;
+}
+
+function setAllConsoleInputValues(value) {
+  getConsoleInputElements().forEach((input) => {
+    input.value = value;
+  });
+}
+
+function syncConsoleInputValue(value, preferredInput = null) {
+  const targetInput = getActiveConsoleInput(preferredInput);
+  setAllConsoleInputValues(String(value || ""));
+  return targetInput;
+}
+
+function getPrimaryConsoleLog() {
+  const instance = getConsoleInstances().find((candidate) => candidate.log);
+  return instance?.log || null;
+}
+
+function isTemperatureConsoleMessage(message) {
+  const normalized = String(message || "").trim();
+  if (!normalized) return false;
+
+  if (/^(?:ok\s+)?(?:T\d*:|T:|B:|C:|P:)/i.test(normalized)) return true;
+  if (/\bT\d*:\s*-?\d/i.test(normalized)) return true;
+  if (/\bB:\s*-?\d/i.test(normalized)) return true;
+
+  return false;
+}
+
+function trimConsoleLog() {
+  getConsoleInstances().forEach((instance) => {
+    const logElement = instance.log;
+    if (!logElement) return;
+
+    while (logElement.children.length > CONSOLE_MAX_LINES) {
+      logElement.removeChild(logElement.firstElementChild);
+    }
+  });
+}
+
+function deriveConsoleType(level, label, preferredType = "") {
+  const normalizedPreferred = String(preferredType || "").trim().toLowerCase();
+  if (["command", "response", "error", "system"].includes(normalizedPreferred)) {
+    return normalizedPreferred;
+  }
+
+  const normalizedLabel = String(label || "").trim().toUpperCase();
   const normalizedLevel = CONSOLE_LOG_LEVELS.has(level) ? level : "info";
+
+  if (normalizedLabel === "COMMAND") return "command";
+  if (normalizedLabel === "RESPONSE") return "response";
+  if (normalizedLabel === "ERROR" || normalizedLevel === "error") return "error";
+
+  return "system";
+}
+
+function doesConsoleLineMatchFilter(line) {
+  if (!line) return false;
+
+  const filter = normalizeConsoleFilter(state.console.filter);
+  if (filter !== "all" && line.dataset.consoleType !== filter) {
+    return false;
+  }
+
+  if (state.console.hideTemps && line.dataset.consoleType === "response") {
+    const sourceText = line.dataset.consoleMessage || line.textContent || "";
+    if (isTemperatureConsoleMessage(sourceText)) {
+      return false;
+    }
+  }
+
+  const query = String(state.console.searchQuery || "").trim().toLowerCase();
+  if (!query) return true;
+
+  return String(line.textContent || "").toLowerCase().includes(query);
+}
+
+function updateConsoleMeta() {
+  const primaryLog = getPrimaryConsoleLog();
+  if (!primaryLog) return;
+
+  const total = primaryLog.children.length;
+  let visible = 0;
+
+  [...primaryLog.children].forEach((line) => {
+    if (!line.hidden) visible += 1;
+  });
+
+  const buffered = state.console.pausedBuffer.length;
+  const parts = [`${visible}/${total} visible`];
+
+  if (buffered > 0) {
+    parts.push(`${buffered} buffered`);
+  }
+
+  if (state.console.paused) {
+    parts.push("paused");
+  }
+
+  const metaText = `${parts.join(" | ")} lines`;
+
+  getConsoleInstances().forEach((instance) => {
+    if (instance.meta) {
+      instance.meta.textContent = metaText;
+    }
+
+    if (instance.pauseButton) {
+      instance.pauseButton.dataset.paused = state.console.paused ? "true" : "false";
+      instance.pauseButton.setAttribute("aria-pressed", String(state.console.paused));
+      const suffix = buffered > 0 ? ` (${buffered})` : "";
+      instance.pauseButton.textContent = state.console.paused ? `Resume${suffix}` : "Pause";
+    }
+  });
+}
+
+function scrollConsoleToBottom() {
+  getConsoleInstances().forEach((instance) => {
+    if (!instance.log) return;
+    instance.log.scrollTop = instance.log.scrollHeight;
+  });
+}
+
+function applyConsoleLineVisibility(line) {
+  if (!line) return;
+  line.hidden = !doesConsoleLineMatchFilter(line);
+}
+
+function refreshConsoleVisibility() {
+  getConsoleInstances().forEach((instance) => {
+    const logElement = instance.log;
+    if (!logElement) return;
+
+    [...logElement.children].forEach((line) => {
+      applyConsoleLineVisibility(line);
+    });
+  });
+
+  updateConsoleMeta();
+
+  if (!state.console.paused && state.console.autoscroll) {
+    scrollConsoleToBottom();
+  }
+}
+
+function buildConsoleLine(message, level, { timestampMs = Date.now(), label = null, consoleType = null } = {}) {
+  const normalizedLevel = CONSOLE_LOG_LEVELS.has(level) ? level : "info";
+  const lineLabel = String(label || normalizedLevel).trim().toUpperCase() || normalizedLevel.toUpperCase();
+  const lineType = deriveConsoleType(normalizedLevel, lineLabel, consoleType);
+
   const line = document.createElement("div");
   line.className = `console-line console-line-${normalizedLevel}`;
-  line.textContent = `[${new Date().toLocaleTimeString()}] [${normalizedLevel.toUpperCase()}] ${message}`;
-  els.consoleLog.appendChild(line);
-  els.consoleLog.scrollTop = els.consoleLog.scrollHeight;
+  line.dataset.consoleType = lineType;
+  line.dataset.consoleLevel = normalizedLevel;
+  line.dataset.consoleLabel = lineLabel;
+  line.dataset.consoleMessage = String(message || "");
+  line.textContent = `[${formatConsoleTimestamp(timestampMs)}] [${lineLabel}] ${message}`;
+  return line;
 }
+
+function appendConsoleLine(line) {
+  if (!line) return;
+
+  const logElements = getConsoleInstances()
+    .map((instance) => instance.log)
+    .filter((logElement) => !!logElement);
+
+  if (!logElements.length) return;
+
+  logElements.forEach((logElement, index) => {
+    const lineToAppend = index === 0 ? line : line.cloneNode(true);
+    applyConsoleLineVisibility(lineToAppend);
+    logElement.appendChild(lineToAppend);
+  });
+
+  trimConsoleLog();
+  updateConsoleMeta();
+
+  if (state.console.autoscroll && !state.console.paused) {
+    scrollConsoleToBottom();
+  }
+}
+
+function flushPausedConsoleEntries() {
+  if (!state.console.pausedBuffer.length) {
+    updateConsoleMeta();
+    return;
+  }
+
+  const buffered = [...state.console.pausedBuffer];
+  state.console.pausedBuffer.length = 0;
+
+  buffered.forEach((entry) => {
+    const line = buildConsoleLine(entry.message, entry.level, entry);
+    appendConsoleLine(line);
+  });
+}
+
+function setConsolePaused(nextPaused) {
+  const paused = !!nextPaused;
+  if (state.console.paused === paused) return;
+
+  state.console.paused = paused;
+
+  if (!paused) {
+    flushPausedConsoleEntries();
+  }
+
+  updateConsoleMeta();
+}
+
+function setConsoleAutoscroll(enabled) {
+  state.console.autoscroll = !!enabled;
+  localStorage.setItem(CONSOLE_AUTOSCROLL_STORAGE_KEY, String(state.console.autoscroll));
+
+  getConsoleInstances().forEach((instance) => {
+    if (instance.autoscrollInput) {
+      instance.autoscrollInput.checked = state.console.autoscroll;
+    }
+  });
+
+  if (!state.console.paused && state.console.autoscroll) {
+    scrollConsoleToBottom();
+  }
+
+  updateConsoleMeta();
+}
+
+function setConsoleFilter(value) {
+  state.console.filter = normalizeConsoleFilter(value);
+  localStorage.setItem(CONSOLE_FILTER_STORAGE_KEY, state.console.filter);
+
+  getConsoleInstances().forEach((instance) => {
+    if (instance.filterSelect) {
+      instance.filterSelect.value = state.console.filter;
+    }
+  });
+
+  refreshConsoleVisibility();
+}
+
+function setConsoleSearchQuery(value) {
+  state.console.searchQuery = String(value || "").trim();
+
+  getConsoleInstances().forEach((instance) => {
+    if (instance.searchInput) {
+      instance.searchInput.value = state.console.searchQuery;
+    }
+  });
+
+  refreshConsoleVisibility();
+}
+
+function closeConsolePanels() {
+  getConsoleInstances().forEach((instance) => {
+    if (instance.helperPanel) instance.helperPanel.hidden = true;
+    if (instance.settingsPanel) instance.settingsPanel.hidden = true;
+    if (instance.helperToggle) instance.helperToggle.setAttribute("aria-expanded", "false");
+    if (instance.settingsToggle) instance.settingsToggle.setAttribute("aria-expanded", "false");
+  });
+}
+
+function toggleConsoleHelperPanel(instanceKey = "main") {
+  const instance = findConsoleInstance(instanceKey);
+  if (!instance?.helperPanel) return;
+
+  const shouldOpen = instance.helperPanel.hidden;
+  closeConsolePanels();
+
+  if (shouldOpen) {
+    instance.helperPanel.hidden = false;
+    if (instance.helperToggle) instance.helperToggle.setAttribute("aria-expanded", "true");
+  }
+}
+
+function toggleConsoleSettingsPanel(instanceKey = "main") {
+  const instance = findConsoleInstance(instanceKey);
+  if (!instance?.settingsPanel) return;
+
+  const shouldOpen = instance.settingsPanel.hidden;
+  closeConsolePanels();
+
+  if (shouldOpen) {
+    instance.settingsPanel.hidden = false;
+    if (instance.settingsToggle) instance.settingsToggle.setAttribute("aria-expanded", "true");
+  }
+}
+
+function setConsoleHideTemps(enabled) {
+  state.console.hideTemps = !!enabled;
+  localStorage.setItem(CONSOLE_HIDE_TEMPS_STORAGE_KEY, String(state.console.hideTemps));
+
+  getConsoleInstances().forEach((instance) => {
+    if (instance.hideTempsInput) {
+      instance.hideTempsInput.checked = state.console.hideTemps;
+    }
+  });
+
+  refreshConsoleVisibility();
+}
+
+function setConsoleRawOutput(enabled) {
+  state.console.rawOutput = !!enabled;
+  localStorage.setItem(CONSOLE_RAW_OUTPUT_STORAGE_KEY, String(state.console.rawOutput));
+
+  getConsoleInstances().forEach((instance) => {
+    if (instance.rawOutputInput) {
+      instance.rawOutputInput.checked = state.console.rawOutput;
+    }
+  });
+}
+
+function buildDefaultConsoleHelperEntries() {
+  const defaults = [...CONSOLE_HELPER_BASE_COMMANDS, ...CONSOLE_HELPER_FALLBACK];
+  const unique = new Set();
+
+  defaults.forEach((command) => {
+    const normalized = String(command || "").trim().toUpperCase();
+    if (!normalized) return;
+    unique.add(normalized);
+  });
+
+  return [...unique]
+    .sort((a, b) => a.localeCompare(b))
+    .map((command) => ({ command, description: "" }));
+}
+
+function mergeConsoleHelperEntries(entries) {
+  const merged = new Map();
+
+  buildDefaultConsoleHelperEntries().forEach((entry) => {
+    merged.set(entry.command, entry);
+  });
+
+  (Array.isArray(entries) ? entries : []).forEach((entry) => {
+    const command = String(entry?.command || "").trim().toUpperCase();
+    if (!command) return;
+
+    const existing = merged.get(command);
+    const description = String(entry?.description || "").trim() || existing?.description || "";
+    merged.set(command, { command, description });
+  });
+
+  return [...merged.values()].sort((a, b) => a.command.localeCompare(b.command));
+}
+
+function renderConsoleHelperEntries() {
+  const helperGrids = getConsoleInstances()
+    .map((instance) => instance.helperGrid)
+    .filter((grid) => !!grid);
+
+  if (!helperGrids.length) return;
+
+  const entries = Array.isArray(state.console.helperEntries) ? state.console.helperEntries : [];
+
+  helperGrids.forEach((grid) => {
+    grid.innerHTML = "";
+
+    if (state.console.helperLoading) {
+      const loading = document.createElement("p");
+      loading.className = "muted";
+      loading.textContent = "Loading commands from Moonraker...";
+      grid.appendChild(loading);
+      return;
+    }
+
+    if (!entries.length) {
+      const empty = document.createElement("p");
+      empty.className = "muted";
+      empty.textContent = "No helper commands available.";
+      grid.appendChild(empty);
+      return;
+    }
+
+    const fragment = document.createDocumentFragment();
+
+    entries.forEach((entry) => {
+      const command = String(entry?.command || "").trim();
+      if (!command) return;
+
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.consoleHelper = command;
+
+      const commandLabel = document.createElement("span");
+      commandLabel.className = "console-helper-command";
+      commandLabel.textContent = command;
+      button.appendChild(commandLabel);
+
+      const description = String(entry?.description || "").trim();
+      if (description) {
+        const descriptionLabel = document.createElement("span");
+        descriptionLabel.className = "console-helper-description";
+        descriptionLabel.textContent = description;
+        button.appendChild(descriptionLabel);
+      }
+
+      if (description) {
+        button.title = `${command} - ${description}`;
+      } else {
+        button.title = command;
+      }
+
+      fragment.appendChild(button);
+    });
+
+    grid.appendChild(fragment);
+  });
+}
+
+function normalizeConsoleHelperEntries(response) {
+  const payload = response?.result ?? response ?? {};
+
+  let raw = payload;
+  if (payload && typeof payload === "object") {
+    if (payload.commands && typeof payload.commands === "object") {
+      raw = payload.commands;
+    } else if (payload.gcode_help && typeof payload.gcode_help === "object") {
+      raw = payload.gcode_help;
+    } else if (payload.help && typeof payload.help === "object") {
+      raw = payload.help;
+    }
+  }
+
+  const entries = [];
+
+  if (Array.isArray(raw)) {
+    raw.forEach((item) => {
+      if (typeof item === "string") {
+        const command = item.trim();
+        if (command) entries.push({ command, description: "" });
+        return;
+      }
+
+      if (item && typeof item === "object") {
+        const command = String(item.command || item.name || item.cmd || "").trim();
+        if (!command) return;
+        const description = String(item.description || item.help || item.desc || "").trim();
+        entries.push({ command, description });
+      }
+    });
+  } else if (raw && typeof raw === "object") {
+    Object.entries(raw).forEach(([name, value]) => {
+      const command = String(name || "").trim();
+      if (!command) return;
+
+      let description = "";
+      if (typeof value === "string") {
+        description = value.trim();
+      } else if (value && typeof value === "object") {
+        description = String(value.help || value.description || value.desc || "").trim();
+      }
+
+      entries.push({ command, description });
+    });
+  }
+
+  const unique = [];
+  const seen = new Set();
+
+  entries.forEach((entry) => {
+    const command = String(entry.command || "").trim().toUpperCase();
+    if (!command || seen.has(command)) return;
+    seen.add(command);
+    unique.push({ command, description: String(entry.description || "").trim() });
+  });
+
+  unique.sort((a, b) => a.command.localeCompare(b.command));
+  return unique;
+}
+
+async function loadConsoleHelperEntries() {
+  if (!state.client) {
+    renderConsoleHelperEntries();
+    return;
+  }
+
+  state.console.helperLoading = true;
+  renderConsoleHelperEntries();
+
+  try {
+    const response = await state.client.call("/printer/gcode/help");
+    const entries = normalizeConsoleHelperEntries(response);
+
+    state.console.helperEntries = mergeConsoleHelperEntries(entries);
+    state.console.helperLoaded = true;
+  } catch (error) {
+    const message = error?.message || String(error);
+
+    if (!state.console.helperLoaded) {
+      state.console.helperEntries = buildDefaultConsoleHelperEntries();
+    }
+
+    appendConsole(`Console helper load failed: ${message}`, "warn", {
+      consoleType: "system",
+      label: "SYSTEM",
+    });
+
+    log.debug("Console helper load failed.", { error: message });
+  } finally {
+    state.console.helperLoading = false;
+    renderConsoleHelperEntries();
+  }
+}
+
+function clearConsoleLog() {
+  getConsoleInstances().forEach((instance) => {
+    if (instance.log) {
+      instance.log.innerHTML = "";
+    }
+  });
+
+  state.console.pausedBuffer.length = 0;
+  updateConsoleMeta();
+}
+
+function persistConsoleHistory() {
+  localStorage.setItem(CONSOLE_HISTORY_STORAGE_KEY, JSON.stringify(state.console.history));
+}
+
+function resetConsoleHistoryCursor() {
+  state.console.historyIndex = state.console.history.length;
+  state.console.historyDraft = "";
+}
+
+function rememberConsoleHistory(command) {
+  const normalized = String(command || "").trim();
+  if (!normalized) return;
+
+  state.console.history = state.console.history.filter((entry) => entry !== normalized);
+  state.console.history.push(normalized);
+
+  while (state.console.history.length > CONSOLE_HISTORY_LIMIT) {
+    state.console.history.shift();
+  }
+
+  persistConsoleHistory();
+  resetConsoleHistoryCursor();
+}
+
+function moveConsoleHistory(direction, preferredInput = null) {
+  const history = state.console.history;
+  const activeInput = getActiveConsoleInput(preferredInput);
+  if (!history.length || !activeInput) return;
+
+  if (typeof state.console.historyIndex !== "number") {
+    state.console.historyIndex = history.length;
+  }
+
+  if (direction < 0) {
+    if (state.console.historyIndex === history.length) {
+      state.console.historyDraft = activeInput.value;
+    }
+    state.console.historyIndex = Math.max(0, state.console.historyIndex - 1);
+  } else if (direction > 0) {
+    state.console.historyIndex = Math.min(history.length, state.console.historyIndex + 1);
+  }
+
+  if (state.console.historyIndex >= history.length) {
+    syncConsoleInputValue(state.console.historyDraft, activeInput);
+    return;
+  }
+
+  syncConsoleInputValue(history[state.console.historyIndex] || "", activeInput);
+
+  if (typeof activeInput.setSelectionRange === "function") {
+    const cursor = activeInput.value.length;
+    activeInput.setSelectionRange(cursor, cursor);
+  }
+}
+
+function appendConsole(message, level = "info", { timestampMs = Date.now(), label = null, consoleType = null } = {}) {
+  const text = String(message ?? "");
+  if (!text.trim()) return;
+
+  const entry = {
+    message: text,
+    level,
+    timestampMs,
+    label,
+    consoleType,
+  };
+
+  if (state.console.paused) {
+    state.console.pausedBuffer.push(entry);
+
+    while (state.console.pausedBuffer.length > CONSOLE_PAUSED_BUFFER_LIMIT) {
+      state.console.pausedBuffer.shift();
+    }
+
+    updateConsoleMeta();
+    return;
+  }
+
+  const line = buildConsoleLine(text, level, {
+    timestampMs,
+    label,
+    consoleType,
+  });
+
+  appendConsoleLine(line);
+}
+
+function makePendingCommandKey(line) {
+  return String(line || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toUpperCase();
+}
+
+function rememberPendingCommand(line) {
+  const key = makePendingCommandKey(line);
+  if (!key) return;
+
+  const current = state.console.pendingCommandCounts.get(key) || 0;
+  state.console.pendingCommandCounts.set(key, current + 1);
+
+  while (state.console.pendingCommandCounts.size > CONSOLE_PENDING_COMMAND_LIMIT) {
+    const oldestKey = state.console.pendingCommandCounts.keys().next().value;
+    if (!oldestKey) break;
+    state.console.pendingCommandCounts.delete(oldestKey);
+  }
+}
+
+function consumePendingCommand(line) {
+  const key = makePendingCommandKey(line);
+  if (!key) return false;
+
+  const current = state.console.pendingCommandCounts.get(key) || 0;
+  if (!current) return false;
+
+  if (current <= 1) {
+    state.console.pendingCommandCounts.delete(key);
+  } else {
+    state.console.pendingCommandCounts.set(key, current - 1);
+  }
+
+  return true;
+}
+
+function appendOutgoingScriptLines(script) {
+  const commandLines = splitConsoleMessageLines(script);
+  commandLines.forEach((line) => {
+    rememberPendingCommand(line);
+    appendConsole(line, "info", { label: "COMMAND", consoleType: "command" });
+  });
+}
+
+function normalizeGcodeStoreType(type) {
+  return String(type || "")
+    .trim()
+    .toLowerCase();
+}
+
+function inferGcodeStoreLineType(lineText, normalizedType) {
+  if (normalizedType === "command") return "command";
+  if (normalizedType === "response") return "response";
+  if (normalizedType === "warn" || normalizedType === "warning") return "system";
+  if (normalizedType === "error") return "error";
+
+  if (lineText.startsWith("!!") || /^error/i.test(lineText)) return "error";
+  if (lineText.startsWith("//") || /^ok/i.test(lineText)) return "response";
+  return "command";
+}
+
+function getConsoleLineMeta(lineType) {
+  if (lineType === "error") {
+    return { level: "error", label: "ERROR", consoleType: "error" };
+  }
+
+  if (lineType === "response") {
+    return { level: "info", label: "RESPONSE", consoleType: "response" };
+  }
+
+  if (lineType === "command") {
+    return { level: "info", label: "COMMAND", consoleType: "command" };
+  }
+
+  return { level: "info", label: "SYSTEM", consoleType: "system" };
+}
+
+function rememberConsoleStoreEntryKey(key) {
+  state.console.seenStoreEntryKeys.add(key);
+
+  while (state.console.seenStoreEntryKeys.size > CONSOLE_STORE_SEEN_KEY_LIMIT) {
+    const oldestKey = state.console.seenStoreEntryKeys.keys().next().value;
+    if (!oldestKey) break;
+    state.console.seenStoreEntryKeys.delete(oldestKey);
+  }
+}
+
+function createConsoleStoreEntryKey(entry, line, resolvedType = "") {
+  const timestamp = Number(entry?.time);
+  const normalizedType = resolvedType || normalizeGcodeStoreType(entry?.type) || "log";
+  const safeTimestamp = Number.isFinite(timestamp) ? timestamp : 0;
+  return `${safeTimestamp}|${normalizedType}|${line}`;
+}
+
+function processGcodeStoreEntries(entries) {
+  if (!Array.isArray(entries) || !entries.length) return;
+
+  const sortedEntries = [...entries].sort((a, b) => (Number(a?.time) || 0) - (Number(b?.time) || 0));
+
+  sortedEntries.forEach((entry) => {
+    const normalizedType = normalizeGcodeStoreType(entry?.type);
+    const lines = splitConsoleMessageLines(entry?.message || "");
+    if (!lines.length) return;
+
+    const timestampMs = Number.isFinite(Number(entry?.time)) ? Number(entry.time) * 1000 : Date.now();
+
+    lines.forEach((lineText) => {
+      const lineType = inferGcodeStoreLineType(lineText, normalizedType);
+      const entryKey = createConsoleStoreEntryKey(entry, lineText, lineType);
+
+      if (state.console.seenStoreEntryKeys.has(entryKey)) return;
+      rememberConsoleStoreEntryKey(entryKey);
+
+      if (lineType === "command" && consumePendingCommand(lineText)) return;
+
+      const meta = getConsoleLineMeta(lineType);
+      appendConsole(lineText, meta.level, {
+        timestampMs,
+        label: meta.label,
+        consoleType: meta.consoleType,
+      });
+    });
+  });
+}
+
+function extractGcodeStoreEntries(payload) {
+  if (!payload || !Array.isArray(payload.params)) return [];
+
+  const entries = [];
+
+  payload.params.forEach((param) => {
+    if (!param) return;
+
+    if (Array.isArray(param)) {
+      param.forEach((candidate) => {
+        if (candidate && typeof candidate === "object") entries.push(candidate);
+      });
+      return;
+    }
+
+    if (Array.isArray(param.gcode_store)) {
+      param.gcode_store.forEach((candidate) => {
+        if (candidate && typeof candidate === "object") entries.push(candidate);
+      });
+      return;
+    }
+
+    if (typeof param === "object" && ("message" in param || "type" in param)) {
+      entries.push(param);
+    }
+  });
+
+  return entries;
+}
+
+async function syncConsoleFromGcodeStore() {
+  if (!state.client) return;
+
+  try {
+    const response = await state.client.call(`/server/gcode_store?count=${CONSOLE_STORE_FETCH_COUNT}`);
+    const store = response?.result?.gcode_store;
+    if (Array.isArray(store)) {
+      processGcodeStoreEntries(store);
+    }
+    state.console.storeSyncFailed = false;
+  } catch (error) {
+    const message = error?.message || String(error);
+    if (!state.console.storeSyncFailed) {
+      appendConsole(`Console sync failed: ${message}`, "warn", { consoleType: "system" });
+    }
+    state.console.storeSyncFailed = true;
+    log.debug("Console store sync failed.", { error: message });
+  }
+}
+
+function stopConsoleStorePolling() {
+  if (!consoleStorePollTimer) return;
+  clearInterval(consoleStorePollTimer);
+  consoleStorePollTimer = null;
+}
+
+function startConsoleStorePolling() {
+  stopConsoleStorePolling();
+  if (!state.client) return;
+
+  let inFlight = false;
+
+  const poll = async () => {
+    if (inFlight || !state.client) return;
+    inFlight = true;
+    try {
+      await syncConsoleFromGcodeStore();
+    } finally {
+      inFlight = false;
+    }
+  };
+
+  void poll();
+  consoleStorePollTimer = setInterval(() => {
+    void poll();
+  }, CONSOLE_STORE_POLL_INTERVAL_MS);
+}
+
+function resetConsoleStoreTracking() {
+  state.console.seenStoreEntryKeys.clear();
+  state.console.pendingCommandCounts.clear();
+  state.console.storeSyncFailed = false;
+}
+
 
 function updateSidebarToggleUi() {
   if (!els.sidebarToggle) return;
@@ -747,6 +1719,7 @@ function applyDashboardSettings() {
     [els.cardMacros, state.dashboard.showMacros],
     [els.cardMainCamera, state.dashboard.showMainCamera],
     [els.cardToolheadCamera, state.dashboard.showToolheadCamera],
+    [els.cardDashboardConsole, state.dashboard.showConsole],
   ];
 
   visibilityMap.forEach(([card, visible]) => {
@@ -1790,7 +2763,7 @@ function renderMachineLoadsCard() {
   const memUsageLabel = Number.isFinite(usedMemoryBytes) && Number.isFinite(totalMemoryBytes)
     ? `${formatByteMagnitude(usedMemoryBytes)} / ${formatByteMagnitude(totalMemoryBytes)}`
     : "--";
-  const tempLabel = Number.isFinite(hostTemp) ? `${Math.round(hostTemp)}°C` : "--";
+  const tempLabel = Number.isFinite(hostTemp) ? `${Math.round(hostTemp)}Â°C` : "--";
 
   if (els.machineHostArch) els.machineHostArch.textContent = hostArchLabel;
   if (els.machineHostVersion) els.machineHostVersion.textContent = `Version: ${hostVersionLabel}`;
@@ -3695,7 +4668,6 @@ async function setTemperatureTarget(sensorKey, rawValue) {
 
   const sent = await executeGcodeAction(script, {
     actionLabel: `Set ${sensorKey === "hotend" ? "Extruder" : "Heater Bed"} target`,
-    successMessage: `Target set to ${target}\u00B0C`,
   });
 
   if (!sent) return;
@@ -3707,7 +4679,6 @@ async function setTemperatureTarget(sensorKey, rawValue) {
 async function cooldownTemperaturePanel() {
   const sent = await executeGcodeAction("SET_HEATER_TEMPERATURE HEATER=extruder TARGET=0\nSET_HEATER_TEMPERATURE HEATER=heater_bed TARGET=0", {
     actionLabel: "Cooldown",
-    successMessage: "Cooldown triggered.",
   });
 
   if (!sent) return;
@@ -3957,6 +4928,8 @@ async function connectMoonraker() {
   stopTemperaturePolling();
   stopMachineLoadPolling();
   stopUpdateManagerPolling();
+  stopConsoleStorePolling();
+  resetConsoleStoreTracking();
   resetMachineLoadsState();
   resetUpdateManagerState();
   resetEndstopsState();
@@ -3984,6 +4957,9 @@ async function connectMoonraker() {
       startTemperaturePolling();
       startMachineLoadPolling();
       startUpdateManagerPolling();
+      resetConsoleStoreTracking();
+      startConsoleStorePolling();
+      void loadConsoleHelperEntries();
       void refreshMachineLoadsSnapshot({ fetchStatic: true });
       void refreshUpdateManagerStatus({ forceRefresh: false, source: "connect" });
       void requestEndstopsStatus({ source: "connect", silent: true });
@@ -3997,6 +4973,7 @@ async function connectMoonraker() {
       stopTemperaturePolling();
       stopMachineLoadPolling();
       stopUpdateManagerPolling();
+      stopConsoleStorePolling();
       state.machineLoads.lastError = "Moonraker disconnected.";
       state.updateManager.lastError = "Moonraker disconnected.";
       state.updateManager.statusMessage = "";
@@ -4016,6 +4993,7 @@ async function connectMoonraker() {
       stopTemperaturePolling();
       stopMachineLoadPolling();
       stopUpdateManagerPolling();
+      stopConsoleStorePolling();
       state.machineLoads.lastError = "Moonraker websocket error.";
       state.updateManager.lastError = "Moonraker websocket error.";
       state.updateManager.statusMessage = "";
@@ -4034,6 +5012,38 @@ async function connectMoonraker() {
   });
 
   state.client.onMessage((payload) => {
+    if (state.console.rawOutput) {
+      try {
+        appendConsole(JSON.stringify(payload), "debug", {
+          label: "RAW",
+          consoleType: "system",
+        });
+      } catch {
+        appendConsole(String(payload), "debug", {
+          label: "RAW",
+          consoleType: "system",
+        });
+      }
+    }
+
+    if (payload.method === "notify_gcode_response") {
+      const [responseLine] = payload.params || [];
+      splitConsoleMessageLines(responseLine).forEach((line) => {
+        const isErrorLine = line.startsWith("!!") || /^error\b/i.test(line);
+        appendConsole(line, isErrorLine ? "error" : "info", {
+          label: isErrorLine ? "ERROR" : "RESPONSE",
+          consoleType: isErrorLine ? "error" : "response",
+        });
+      });
+      return;
+    }
+    if (payload.method === "notify_gcode_store") {
+      const entries = extractGcodeStoreEntries(payload);
+      if (entries.length) {
+        processGcodeStoreEntries(entries);
+      }
+      return;
+    }
     if (payload.method === "notify_status_update") {
       const [status] = payload.params || [];
       const printStats = status?.print_stats || {};
@@ -4160,7 +5170,6 @@ function renderMacroButtons(container, macroKeys) {
     button.addEventListener("click", async () => {
       await executeGcodeAction(name, {
         actionLabel: `Macro ${name}`,
-        successMessage: `Macro executed: ${name}`,
       });
     });
     container.appendChild(button);
@@ -4898,7 +5907,6 @@ async function saveConfigAndRestartFirmware() {
 
     const restarted = await executeGcodeAction("FIRMWARE_RESTART", {
       actionLabel: "Firmware restart",
-      successMessage: "Firmware restart requested after config save.",
     });
 
     if (!restarted) {
@@ -5187,6 +6195,8 @@ async function executeGcodeAction(script, { actionLabel = script, successMessage
     script,
   });
 
+  appendOutgoingScriptLines(script);
+
   try {
     await state.client.runGcode(script);
     if (successMessage) {
@@ -5390,6 +6400,7 @@ function wireEvents() {
     state.dashboard.showMacros = els.dashShowMacros.checked;
     state.dashboard.showMainCamera = els.dashShowMainCamera.checked;
     state.dashboard.showToolheadCamera = els.dashShowToolheadCamera.checked;
+    state.dashboard.showConsole = !!els.dashShowConsole?.checked;
 
     state.camera.enabled = els.cameraEnabled.checked;
     state.camera.url = els.cameraUrl.value.trim();
@@ -5411,6 +6422,7 @@ function wireEvents() {
     localStorage.setItem("dashboard_show_macros", String(state.dashboard.showMacros));
     localStorage.setItem("dashboard_show_main_camera", String(state.dashboard.showMainCamera));
     localStorage.setItem("dashboard_show_toolhead_camera", String(state.dashboard.showToolheadCamera));
+    localStorage.setItem("dashboard_show_console", String(state.dashboard.showConsole));
     localStorage.setItem("dashboard_layout", JSON.stringify(state.dashboard.layout));
     localStorage.setItem("dashboard_layout_order", JSON.stringify(flattenDashboardLayout(state.dashboard.layout)));
     localStorage.setItem("camera_enabled", String(state.camera.enabled));
@@ -5433,28 +6445,128 @@ function wireEvents() {
     await connectMoonraker();
   });
 
-  els.consoleForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const command = els.consoleInput.value.trim();
-    if (!command) return;
+  getConsoleInstances().forEach((instance) => {
+    instance.form?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const command = String(instance.input?.value || "").trim();
+      if (!command) return;
 
-    const sent = await executeGcodeAction(command, {
-      actionLabel: "Console command",
-      successMessage: `> ${command}`,
+      const sent = await executeGcodeAction(command, {
+        actionLabel: "Console command",
+      });
+
+      if (sent) {
+        rememberConsoleHistory(command);
+        setAllConsoleInputValues("");
+        resetConsoleHistoryCursor();
+        instance.input?.focus();
+      }
     });
 
-    if (sent) {
-      els.consoleInput.value = "";
-    }
+    instance.clearButton?.addEventListener("click", () => {
+      clearConsoleLog();
+    });
+
+    instance.pauseButton?.addEventListener("click", () => {
+      setConsolePaused(!state.console.paused);
+    });
+
+    instance.helperToggle?.addEventListener("click", (event) => {
+      event.preventDefault();
+      toggleConsoleHelperPanel(instance.key);
+    });
+
+    instance.settingsToggle?.addEventListener("click", (event) => {
+      event.preventDefault();
+      toggleConsoleSettingsPanel(instance.key);
+    });
+
+    instance.helperGrid?.addEventListener("click", (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+
+      const helperButton = target.closest("[data-console-helper]");
+      if (!helperButton) return;
+
+      const command = helperButton.getAttribute("data-console-helper") || "";
+      if (!command) return;
+
+      syncConsoleInputValue(command, instance.input);
+      resetConsoleHistoryCursor();
+      instance.input?.focus();
+      closeConsolePanels();
+    });
+
+    instance.hideTempsInput?.addEventListener("change", () => {
+      setConsoleHideTemps(!!instance.hideTempsInput?.checked);
+    });
+
+    instance.rawOutputInput?.addEventListener("change", () => {
+      setConsoleRawOutput(!!instance.rawOutputInput?.checked);
+    });
+
+    instance.autoscrollInput?.addEventListener("change", () => {
+      setConsoleAutoscroll(!!instance.autoscrollInput?.checked);
+    });
+
+    instance.filterSelect?.addEventListener("change", () => {
+      setConsoleFilter(instance.filterSelect?.value || "all");
+    });
+
+    instance.searchInput?.addEventListener("input", () => {
+      setConsoleSearchQuery(instance.searchInput?.value || "");
+    });
+
+    instance.input?.addEventListener("keydown", (event) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "l") {
+        event.preventDefault();
+        clearConsoleLog();
+        return;
+      }
+
+      if (event.key === "ArrowUp" && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+        event.preventDefault();
+        moveConsoleHistory(-1, instance.input);
+        return;
+      }
+
+      if (event.key === "ArrowDown" && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+        event.preventDefault();
+        moveConsoleHistory(1, instance.input);
+        return;
+      }
+
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeConsolePanels();
+        setAllConsoleInputValues("");
+        resetConsoleHistoryCursor();
+      }
+    });
   });
 
+  document.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof Node)) return;
+
+    const clickedToggle = getConsoleInstances().some((instance) =>
+      !!instance.helperToggle?.contains(target) || !!instance.settingsToggle?.contains(target)
+    );
+
+    const clickedPanel = getConsoleInstances().some((instance) =>
+      !!instance.helperPanel?.contains(target) || !!instance.settingsPanel?.contains(target)
+    );
+
+    if (!clickedToggle && !clickedPanel) {
+      closeConsolePanels();
+    }
+  });
   els.quickGcode.forEach((btn) => {
     btn.addEventListener("click", async () => {
       const command = btn.dataset.gcode;
       if (!command) return;
       await executeGcodeAction(command, {
         actionLabel: `Quick command ${command}`,
-        successMessage: `> ${command}`,
       });
     });
   });
@@ -5466,7 +6578,6 @@ function wireEvents() {
       const script = inferAxisCommand(direction);
       await executeGcodeAction(script, {
         actionLabel: `Jog ${direction}`,
-        successMessage: `Jogged ${direction}`,
       });
     });
   });
@@ -5474,7 +6585,6 @@ function wireEvents() {
   els.home.addEventListener("click", async () => {
     await executeGcodeAction("G28", {
       actionLabel: "Home axes",
-      successMessage: "Home command sent.",
     });
   });
 
@@ -5502,6 +6612,7 @@ async function init() {
   els.dashShowMacros.checked = state.dashboard.showMacros;
   els.dashShowMainCamera.checked = state.dashboard.showMainCamera;
   els.dashShowToolheadCamera.checked = state.dashboard.showToolheadCamera;
+  if (els.dashShowConsole) els.dashShowConsole.checked = state.dashboard.showConsole;
 
   els.cameraEnabled.checked = state.camera.enabled;
   els.cameraUrl.value = state.camera.url;
@@ -5518,6 +6629,33 @@ async function init() {
   if (els.configFileSearch) {
     els.configFileSearch.value = String(state.config.fileSearchQuery || "");
   }
+
+  getConsoleInstances().forEach((instance) => {
+    if (instance.autoscrollInput) {
+      instance.autoscrollInput.checked = state.console.autoscroll;
+    }
+
+    if (instance.filterSelect) {
+      instance.filterSelect.value = normalizeConsoleFilter(state.console.filter);
+    }
+
+    if (instance.searchInput) {
+      instance.searchInput.value = state.console.searchQuery;
+    }
+
+    if (instance.hideTempsInput) {
+      instance.hideTempsInput.checked = state.console.hideTemps;
+    }
+
+    if (instance.rawOutputInput) {
+      instance.rawOutputInput.checked = state.console.rawOutput;
+    }
+  });
+
+  closeConsolePanels();
+  renderConsoleHelperEntries();
+  resetConsoleHistoryCursor();
+  updateConsoleMeta();
 
   switchView(state.activeView);
   syncConfigSelectionUi();
@@ -5557,6 +6695,7 @@ init().catch((error) => {
   setConnectionUi("error");
   appendConsole(`Init failed: ${message}`, "error");
 });
+
 
 
 

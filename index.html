@@ -268,6 +268,72 @@
             <div id="dashboard-macro-list" class="macro-list"></div>
           </article>
 
+          <article class="card console-card" id="card-dashboard-console">
+            <div class="card-head console-card-head">
+              <h3>G-code Console</h3>
+              <div class="actions console-head-actions">
+                <button type="button" id="dashboard-console-clear" class="console-head-btn" aria-label="Clear console" title="Clear console">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <polyline points="3 6 5 6 21 6"></polyline>
+                    <path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"></path>
+                    <path d="M19 6l-1 13a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+                    <line x1="10" y1="11" x2="10" y2="17"></line>
+                    <line x1="14" y1="11" x2="14" y2="17"></line>
+                  </svg>
+                </button>
+                <button type="button" id="dashboard-console-helper-toggle" class="console-head-btn console-helper-toggle" aria-label="Console helper" title="Console helper" aria-expanded="false">?</button>
+                <button type="button" id="dashboard-console-settings-toggle" class="console-head-btn" aria-label="Console settings" title="Console settings" aria-expanded="false">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path d="M19.4 15a1.6 1.6 0 0 0 .3 1.7l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.7-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.7.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.7 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.7l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.7.3h.1a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5h.1a1.6 1.6 0 0 0 1.7-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.7v.1a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1Z"></path>
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div class="console-panel" id="dashboard-console-helper-panel" hidden>
+              <p class="muted">Helper commands (click to insert):</p>
+              <div class="console-helper-grid" id="dashboard-console-helper-grid">
+                <p class="muted">Connect to Moonraker to load available commands.</p>
+              </div>
+            </div>
+            <div class="console-panel" id="dashboard-console-settings-panel" hidden>
+              <label class="checkbox-row" for="dashboard-console-hide-temps">
+                <input id="dashboard-console-hide-temps" type="checkbox" />
+                <span>Hide temps from console output</span>
+              </label>
+              <label class="checkbox-row" for="dashboard-console-raw-output">
+                <input id="dashboard-console-raw-output" type="checkbox" />
+                <span>Enable raw output (debug)</span>
+              </label>
+            </div>
+            <div class="console-toolbar" id="dashboard-console-toolbar">
+              <div class="console-toolbar-group">
+                <button type="button" id="dashboard-console-pause" class="console-pause" aria-pressed="false">Pause</button>
+                <label class="checkbox-row console-inline-toggle" for="dashboard-console-autoscroll">
+                  <input id="dashboard-console-autoscroll" type="checkbox" checked />
+                  <span>Auto-scroll</span>
+                </label>
+              </div>
+              <div class="console-toolbar-group">
+                <label for="dashboard-console-filter">Show</label>
+                <select id="dashboard-console-filter">
+                  <option value="all">All</option>
+                  <option value="command">Commands</option>
+                  <option value="response">Responses</option>
+                  <option value="error">Errors</option>
+                  <option value="system">System</option>
+                </select>
+                <input id="dashboard-console-search" class="console-search" type="search" placeholder="Search console..." autocomplete="off" />
+              </div>
+            </div>
+            <p class="console-meta" id="dashboard-console-meta">0 lines</p>
+            <div class="console-log" id="dashboard-console-log" role="log" aria-live="polite"></div>
+            <form id="dashboard-console-form" class="console-form">
+              <input id="dashboard-console-input" class="console-input" type="text" placeholder="Enter G-code... (Up/Down for history)" autocomplete="off" />
+              <button type="submit">Send</button>
+            </form>
+          </article>
+
           <article class="card camera-card" id="camera-main-card">
             <div class="camera-card-head">
               <h3>Main Camera</h3>
@@ -287,11 +353,68 @@
       </section>
 
       <section id="view-console" class="view">
-        <article class="card">
-          <h3>G-code Console</h3>
-          <div class="console-log" id="console-log"></div>
-          <form id="console-form">
-            <input id="console-input" type="text" placeholder="Enter G-code..." autocomplete="off" />
+        <article class="card console-card">
+          <div class="card-head console-card-head">
+            <h3>G-code Console</h3>
+            <div class="actions console-head-actions">
+              <button type="button" id="console-clear" class="console-head-btn" aria-label="Clear console" title="Clear console">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <polyline points="3 6 5 6 21 6"></polyline>
+                  <path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"></path>
+                  <path d="M19 6l-1 13a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+                  <line x1="10" y1="11" x2="10" y2="17"></line>
+                  <line x1="14" y1="11" x2="14" y2="17"></line>
+                </svg>
+              </button>
+              <button type="button" id="console-helper-toggle" class="console-head-btn console-helper-toggle" aria-label="Console helper" title="Console helper" aria-expanded="false">?</button>
+              <button type="button" id="console-settings-toggle" class="console-head-btn" aria-label="Console settings" title="Console settings" aria-expanded="false">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="3"></circle>
+                  <path d="M19.4 15a1.6 1.6 0 0 0 .3 1.7l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.7-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.7.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.7 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.7l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.7.3h.1a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5h.1a1.6 1.6 0 0 0 1.7-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.7v.1a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1Z"></path>
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div class="console-panel" id="console-helper-panel" hidden>
+            <p class="muted">Helper commands (click to insert):</p>
+            <div class="console-helper-grid" id="console-helper-grid">
+              <p class="muted">Connect to Moonraker to load available commands.</p>
+            </div>
+          </div>
+          <div class="console-panel" id="console-settings-panel" hidden>
+            <label class="checkbox-row" for="console-hide-temps">
+              <input id="console-hide-temps" type="checkbox" />
+              <span>Hide temps from console output</span>
+            </label>
+            <label class="checkbox-row" for="console-raw-output">
+              <input id="console-raw-output" type="checkbox" />
+              <span>Enable raw output (debug)</span>
+            </label>
+          </div>
+          <div class="console-toolbar" id="console-toolbar">
+            <div class="console-toolbar-group">
+              <button type="button" id="console-pause" class="console-pause" aria-pressed="false">Pause</button>
+              <label class="checkbox-row console-inline-toggle" for="console-autoscroll">
+                <input id="console-autoscroll" type="checkbox" checked />
+                <span>Auto-scroll</span>
+              </label>
+            </div>
+            <div class="console-toolbar-group">
+              <label for="console-filter">Show</label>
+              <select id="console-filter">
+                <option value="all">All</option>
+                <option value="command">Commands</option>
+                <option value="response">Responses</option>
+                <option value="error">Errors</option>
+                <option value="system">System</option>
+              </select>
+              <input id="console-search" class="console-search" type="search" placeholder="Search console..." autocomplete="off" />
+            </div>
+          </div>
+          <p class="console-meta" id="console-meta">0 lines</p>
+          <div class="console-log" id="console-log" role="log" aria-live="polite"></div>
+          <form id="console-form" class="console-form">
+            <input id="console-input" class="console-input" type="text" placeholder="Enter G-code... (Up/Down for history)" autocomplete="off" />
             <button type="submit">Send</button>
           </form>
         </article>
@@ -626,6 +749,10 @@
                 <input id="dash-show-toolhead-camera" type="checkbox" />
                 <span>Show Toolhead Cam</span>
               </label>
+              <label class="checkbox-row" for="dash-show-console">
+                <input id="dash-show-console" type="checkbox" />
+                <span>Show Console</span>
+              </label>
               <div class="actions">
                 <button type="button" id="open-dashboard-layout">Customize Layout</button>
               </div>
@@ -670,6 +797,8 @@
   <script type="module" src="./src/app.js"></script>
 </body>
 </html>
+
+
 
 
 

@@ -435,10 +435,24 @@ select {
   padding: 10px;
 }
 
-#settings-form,
-#console-form {
+#settings-form {
   display: grid;
   gap: 10px;
+}
+
+#console-form,
+  .console-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+#console-input,
+.console-input {
+  min-width: 0;
+  width: 100%;
+  font-family: "JetBrains Mono", monospace;
 }
 
 #settings-form label {
@@ -564,8 +578,151 @@ select {
   color: var(--muted);
   white-space: nowrap;
 }
+
+.console-card-head {
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.console-head-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.console-head-btn {
+  width: 34px;
+  height: 34px;
+  padding: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.console-head-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+#console-helper-toggle,
+.console-helper-toggle {
+  font-weight: 700;
+  font-size: 1.05rem;
+  line-height: 1;
+}
+
+.console-head-btn[aria-expanded="true"] {
+  border-color: color-mix(in srgb, var(--accent) 78%, transparent);
+  color: var(--accent);
+}
+
+.console-panel {
+  margin-bottom: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg-soft) 76%, rgba(2, 6, 23, 0.52));
+  padding: 10px;
+  display: grid;
+  gap: 10px;
+}
+
+.console-panel[hidden] {
+  display: none !important;
+}
+
+.console-panel .checkbox-row {
+  justify-content: flex-start;
+}
+
+.console-helper-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 8px;
+  min-width: 0;
+  max-height: 280px;
+  overflow: auto;
+  align-content: start;
+}
+
+.console-helper-grid button {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  display: grid;
+  grid-template-rows: auto auto;
+  gap: 2px;
+  justify-items: flex-start;
+  align-content: center;
+  text-align: left;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.8rem;
+}
+
+.console-helper-command,
+.console-helper-description {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.console-helper-command {
+  font-weight: 600;
+}
+
+.console-helper-description {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+.console-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.console-toolbar-group {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.console-toolbar-group label {
+  color: var(--muted);
+  font-size: 0.78rem;
+  letter-spacing: 0.02em;
+}
+
+.console-inline-toggle {
+  margin: 0;
+}
+
+#console-search,
+  .console-search {
+  min-width: 200px;
+}
+
+#console-pause[data-paused="true"],
+.console-pause[data-paused="true"] {
+  border-color: color-mix(in srgb, #f59e0b 78%, transparent);
+  color: color-mix(in srgb, #f59e0b 80%, var(--text) 20%);
+}
+
+.console-meta {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.78rem;
+}
+
 .console-log {
-  height: 260px;
+  height: 340px;
   overflow: auto;
   font-family: "JetBrains Mono", monospace;
   font-size: 0.85rem;
@@ -582,6 +739,10 @@ select {
   word-break: break-word;
 }
 
+.console-line[hidden] {
+  display: none;
+}
+
 .console-line-debug {
   color: color-mix(in srgb, var(--muted) 85%, var(--text) 15%);
 }
@@ -596,6 +757,36 @@ select {
 
 .console-line-error {
   color: color-mix(in srgb, var(--danger) 86%, #ffffff 14%);
+}
+
+@media (max-width: 720px) {
+  .console-toolbar {
+    align-items: stretch;
+  }
+
+  .console-toolbar-group {
+    width: 100%;
+  }
+
+  #console-search,
+  .console-search {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .console-card-head {
+    align-items: flex-start;
+  }
+
+  .console-head-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  #console-form,
+  .console-form {
+    grid-template-columns: 1fr;
+  }
 }
 
 .temperature-panel {
@@ -2408,6 +2599,8 @@ select {
     padding: 8px 10px;
   }
 }
+
+
 
 
 
