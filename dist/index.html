@@ -7,8 +7,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
-  <script type="module" crossorigin src="/assets/index-Bok0f-nH.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-CKcW5nlt.css">
+  <script type="module" crossorigin src="/assets/index-DIfjrrtp.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-H11Ff2XT.css">
 </head>
 <body>
   <div class="shell">
@@ -657,32 +657,181 @@
         <article class="card jobs-card" id="jobs-card">
           <div class="card-head jobs-head">
             <h3>GCode Files</h3>
-            <div class="actions jobs-head-actions">
-              <button type="button" id="jobs-refresh" class="jobs-action-btn">Refresh</button>
-              <button type="button" id="jobs-upload-btn" class="jobs-action-btn">Upload</button>
-              <button type="button" id="jobs-new-folder" class="jobs-action-btn">New Folder</button>
-            </div>
           </div>
 
           <p id="jobs-summary" class="muted jobs-summary">Connect to Moonraker to load print jobs.</p>
 
-          <div class="jobs-toolbar">
-            <input id="jobs-search" type="search" placeholder="Search files and folders" autocomplete="off" />
-            <select id="jobs-sort" aria-label="Sort jobs">
-              <option value="modified_desc">Date (Newest)</option>
-              <option value="modified_asc">Date (Oldest)</option>
-              <option value="name_asc">Name (A-Z)</option>
-              <option value="name_desc">Name (Z-A)</option>
-              <option value="size_desc">Size (Largest)</option>
-              <option value="size_asc">Size (Smallest)</option>
-              <option value="eta_desc">ETA (Longest)</option>
-              <option value="eta_asc">ETA (Shortest)</option>
-            </select>
-            <select id="jobs-type-filter" aria-label="Filter jobs">
-              <option value="all">All</option>
-              <option value="files">Files</option>
-              <option value="folders">Folders</option>
-            </select>
+          <div class="jobs-feature-panel" id="jobs-feature-panel">
+            <p id="jobs-path-display" class="jobs-path-display">/</p>
+
+            <div class="jobs-feature-controls">
+              <div class="jobs-menu-group">
+                <button
+                  type="button"
+                  id="jobs-sort-toggle"
+                  class="jobs-feature-btn"
+                  aria-label="Sort files"
+                  title="Sort files"
+                  aria-expanded="false"
+                  aria-controls="jobs-sort-menu"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <line x1="8" y1="6" x2="20" y2="6"></line>
+                    <line x1="8" y1="12" x2="17" y2="12"></line>
+                    <line x1="8" y1="18" x2="14" y2="18"></line>
+                    <path d="M4 7 2.5 5.5 1 7"></path>
+                    <path d="M2.5 6v12"></path>
+                  </svg>
+                </button>
+                <div id="jobs-sort-menu" class="jobs-feature-menu" hidden>
+                  <label class="jobs-feature-menu-label" for="jobs-sort">Sort by</label>
+                  <select id="jobs-sort" aria-label="Sort jobs">
+                    <option value="modified_desc">Date (Newest)</option>
+                    <option value="modified_asc">Date (Oldest)</option>
+                    <option value="name_asc">Name (A-Z)</option>
+                    <option value="name_desc">Name (Z-A)</option>
+                    <option value="size_desc">Size (Largest)</option>
+                    <option value="size_asc">Size (Smallest)</option>
+                    <option value="eta_desc">ETA (Longest)</option>
+                    <option value="eta_asc">ETA (Shortest)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="jobs-menu-group">
+                <button
+                  type="button"
+                  id="jobs-columns-toggle"
+                  class="jobs-feature-btn"
+                  aria-label="Choose columns"
+                  title="Columns"
+                  aria-expanded="false"
+                  aria-controls="jobs-columns-menu"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <rect x="4" y="4" width="5" height="16"></rect>
+                    <rect x="10" y="4" width="5" height="16"></rect>
+                    <rect x="16" y="4" width="4" height="16"></rect>
+                  </svg>
+                </button>
+                <div id="jobs-columns-menu" class="jobs-feature-menu jobs-columns-menu" hidden>
+                  <p class="jobs-feature-menu-label jobs-columns-title">Visible file info</p>
+                  <div id="jobs-columns-list" class="jobs-columns-list"></div>
+                </div>
+              </div>
+
+              <button type="button" id="jobs-search-toggle" class="jobs-feature-btn" aria-label="Focus search" title="Search files">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <circle cx="11" cy="11" r="6"></circle>
+                  <line x1="16" y1="16" x2="21" y2="21"></line>
+                </svg>
+              </button>
+
+              <div class="jobs-menu-group">
+                <button
+                  type="button"
+                  id="jobs-filter-toggle"
+                  class="jobs-feature-btn"
+                  aria-label="Filter files"
+                  title="Filter files"
+                  aria-expanded="false"
+                  aria-controls="jobs-filter-menu"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M3 5h18"></path>
+                    <path d="M6 11h12"></path>
+                    <path d="M10 17h4"></path>
+                  </svg>
+                </button>
+                <div id="jobs-filter-menu" class="jobs-feature-menu" hidden>
+                  <label class="jobs-feature-menu-label" for="jobs-type-filter">Show</label>
+                  <select id="jobs-type-filter" aria-label="Filter jobs">
+                    <option value="all">All</option>
+                    <option value="files">Files</option>
+                    <option value="folders">Folders</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="jobs-menu-group">
+                <button
+                  type="button"
+                  id="jobs-add-toggle"
+                  class="jobs-feature-btn"
+                  aria-label="Add"
+                  title="Upload or create folder"
+                  aria-expanded="false"
+                  aria-controls="jobs-add-menu"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                  </svg>
+                </button>
+                <div id="jobs-add-menu" class="jobs-feature-menu jobs-add-menu" hidden>
+                  <button type="button" id="jobs-upload-btn" class="jobs-feature-menu-btn">
+                    <span class="jobs-feature-menu-icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 16V4"></path>
+                        <path d="M7 9l5-5 5 5"></path>
+                        <path d="M4 20h16"></path>
+                      </svg>
+                    </span>
+                    <span>Upload Files</span>
+                  </button>
+                  <button type="button" id="jobs-upload-folder-btn" class="jobs-feature-menu-btn">
+                    <span class="jobs-feature-menu-icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v2"></path>
+                        <path d="M12 18v-8"></path>
+                        <path d="M8.5 13.5 12 10l3.5 3.5"></path>
+                        <path d="M3 11h18v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                      </svg>
+                    </span>
+                    <span>Upload Folder</span>
+                  </button>
+                  <button type="button" id="jobs-upload-print-btn" class="jobs-feature-menu-btn">
+                    <span class="jobs-feature-menu-icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="9"></circle>
+                        <path d="M12 7v5l3 3"></path>
+                      </svg>
+                    </span>
+                    <span>Upload & Print</span>
+                  </button>
+                  <button type="button" id="jobs-add-file-btn" class="jobs-feature-menu-btn">
+                    <span class="jobs-feature-menu-icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                        <polyline points="14 2 14 8 20 8"></polyline>
+                        <line x1="12" y1="12" x2="12" y2="18"></line>
+                        <line x1="9" y1="15" x2="15" y2="15"></line>
+                      </svg>
+                    </span>
+                    <span>Add File</span>
+                  </button>
+                  <button type="button" id="jobs-new-folder" class="jobs-feature-menu-btn">
+                    <span class="jobs-feature-menu-icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                        <line x1="12" y1="11" x2="12" y2="17"></line>
+                        <line x1="9" y1="14" x2="15" y2="14"></line>
+                      </svg>
+                    </span>
+                    <span>Add Directory</span>
+                  </button>
+                </div>
+              </div>
+
+              <button type="button" id="jobs-refresh" class="jobs-feature-btn jobs-refresh-btn" aria-label="Refresh file list" title="Refresh">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
+                  <path d="M21 3v6h-6"></path>
+                </svg>
+              </button>
+
+              <input id="jobs-search" class="jobs-feature-search" type="search" placeholder="Search files and folders" autocomplete="off" />
+            </div>
           </div>
 
           <div class="jobs-current-job">
@@ -699,6 +848,9 @@
           <p id="jobs-status" class="muted jobs-status">Connect to Moonraker to manage print files.</p>
 
           <input id="jobs-upload-input" type="file" hidden multiple />
+          <input id="jobs-upload-folder-input" type="file" hidden multiple webkitdirectory directory />
+          <input id="jobs-upload-print-input" type="file" hidden accept=".gcode,.g,.gc,.gco,text/plain" />
+          <input id="jobs-add-file-input" type="file" hidden accept=".gcode,.g,.gc,.gco,text/plain" />
         </article>
       </section>
 

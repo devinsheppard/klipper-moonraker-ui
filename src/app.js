@@ -64,6 +64,7 @@ const JOBS_SORT_STORAGE_KEY = "jobs_sort_mode";
 const JOBS_TYPE_FILTER_STORAGE_KEY = "jobs_type_filter";
 const JOBS_SEARCH_STORAGE_KEY = "jobs_search_query";
 const JOBS_DIRECTORY_STORAGE_KEY = "jobs_directory";
+const JOBS_COLUMNS_STORAGE_KEY = "jobs_visible_columns";
 const JOBS_SORT_VALUES = [
   "modified_desc",
   "modified_asc",
@@ -75,6 +76,26 @@ const JOBS_SORT_VALUES = [
   "eta_asc",
 ];
 const JOBS_TYPE_FILTER_VALUES = ["all", "files", "folders"];
+const JOBS_COLUMN_DEFINITIONS = [
+  { key: "size", label: "Size" },
+  { key: "modified", label: "Modified" },
+  { key: "eta", label: "ETA" },
+  { key: "total_layers", label: "Total Layers" },
+  { key: "layer_height", label: "Layer Height" },
+  { key: "first_layer_height", label: "First Layer Height" },
+  { key: "object_height", label: "Object Height" },
+  { key: "filament_length", label: "Filament Length" },
+  { key: "filament_weight", label: "Filament Weight" },
+  { key: "filament_type", label: "Filament Type" },
+  { key: "filament_name", label: "Filament Name" },
+  { key: "nozzle_diameter", label: "Nozzle Diameter" },
+  { key: "slicer", label: "Slicer" },
+  { key: "first_layer_extruder_temp", label: "First Layer Nozzle Temp" },
+  { key: "first_layer_bed_temp", label: "First Layer Bed Temp" },
+  { key: "chamber_temp", label: "Chamber Temp" },
+];
+const JOBS_COLUMN_KEYS = JOBS_COLUMN_DEFINITIONS.map((entry) => entry.key);
+const JOBS_DEFAULT_VISIBLE_COLUMNS = ["size", "modified", "eta", "total_layers"];
 
 const CONSOLE_LOG_LEVELS = new Set(["debug", "info", "warn", "error"]);
 const CONSOLE_MAX_LINES = 1200;
@@ -239,9 +260,27 @@ const els = {
   fileList: document.getElementById("file-list"),
   jobsRefresh: document.getElementById("jobs-refresh"),
   jobsUploadBtn: document.getElementById("jobs-upload-btn"),
+  jobsUploadFolderBtn: document.getElementById("jobs-upload-folder-btn"),
+  jobsUploadPrintBtn: document.getElementById("jobs-upload-print-btn"),
+  jobsAddFileBtn: document.getElementById("jobs-add-file-btn"),
   jobsUploadInput: document.getElementById("jobs-upload-input"),
+  jobsUploadFolderInput: document.getElementById("jobs-upload-folder-input"),
+  jobsUploadPrintInput: document.getElementById("jobs-upload-print-input"),
+  jobsAddFileInput: document.getElementById("jobs-add-file-input"),
   jobsNewFolder: document.getElementById("jobs-new-folder"),
   jobsSummary: document.getElementById("jobs-summary"),
+  jobsFeaturePanel: document.getElementById("jobs-feature-panel"),
+  jobsPathDisplay: document.getElementById("jobs-path-display"),
+  jobsSortToggle: document.getElementById("jobs-sort-toggle"),
+  jobsSortMenu: document.getElementById("jobs-sort-menu"),
+  jobsColumnsToggle: document.getElementById("jobs-columns-toggle"),
+  jobsColumnsMenu: document.getElementById("jobs-columns-menu"),
+  jobsColumnsList: document.getElementById("jobs-columns-list"),
+  jobsSearchToggle: document.getElementById("jobs-search-toggle"),
+  jobsFilterToggle: document.getElementById("jobs-filter-toggle"),
+  jobsFilterMenu: document.getElementById("jobs-filter-menu"),
+  jobsAddToggle: document.getElementById("jobs-add-toggle"),
+  jobsAddMenu: document.getElementById("jobs-add-menu"),
   jobsSearch: document.getElementById("jobs-search"),
   jobsSort: document.getElementById("jobs-sort"),
   jobsTypeFilter: document.getElementById("jobs-type-filter"),
@@ -366,6 +405,7 @@ let consoleStorePollTimer = null;
 let temperatureHistorySessionId = null;
 let temperatureHistoryDbPromise = null;
 let statusCountdownTimer = null;
+let jobsColumnsDragKey = null;
 
 function loadStoredBool(key, fallback) {
   const raw = localStorage.getItem(key);
@@ -438,6 +478,35 @@ function loadStoredJobsSearchQuery() {
 
 function loadStoredJobsDirectory() {
   return normalizeJobsDirectory(localStorage.getItem(JOBS_DIRECTORY_STORAGE_KEY));
+}
+
+function normalizeJobsVisibleColumns(value) {
+  let candidate = [];
+
+  if (Array.isArray(value)) {
+    candidate = value;
+  } else if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) {
+        candidate = parsed;
+      }
+    } catch {
+      candidate = [];
+    }
+  }
+
+  const normalized = candidate
+    .map((entry) => String(entry || "").trim().toLowerCase())
+    .map((entry) => (entry === "layers" ? "total_layers" : entry))
+    .filter((entry) => JOBS_COLUMN_KEYS.includes(entry));
+
+  const unique = [...new Set(normalized)];
+  return unique.length ? unique : [...JOBS_DEFAULT_VISIBLE_COLUMNS];
+}
+
+function loadStoredJobsVisibleColumns() {
+  return normalizeJobsVisibleColumns(localStorage.getItem(JOBS_COLUMNS_STORAGE_KEY));
 }
 
 function persistConfigViewState() {
@@ -736,6 +805,7 @@ function createDefaultJobsState() {
     sortMode: loadStoredJobsSort(),
     typeFilter: loadStoredJobsTypeFilter(),
     currentDirectory: loadStoredJobsDirectory(),
+    visibleColumns: loadStoredJobsVisibleColumns(),
     metadataByPath: new Map(),
     metadataLoading: new Set(),
     uploadDragDepth: 0,
@@ -5601,6 +5671,8 @@ function setJobsStatusMessage(message, level = "info") {
 function parseJobsMetadata(metadata) {
   const estimatedTime = Number(metadata?.estimated_time);
   const layerCount = Number(metadata?.layer_count);
+  const slicer = String(metadata?.slicer || "").trim();
+  const slicerVersion = String(metadata?.slicer_version || "").trim();
 
   return {
     thumbnailPath: pickThumbnailPath(metadata),
@@ -5608,7 +5680,16 @@ function parseJobsMetadata(metadata) {
     totalLayers: Number.isFinite(layerCount) && layerCount > 0 ? Math.round(layerCount) : null,
     layerHeight: readPositiveNumber(metadata?.layer_height),
     firstLayerHeight: readPositiveNumber(metadata?.first_layer_height),
+    objectHeight: readPositiveNumber(metadata?.object_height),
     filamentTotal: readPositiveNumber(metadata?.filament_total),
+    filamentWeightTotal: readPositiveNumber(metadata?.filament_weight_total),
+    filamentType: String(metadata?.filament_type || "").trim(),
+    filamentName: String(metadata?.filament_name || "").trim(),
+    nozzleDiameter: readPositiveNumber(metadata?.nozzle_diameter),
+    slicerLabel: slicer ? `${slicer}${slicerVersion ? ` ${slicerVersion}` : ""}` : "",
+    firstLayerExtruderTemp: readFiniteNumber(metadata?.first_layer_extr_temp ?? metadata?.first_layer_extruder_temp),
+    firstLayerBedTemp: readFiniteNumber(metadata?.first_layer_bed_temp),
+    chamberTemp: readFiniteNumber(metadata?.chamber_temp),
   };
 }
 
@@ -5636,7 +5717,16 @@ async function ensureJobsMetadata(path) {
       totalLayers: null,
       layerHeight: null,
       firstLayerHeight: null,
+      objectHeight: null,
       filamentTotal: null,
+      filamentWeightTotal: null,
+      filamentType: "",
+      filamentName: "",
+      nozzleDiameter: null,
+      slicerLabel: "",
+      firstLayerExtruderTemp: null,
+      firstLayerBedTemp: null,
+      chamberTemp: null,
     });
   } finally {
     state.jobs.metadataLoading.delete(normalizedPath);
@@ -5651,6 +5741,7 @@ function persistJobsViewState() {
   localStorage.setItem(JOBS_TYPE_FILTER_STORAGE_KEY, normalizeJobsTypeFilter(state.jobs.typeFilter));
   localStorage.setItem(JOBS_SEARCH_STORAGE_KEY, String(state.jobs.searchQuery || "").trim());
   localStorage.setItem(JOBS_DIRECTORY_STORAGE_KEY, normalizeJobsDirectory(state.jobs.currentDirectory));
+  localStorage.setItem(JOBS_COLUMNS_STORAGE_KEY, JSON.stringify(normalizeJobsVisibleColumns(state.jobs.visibleColumns)));
 }
 
 function doesJobsDirectoryExist(directory) {
@@ -5688,6 +5779,270 @@ function setJobsDirectory(directory, { persist = true } = {}) {
   }
 
   renderJobsCard();
+}
+
+function getJobsToolbarMenus() {
+  return [
+    { menu: els.jobsSortMenu, toggle: els.jobsSortToggle },
+    { menu: els.jobsColumnsMenu, toggle: els.jobsColumnsToggle },
+    { menu: els.jobsFilterMenu, toggle: els.jobsFilterToggle },
+    { menu: els.jobsAddMenu, toggle: els.jobsAddToggle },
+  ].filter((entry) => entry.menu && entry.toggle);
+}
+
+function setJobsToolbarMenuState(menu, toggle, isOpen) {
+  if (!menu || !toggle) return;
+  menu.hidden = !isOpen;
+  toggle.setAttribute("aria-expanded", isOpen ? "true" : "false");
+  toggle.classList.toggle("is-active", isOpen);
+}
+
+function closeJobsToolbarMenus(exceptMenu = null) {
+  getJobsToolbarMenus().forEach(({ menu, toggle }) => {
+    if (menu === exceptMenu) return;
+    setJobsToolbarMenuState(menu, toggle, false);
+  });
+}
+
+function toggleJobsToolbarMenu(menu, toggle) {
+  if (!menu || !toggle) return;
+  const opening = menu.hidden;
+  closeJobsToolbarMenus(opening ? menu : null);
+  setJobsToolbarMenuState(menu, toggle, opening);
+}
+
+function renderJobsPathDisplay() {
+  if (!els.jobsPathDisplay) return;
+  const directory = normalizeJobsDirectory(state.jobs.currentDirectory);
+  const pathLabel = directory ? `/${directory}` : "/";
+  els.jobsPathDisplay.textContent = pathLabel;
+  els.jobsPathDisplay.title = directory ? `gcodes/${directory}` : "gcodes/";
+}
+
+function getJobsVisibleColumns() {
+  return normalizeJobsVisibleColumns(state.jobs.visibleColumns);
+}
+
+function setJobsVisibleColumns(nextColumns) {
+  const normalized = normalizeJobsVisibleColumns(nextColumns);
+  const current = getJobsVisibleColumns();
+  if (normalized.length === current.length && normalized.every((value, index) => value === current[index])) {
+    return;
+  }
+
+  state.jobs.visibleColumns = normalized;
+  persistJobsViewState();
+  renderJobsColumnsMenu();
+  renderJobsCard();
+}
+
+function toggleJobsVisibleColumn(columnKey, enabled) {
+  const normalizedKey = String(columnKey || "").trim().toLowerCase();
+  if (!JOBS_COLUMN_KEYS.includes(normalizedKey)) return;
+
+  const current = getJobsVisibleColumns();
+
+  if (enabled) {
+    if (current.includes(normalizedKey)) return;
+    setJobsVisibleColumns([...current, normalizedKey]);
+    return;
+  }
+
+  if (!current.includes(normalizedKey)) return;
+
+  if (current.length === 1) {
+    setJobsStatusMessage("At least one file info field must remain visible.", "warn");
+    renderJobsColumnsMenu();
+    return;
+  }
+
+  setJobsVisibleColumns(current.filter((entry) => entry !== normalizedKey));
+}
+
+function moveJobsVisibleColumn(columnKey, direction) {
+  const normalizedKey = String(columnKey || "").trim().toLowerCase();
+  if (!JOBS_COLUMN_KEYS.includes(normalizedKey)) return;
+
+  const offset = Number(direction);
+  if (!Number.isFinite(offset) || offset === 0) return;
+
+  const current = getJobsVisibleColumns();
+  const fromIndex = current.indexOf(normalizedKey);
+  if (fromIndex < 0) return;
+
+  const toIndex = fromIndex + (offset > 0 ? 1 : -1);
+  if (toIndex < 0 || toIndex >= current.length) return;
+
+  const reordered = [...current];
+  const [moved] = reordered.splice(fromIndex, 1);
+  reordered.splice(toIndex, 0, moved);
+  setJobsVisibleColumns(reordered);
+}
+
+function moveJobsVisibleColumnByDrop(sourceKey, targetKey, position = "before") {
+  const source = String(sourceKey || "").trim().toLowerCase();
+  const target = String(targetKey || "").trim().toLowerCase();
+  if (!JOBS_COLUMN_KEYS.includes(source) || !JOBS_COLUMN_KEYS.includes(target)) return;
+  if (source === target) return;
+
+  const current = getJobsVisibleColumns();
+  const sourceIndex = current.indexOf(source);
+  const targetIndex = current.indexOf(target);
+  if (sourceIndex < 0 || targetIndex < 0) return;
+
+  const reordered = [...current];
+  reordered.splice(sourceIndex, 1);
+
+  const adjustedTargetIndex = reordered.indexOf(target);
+  const insertAt = position === "after" ? adjustedTargetIndex + 1 : adjustedTargetIndex;
+  reordered.splice(insertAt, 0, source);
+
+  setJobsVisibleColumns(reordered);
+}
+
+function clearJobsColumnsDropIndicators() {
+  if (!els.jobsColumnsList) return;
+
+  els.jobsColumnsList.querySelectorAll(".jobs-columns-row").forEach((row) => {
+    row.classList.remove("is-drop-target", "is-drop-after", "is-dragging");
+    row.removeAttribute("data-drop-position");
+  });
+}
+
+function renderJobsColumnsMenu() {
+  if (!els.jobsColumnsList) return;
+
+  const columns = getJobsVisibleColumns();
+  els.jobsColumnsList.innerHTML = "";
+
+  columns.forEach((columnKey, index) => {
+    const definition = JOBS_COLUMN_DEFINITIONS.find((entry) => entry.key === columnKey);
+    if (!definition) return;
+
+    const row = document.createElement("div");
+    row.className = "jobs-columns-row";
+    row.draggable = true;
+
+    const left = document.createElement("label");
+    left.className = "jobs-columns-toggle";
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = true;
+    checkbox.addEventListener("change", () => {
+      toggleJobsVisibleColumn(columnKey, checkbox.checked);
+    });
+
+    const text = document.createElement("span");
+    text.textContent = definition.label;
+
+    left.append(checkbox, text);
+
+    const orderControls = document.createElement("div");
+    orderControls.className = "jobs-columns-order";
+
+    const dragHandle = document.createElement("span");
+    dragHandle.className = "jobs-columns-drag-handle";
+    dragHandle.textContent = "::";
+    dragHandle.title = `Drag ${definition.label} to reorder`;
+
+    const upButton = document.createElement("button");
+    upButton.type = "button";
+    upButton.className = "jobs-columns-order-btn";
+    upButton.textContent = "^";
+    upButton.title = `Move ${definition.label} up`;
+    upButton.disabled = index === 0;
+    upButton.addEventListener("click", () => {
+      moveJobsVisibleColumn(columnKey, -1);
+    });
+
+    const downButton = document.createElement("button");
+    downButton.type = "button";
+    downButton.className = "jobs-columns-order-btn";
+    downButton.textContent = "v";
+    downButton.title = `Move ${definition.label} down`;
+    downButton.disabled = index === columns.length - 1;
+    downButton.addEventListener("click", () => {
+      moveJobsVisibleColumn(columnKey, 1);
+    });
+
+    row.addEventListener("dragstart", (event) => {
+      jobsColumnsDragKey = columnKey;
+      clearJobsColumnsDropIndicators();
+      row.classList.add("is-dragging");
+
+      if (event.dataTransfer) {
+        event.dataTransfer.effectAllowed = "move";
+        try {
+          event.dataTransfer.setData("text/plain", columnKey);
+        } catch {
+          // Some browsers may block custom drag data in secure contexts.
+        }
+      }
+    });
+
+    row.addEventListener("dragover", (event) => {
+      if (!jobsColumnsDragKey || jobsColumnsDragKey === columnKey) return;
+      event.preventDefault();
+
+      const rect = row.getBoundingClientRect();
+      const isAfter = event.clientY > rect.top + rect.height / 2;
+
+      clearJobsColumnsDropIndicators();
+      row.classList.add("is-drop-target");
+      row.classList.toggle("is-drop-after", isAfter);
+      row.dataset.dropPosition = isAfter ? "after" : "before";
+
+      if (event.dataTransfer) {
+        event.dataTransfer.dropEffect = "move";
+      }
+    });
+
+    row.addEventListener("drop", (event) => {
+      event.preventDefault();
+
+      const sourceFromTransfer = event.dataTransfer?.getData("text/plain") || "";
+      const sourceKey = String(jobsColumnsDragKey || sourceFromTransfer || "").trim().toLowerCase();
+      const targetKey = columnKey;
+      const position = row.dataset.dropPosition === "after" ? "after" : "before";
+
+      jobsColumnsDragKey = null;
+      clearJobsColumnsDropIndicators();
+      moveJobsVisibleColumnByDrop(sourceKey, targetKey, position);
+    });
+
+    row.addEventListener("dragend", () => {
+      jobsColumnsDragKey = null;
+      clearJobsColumnsDropIndicators();
+    });
+
+    orderControls.append(dragHandle, upButton, downButton);
+    row.append(left, orderControls);
+    els.jobsColumnsList.appendChild(row);
+  });
+
+  const hiddenColumns = JOBS_COLUMN_DEFINITIONS.filter((entry) => !columns.includes(entry.key));
+  hiddenColumns.forEach((definition) => {
+    const row = document.createElement("div");
+    row.className = "jobs-columns-row is-hidden";
+
+    const left = document.createElement("label");
+    left.className = "jobs-columns-toggle";
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = false;
+    checkbox.addEventListener("change", () => {
+      toggleJobsVisibleColumn(definition.key, checkbox.checked);
+    });
+
+    const text = document.createElement("span");
+    text.textContent = definition.label;
+
+    left.append(checkbox, text);
+    row.append(left);
+    els.jobsColumnsList.appendChild(row);
+  });
 }
 
 function renderJobsBreadcrumbs() {
@@ -5756,24 +6111,114 @@ function renderJobsJobControls() {
   }
 }
 
+function formatJobsLength(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return "--";
+  if (numeric >= 1000) return `${(numeric / 1000).toFixed(2)} m`;
+  return `${numeric.toFixed(2)} mm`;
+}
+
+function formatJobsWeight(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return "--";
+  if (numeric >= 1000) return `${(numeric / 1000).toFixed(2)} kg`;
+  return `${numeric.toFixed(2)} g`;
+}
+
+function formatJobsTemperature(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return "--";
+  return `${numeric.toFixed(1)}C`;
+}
+
 function buildJobsEntryMetaLine(fileEntry, metadata) {
   const parts = [];
+  const columns = getJobsVisibleColumns();
 
-  const sizeLabel = formatFileSize(fileEntry.size) || "--";
-  parts.push(sizeLabel);
+  columns.forEach((columnKey) => {
+    if (columnKey === "size") {
+      parts.push(formatFileSize(fileEntry.size) || "--");
+      return;
+    }
 
-  const modifiedLabel = formatJobsTimestamp(fileEntry.modifiedMs);
-  parts.push(`Modified: ${modifiedLabel}`);
+    if (columnKey === "modified") {
+      parts.push(`Modified: ${formatJobsTimestamp(fileEntry.modifiedMs)}`);
+      return;
+    }
 
-  const etaSeconds = Number(metadata?.estimatedTime);
-  if (Number.isFinite(etaSeconds) && etaSeconds > 0) {
-    parts.push(`ETA: ${formatStatusDuration(etaSeconds)}`);
-  }
+    if (columnKey === "eta") {
+      const etaSeconds = Number(metadata?.estimatedTime);
+      const etaLabel = Number.isFinite(etaSeconds) && etaSeconds > 0 ? formatStatusDuration(etaSeconds) : "--";
+      parts.push(`ETA: ${etaLabel}`);
+      return;
+    }
 
-  const layers = Number(metadata?.totalLayers);
-  if (Number.isFinite(layers) && layers > 0) {
-    parts.push(`Layers: ${Math.round(layers)}`);
-  }
+    if (columnKey === "total_layers") {
+      const layers = Number(metadata?.totalLayers);
+      const layerLabel = Number.isFinite(layers) && layers > 0 ? String(Math.round(layers)) : "--";
+      parts.push(`Layers: ${layerLabel}`);
+      return;
+    }
+
+    if (columnKey === "layer_height") {
+      parts.push(`Layer H: ${formatJobsLength(metadata?.layerHeight)}`);
+      return;
+    }
+
+    if (columnKey === "first_layer_height") {
+      parts.push(`First Layer H: ${formatJobsLength(metadata?.firstLayerHeight)}`);
+      return;
+    }
+
+    if (columnKey === "object_height") {
+      parts.push(`Object H: ${formatJobsLength(metadata?.objectHeight)}`);
+      return;
+    }
+
+    if (columnKey === "filament_length") {
+      parts.push(`Filament: ${formatJobsLength(metadata?.filamentTotal)}`);
+      return;
+    }
+
+    if (columnKey === "filament_weight") {
+      parts.push(`Filament W: ${formatJobsWeight(metadata?.filamentWeightTotal)}`);
+      return;
+    }
+
+    if (columnKey === "filament_type") {
+      parts.push(`Filament Type: ${metadata?.filamentType || "--"}`);
+      return;
+    }
+
+    if (columnKey === "filament_name") {
+      parts.push(`Filament Name: ${metadata?.filamentName || "--"}`);
+      return;
+    }
+
+    if (columnKey === "nozzle_diameter") {
+      parts.push(`Nozzle: ${formatJobsLength(metadata?.nozzleDiameter)}`);
+      return;
+    }
+
+    if (columnKey === "slicer") {
+      parts.push(`Slicer: ${metadata?.slicerLabel || "--"}`);
+      return;
+    }
+
+    if (columnKey === "first_layer_extruder_temp") {
+      parts.push(`1st Nozzle: ${formatJobsTemperature(metadata?.firstLayerExtruderTemp)}`);
+      return;
+    }
+
+    if (columnKey === "first_layer_bed_temp") {
+      parts.push(`1st Bed: ${formatJobsTemperature(metadata?.firstLayerBedTemp)}`);
+      return;
+    }
+
+    if (columnKey === "chamber_temp") {
+      parts.push(`Chamber: ${formatJobsTemperature(metadata?.chamberTemp)}`);
+    }
+  });
 
   return parts.join(" | ");
 }
@@ -5868,7 +6313,7 @@ function renderJobsList() {
     const upButton = document.createElement("button");
     upButton.type = "button";
     upButton.className = "jobs-entry-btn";
-    upButton.textContent = "Up";
+    upButton.textContent = "^";
     upButton.disabled = busy;
     upButton.addEventListener("click", () => {
       setJobsDirectory(parentDirectory);
@@ -6120,23 +6565,64 @@ function renderJobsCard() {
 
   if (els.jobsRefresh) {
     els.jobsRefresh.disabled = !isConnected || busy;
-    els.jobsRefresh.textContent = state.jobs.isLoading ? "Loading..." : "Refresh";
+    els.jobsRefresh.classList.toggle("is-loading", state.jobs.isLoading);
+    els.jobsRefresh.title = state.jobs.isLoading ? "Loading..." : "Refresh";
+    els.jobsRefresh.setAttribute("aria-label", state.jobs.isLoading ? "Loading print files" : "Refresh file list");
+  }
+
+  if (els.jobsSortToggle) {
+    els.jobsSortToggle.disabled = busy;
+  }
+
+  if (els.jobsColumnsToggle) {
+    els.jobsColumnsToggle.disabled = busy;
+  }
+
+  if (els.jobsSearchToggle) {
+    els.jobsSearchToggle.disabled = busy;
+  }
+
+  if (els.jobsFilterToggle) {
+    els.jobsFilterToggle.disabled = busy;
+  }
+
+  if (els.jobsAddToggle) {
+    els.jobsAddToggle.disabled = !isConnected || busy;
   }
 
   if (els.jobsUploadBtn) {
     els.jobsUploadBtn.disabled = !isConnected || busy;
   }
 
+  if (els.jobsUploadFolderBtn) {
+    els.jobsUploadFolderBtn.disabled = !isConnected || busy;
+  }
+
+  if (els.jobsUploadPrintBtn) {
+    els.jobsUploadPrintBtn.disabled = !isConnected || busy;
+  }
+
+  if (els.jobsAddFileBtn) {
+    els.jobsAddFileBtn.disabled = !isConnected || busy;
+  }
+
   if (els.jobsNewFolder) {
     els.jobsNewFolder.disabled = !isConnected || busy;
   }
 
+  if (els.jobsSearch) {
+    els.jobsSearch.disabled = busy;
+  }
+
   if (!isConnected || busy) {
+    closeJobsToolbarMenus();
     state.jobs.uploadDragDepth = 0;
     updateJobsDragTarget(false);
   }
 
   renderJobsSummary();
+  renderJobsPathDisplay();
+  renderJobsColumnsMenu();
   renderJobsBreadcrumbs();
   renderJobsJobControls();
   renderJobsList();
@@ -6492,30 +6978,113 @@ async function requestJobsFilePrint(path) {
   }
 }
 
-async function requestJobsUpload(files) {
+function normalizeJobsUploadRelativePath(file) {
+  const candidate = String(file?.webkitRelativePath || file?.name || "").trim();
+  return candidate
+    .replace(/\\/g, "/")
+    .replace(/^\/+/, "")
+    .replace(/\/+/g, "/");
+}
+
+function splitJobsUploadPath(path) {
+  const normalized = normalizeJobsDirectory(path);
+  if (!normalized) {
+    return { directory: "", filename: "" };
+  }
+
+  const segments = normalized.split("/").filter(Boolean);
+  const filename = segments.pop() || "";
+  const directory = segments.join("/");
+  return { directory, filename };
+}
+
+function isJobsDirectoryAlreadyExistsError(error) {
+  const message = String(error?.message || "").toLowerCase();
+  const status = Number(error?.status);
+  return message.includes("exist") || message.includes("already") || status === 409;
+}
+
+async function ensureJobsUploadDirectory(directoryPath) {
+  const normalizedDirectory = normalizeJobsDirectory(directoryPath);
+  if (!normalizedDirectory || !state.client) return;
+
+  const segments = normalizedDirectory.split("/").filter(Boolean);
+  let cursor = "";
+
+  for (const segment of segments) {
+    cursor = cursor ? `${cursor}/${segment}` : segment;
+
+    try {
+      await state.client.createDirectory("gcodes", cursor);
+    } catch (error) {
+      if (!isJobsDirectoryAlreadyExistsError(error)) {
+        throw error;
+      }
+    }
+  }
+}
+
+async function uploadJobsFileToDirectory(file, directoryPath, filename) {
+  const directory = normalizeJobsDirectory(directoryPath);
+  const safeFilename = String(filename || "").trim();
+  if (!safeFilename) {
+    throw new Error("A valid file name is required for upload.");
+  }
+
+  if (directory) {
+    await ensureJobsUploadDirectory(directory);
+  }
+
+  await state.client.uploadFile("gcodes", file, directory, safeFilename);
+  return directory ? `${directory}/${safeFilename}` : safeFilename;
+}
+
+async function requestJobsUpload(files, { preserveRelativePaths = false, printAfterUpload = false, mode = "upload" } = {}) {
   if (!state.client || state.connectionStatus !== "connected") return false;
 
   const fileList = Array.isArray(files) ? files : [...(files || [])];
   if (!fileList.length) return false;
 
   state.jobs.actionInFlight = true;
-  state.jobs.actionLabel = "upload";
+  state.jobs.actionLabel = String(mode || "upload").trim() || "upload";
   state.jobs.activePath = "";
   renderJobsCard();
 
   let uploaded = 0;
+  const uploadedPaths = [];
 
   try {
-    const targetDirectory = normalizeJobsDirectory(state.jobs.currentDirectory);
+    const currentDirectory = normalizeJobsDirectory(state.jobs.currentDirectory);
 
     for (const file of fileList) {
-      await state.client.uploadFile("gcodes", file, targetDirectory, file.name);
+      const relativePath = preserveRelativePaths
+        ? normalizeJobsUploadRelativePath(file)
+        : normalizeJobsDirectory(file?.name || "");
+
+      const { directory, filename } = splitJobsUploadPath(relativePath);
+      if (!filename) continue;
+
+      const targetDirectory = preserveRelativePaths
+        ? normalizeJobsDirectory([currentDirectory, directory].filter(Boolean).join("/"))
+        : currentDirectory;
+
+      const uploadedPath = await uploadJobsFileToDirectory(file, targetDirectory, filename);
+      uploadedPaths.push(uploadedPath);
       uploaded += 1;
+    }
+
+    if (!uploaded) {
+      throw new Error("No valid files were selected for upload.");
     }
 
     state.jobs.lastError = "";
     appendConsole(`Uploaded ${uploaded} print file${uploaded === 1 ? "" : "s"}.`, "info");
     await loadJobsFiles({ source: "upload", silent: true });
+
+    if (printAfterUpload && uploadedPaths.length) {
+      await requestJobsFilePrint(uploadedPaths[0]);
+    }
+
     return true;
   } catch (error) {
     const message = error?.message || String(error);
@@ -6601,7 +7170,7 @@ async function handleJobsDropUpload(event) {
   const files = [...(event.dataTransfer?.files || [])];
   if (!files.length) return;
 
-  await requestJobsUpload(files);
+  await requestJobsUpload(files, { mode: "drop-upload" });
 }
 async function requestJobsPrintAction(action) {
   if (!state.client || state.connectionStatus !== "connected") return false;
@@ -7736,11 +8305,57 @@ function wireEvents() {
   });
 
   els.jobsRefresh?.addEventListener("click", async () => {
+    closeJobsToolbarMenus();
     await loadJobsFiles({ source: "user" });
   });
 
+  els.jobsSortToggle?.addEventListener("click", (event) => {
+    event.preventDefault();
+    toggleJobsToolbarMenu(els.jobsSortMenu, els.jobsSortToggle);
+  });
+
+  els.jobsColumnsToggle?.addEventListener("click", (event) => {
+    event.preventDefault();
+    toggleJobsToolbarMenu(els.jobsColumnsMenu, els.jobsColumnsToggle);
+  });
+
+  els.jobsSearchToggle?.addEventListener("click", (event) => {
+    event.preventDefault();
+    closeJobsToolbarMenus();
+    if (els.jobsSearch) {
+      els.jobsSearch.focus();
+      els.jobsSearch.select();
+    }
+  });
+
+  els.jobsFilterToggle?.addEventListener("click", (event) => {
+    event.preventDefault();
+    toggleJobsToolbarMenu(els.jobsFilterMenu, els.jobsFilterToggle);
+  });
+
+  els.jobsAddToggle?.addEventListener("click", (event) => {
+    event.preventDefault();
+    toggleJobsToolbarMenu(els.jobsAddMenu, els.jobsAddToggle);
+  });
+
   els.jobsUploadBtn?.addEventListener("click", () => {
+    closeJobsToolbarMenus();
     els.jobsUploadInput?.click();
+  });
+
+  els.jobsUploadFolderBtn?.addEventListener("click", () => {
+    closeJobsToolbarMenus();
+    els.jobsUploadFolderInput?.click();
+  });
+
+  els.jobsUploadPrintBtn?.addEventListener("click", () => {
+    closeJobsToolbarMenus();
+    els.jobsUploadPrintInput?.click();
+  });
+
+  els.jobsAddFileBtn?.addEventListener("click", () => {
+    closeJobsToolbarMenus();
+    els.jobsAddFileInput?.click();
   });
 
   els.jobsUploadInput?.addEventListener("change", async (event) => {
@@ -7748,7 +8363,34 @@ function wireEvents() {
     const files = [...(input?.files || [])];
     if (!files.length) return;
 
-    await requestJobsUpload(files);
+    await requestJobsUpload(files, { mode: "upload-files" });
+    input.value = "";
+  });
+
+  els.jobsUploadFolderInput?.addEventListener("change", async (event) => {
+    const input = event.currentTarget;
+    const files = [...(input?.files || [])];
+    if (!files.length) return;
+
+    await requestJobsUpload(files, { preserveRelativePaths: true, mode: "upload-folder" });
+    input.value = "";
+  });
+
+  els.jobsUploadPrintInput?.addEventListener("change", async (event) => {
+    const input = event.currentTarget;
+    const file = input?.files?.[0] || null;
+    if (!file) return;
+
+    await requestJobsUpload([file], { printAfterUpload: true, mode: "upload-print" });
+    input.value = "";
+  });
+
+  els.jobsAddFileInput?.addEventListener("change", async (event) => {
+    const input = event.currentTarget;
+    const file = input?.files?.[0] || null;
+    if (!file) return;
+
+    await requestJobsUpload([file], { mode: "add-file" });
     input.value = "";
   });
 
@@ -7783,7 +8425,12 @@ function wireEvents() {
   });
 
   els.jobsNewFolder?.addEventListener("click", async () => {
+    closeJobsToolbarMenus();
     await requestJobsCreateFolder();
+  });
+
+  els.jobsSearch?.addEventListener("focus", () => {
+    closeJobsToolbarMenus();
   });
 
   els.jobsSearch?.addEventListener("input", () => {
@@ -7796,6 +8443,7 @@ function wireEvents() {
     if (event.key === "Escape") {
       event.preventDefault();
       state.jobs.searchQuery = "";
+      closeJobsToolbarMenus();
       if (els.jobsSearch) {
         els.jobsSearch.value = "";
         els.jobsSearch.blur();
@@ -7808,12 +8456,14 @@ function wireEvents() {
   els.jobsSort?.addEventListener("change", () => {
     state.jobs.sortMode = normalizeJobsSort(els.jobsSort.value);
     persistJobsViewState();
+    closeJobsToolbarMenus();
     renderJobsCard();
   });
 
   els.jobsTypeFilter?.addEventListener("change", () => {
     state.jobs.typeFilter = normalizeJobsTypeFilter(els.jobsTypeFilter.value);
     persistJobsViewState();
+    closeJobsToolbarMenus();
     renderJobsCard();
   });
 
@@ -8139,6 +8789,17 @@ function wireEvents() {
 
     if (!clickedToggle && !clickedPanel) {
       closeConsolePanels();
+    }
+
+    const clickedJobsToolbar = target instanceof Element && !!target.closest("#jobs-feature-panel");
+    if (!clickedJobsToolbar) {
+      closeJobsToolbarMenus();
+    }
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      closeJobsToolbarMenus();
     }
   });
   els.quickGcode.forEach((btn) => {
