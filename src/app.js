@@ -53,6 +53,7 @@ const VIEW_TITLES = {
   console: "Console",
   configuration: "Machine",
   files: "GCode Files",
+  "pretty-gcode": "Pretty GCode",
   settings: "Settings",
 };
 const ACTIVE_VIEW_STORAGE_KEY = "active_view";
@@ -162,6 +163,12 @@ const CONFIG_FILE_TYPE_RANK = {
 const CONFIG_FILE_HIDDEN_ROOTS = new Set(["gcodes", "timelapse", "timelapse_frames"]);
 const CONFIG_FILE_FALLBACK_ROOTS = ["config", "logs", "docs", "config_example", "config_examples"];
 const UPDATE_MANAGER_PRIMARY_ORDER = ["system", "klipper", "moonraker", "fluidd", "mainsail"];
+const PRETTY_GCODE_MAX_SEGMENTS = 150000;
+const PRETTY_GCODE_SIM_TICK_MS = 120;
+const PRETTY_GCODE_SIM_STEP_DELTA = 0.05;
+const PRETTY_GCODE_SIM_MIN_DURATION_MS = 20 * 1000;
+const PRETTY_GCODE_SIM_MAX_DURATION_MS = 4 * 60 * 60 * 1000;
+const PRETTY_GCODE_SIM_BASE_SEGMENT_MS = 95;
 function getThemeColorValue(cssVarName, fallback) {
   const value = getComputedStyle(document.documentElement).getPropertyValue(cssVarName).trim();
   return value || fallback;
@@ -290,6 +297,20 @@ const els = {
   jobsCancel: document.getElementById("jobs-cancel"),
   jobsBreadcrumbs: document.getElementById("jobs-breadcrumbs"),
   jobsStatus: document.getElementById("jobs-status"),
+  prettyGcodeCard: document.getElementById("pretty-gcode-card"),
+  prettyGcodeCanvas: document.getElementById("pretty-gcode-canvas"),
+  prettyGcodeStatus: document.getElementById("pretty-gcode-status"),
+  prettyGcodeFile: document.getElementById("pretty-gcode-file"),
+  prettyGcodeFollow: document.getElementById("pretty-gcode-follow"),
+  prettyGcodeReload: document.getElementById("pretty-gcode-reload"),
+  prettyGcodeMode: document.getElementById("pretty-gcode-mode"),
+  prettyGcodeLoadFile: document.getElementById("pretty-gcode-load-file"),
+  prettyGcodeLive: document.getElementById("pretty-gcode-live"),
+  prettyGcodeRewind: document.getElementById("pretty-gcode-rewind"),
+  prettyGcodePlayPause: document.getElementById("pretty-gcode-play-pause"),
+  prettyGcodeFastForward: document.getElementById("pretty-gcode-fast-forward"),
+  prettyGcodeProgress: document.getElementById("pretty-gcode-progress"),
+  prettyGcodeLoadInput: document.getElementById("pretty-gcode-load-input"),
   machineLayout: document.getElementById("machine-layout"),
   machineSideColumn: document.getElementById("machine-side-column"),
   machineSideToggle: document.getElementById("machine-side-toggle"),
@@ -406,6 +427,7 @@ let temperatureHistorySessionId = null;
 let temperatureHistoryDbPromise = null;
 let statusCountdownTimer = null;
 let jobsColumnsDragKey = null;
+let prettyGcodeSimulationTimer = null;
 
 function loadStoredBool(key, fallback) {
   const raw = localStorage.getItem(key);
@@ -812,6 +834,30 @@ function createDefaultJobsState() {
   };
 }
 
+function createDefaultPrettyGcodeState() {
+  return {
+    isLoading: false,
+    loadingFile: "",
+    activeFile: "",
+    sourceLabel: "",
+    sourceMode: "live",
+    sourceTextLength: 0,
+    lastError: "",
+    lastLoadedAtMs: null,
+    parseRequestId: 0,
+    segments: [],
+    extrudingSegmentIndices: [],
+    bounds: null,
+    extrusionCount: 0,
+    followToolhead: true,
+    toolhead: { x: null, y: null, z: null },
+    simulationProgress: 0,
+    simulationPlaying: false,
+    simulationSpeed: 1,
+    simulationDurationMs: PRETTY_GCODE_SIM_MIN_DURATION_MS,
+    simulationLastTickMs: null,
+  };
+}
 const state = {
   client: null,
   connectionStatus: "disconnected",
@@ -890,6 +936,7 @@ const state = {
   endstops: createDefaultEndstopsState(),
   logFiles: createDefaultMachineLogFilesState(),
   jobs: createDefaultJobsState(),
+  prettyGcode: createDefaultPrettyGcodeState(),
   console: {
     seenStoreEntryKeys: new Set(),
     pendingCommandCounts: new Map(),
@@ -2135,6 +2182,10 @@ function setConnectionUi(status) {
     if (status === "disconnected") setPrinterState("disconnected");
     if (status === "error") setPrinterState("error");
   }
+
+  if (state.activeView === "pretty-gcode") {
+    renderPrettyGcodeView();
+  }
 }
 
 function setPrinterState(value) {
@@ -2575,11 +2626,17 @@ function updateStatusFileInfo(printStats, gcodeMove = null, motionReport = null)
   const stats = mergePrintStatsSnapshot(printStats);
   const filename = typeof stats.filename === "string" ? stats.filename : "";
   const normalized = filename.trim();
+  const simulationMode = isPrettySimulationMode();
+
   setStatusFilename(filename);
   updateStatusTiming(stats);
   updateStatusRatesAndFilament(stats, gcodeMove, motionReport);
   renderStatusLayer(stats);
   renderJobsJobControls();
+
+  if (!simulationMode) {
+    updatePrettyGcodeToolhead({ skipRender: state.activeView !== "pretty-gcode" });
+  }
 
   if (state.activeView === "files") {
     renderJobsList();
@@ -2587,6 +2644,11 @@ function updateStatusFileInfo(printStats, gcodeMove = null, motionReport = null)
 
   if (!normalized) {
     setStatusThumbnail("");
+    if (!simulationMode && state.prettyGcode.activeFile) {
+      void syncPrettyGcodeForActiveFile("");
+    } else if (state.activeView === "pretty-gcode") {
+      renderPrettyGcodeView();
+    }
     return;
   }
 
@@ -2595,6 +2657,10 @@ function updateStatusFileInfo(printStats, gcodeMove = null, motionReport = null)
   }
 
   void syncStatusFileMetadata(normalized);
+
+  if (!simulationMode && (state.activeView === "pretty-gcode" || state.prettyGcode.activeFile)) {
+    void syncPrettyGcodeForActiveFile(normalized);
+  }
 }
 
 function switchView(viewName) {
@@ -5395,6 +5461,923 @@ function getGcodeDisplayName(path) {
   return parts.length ? parts[parts.length - 1] : normalized;
 }
 
+function setPrettyGcodeStatus(message, level = "info") {
+  if (!els.prettyGcodeStatus) return;
+  els.prettyGcodeStatus.textContent = String(message || "").trim();
+  els.prettyGcodeStatus.dataset.level = level;
+}
+
+function isPrettySimulationMode() {
+  return state.prettyGcode.sourceMode === "simulation";
+}
+
+function clampPrettyGcodeProgress(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 0;
+  return Math.max(0, Math.min(1, numeric));
+}
+
+function estimatePrettyGcodeSimulationDurationMs(segmentCount, extrusionCount) {
+  const segments = Math.max(0, Number(segmentCount) || 0);
+  const extrusions = Math.max(0, Number(extrusionCount) || 0);
+  const estimate = (segments * PRETTY_GCODE_SIM_BASE_SEGMENT_MS) + (extrusions * 30);
+  return Math.max(PRETTY_GCODE_SIM_MIN_DURATION_MS, Math.min(PRETTY_GCODE_SIM_MAX_DURATION_MS, estimate));
+}
+
+function stopPrettyGcodeSimulationTicker() {
+  if (!prettyGcodeSimulationTimer) return;
+  clearInterval(prettyGcodeSimulationTimer);
+  prettyGcodeSimulationTimer = null;
+}
+
+function pausePrettyGcodeSimulation({ render = true } = {}) {
+  state.prettyGcode.simulationPlaying = false;
+  state.prettyGcode.simulationLastTickMs = null;
+  stopPrettyGcodeSimulationTicker();
+  if (render && state.activeView === "pretty-gcode") {
+    renderPrettyGcodeView();
+  }
+}
+
+function getPrettySimulationToolhead(progress = state.prettyGcode.simulationProgress) {
+  const segments = Array.isArray(state.prettyGcode.segments) ? state.prettyGcode.segments : [];
+  if (!segments.length) {
+    return { x: null, y: null, z: null };
+  }
+
+  const clamped = clampPrettyGcodeProgress(progress);
+  const extrudingSegmentIndices = Array.isArray(state.prettyGcode.extrudingSegmentIndices)
+    ? state.prettyGcode.extrudingSegmentIndices
+    : [];
+
+  if (extrudingSegmentIndices.length) {
+    if (clamped <= 0) {
+      const firstSegment = segments[extrudingSegmentIndices[0]] || segments[0];
+      return {
+        x: Number.isFinite(firstSegment?.x1) ? firstSegment.x1 : null,
+        y: Number.isFinite(firstSegment?.y1) ? firstSegment.y1 : null,
+        z: Number.isFinite(firstSegment?.z) ? firstSegment.z : null,
+      };
+    }
+
+    const sampleIndex = Math.max(
+      0,
+      Math.min(extrudingSegmentIndices.length - 1, Math.round(clamped * (extrudingSegmentIndices.length - 1)))
+    );
+    const segment = segments[extrudingSegmentIndices[sampleIndex]];
+    if (segment) {
+      return {
+        x: Number.isFinite(segment.x2) ? segment.x2 : null,
+        y: Number.isFinite(segment.y2) ? segment.y2 : null,
+        z: Number.isFinite(segment.z) ? segment.z : null,
+      };
+    }
+  }
+
+  const fallbackIndex = Math.max(0, Math.min(segments.length - 1, Math.round(clamped * (segments.length - 1))));
+  const fallbackSegment = segments[fallbackIndex];
+  return {
+    x: Number.isFinite(fallbackSegment?.x2) ? fallbackSegment.x2 : null,
+    y: Number.isFinite(fallbackSegment?.y2) ? fallbackSegment.y2 : null,
+    z: Number.isFinite(fallbackSegment?.z) ? fallbackSegment.z : null,
+  };
+}
+
+function startPrettyGcodeSimulation() {
+  if (!isPrettySimulationMode()) {
+    setPrettyGcodeStatus("Load a file with Simulation mode before pressing Play.", "warn");
+    return false;
+  }
+
+  if (!state.prettyGcode.segments.length) {
+    setPrettyGcodeStatus("No path loaded. Load a file first.", "warn");
+    return false;
+  }
+
+  if (state.prettyGcode.simulationProgress >= 1) {
+    state.prettyGcode.simulationProgress = 0;
+  }
+
+  stopPrettyGcodeSimulationTicker();
+  state.prettyGcode.simulationPlaying = true;
+  state.prettyGcode.simulationLastTickMs = Date.now();
+  updatePrettyGcodeToolhead({ skipRender: true });
+
+  prettyGcodeSimulationTimer = setInterval(() => {
+    if (!isPrettySimulationMode() || !state.prettyGcode.simulationPlaying) {
+      pausePrettyGcodeSimulation({ render: false });
+      return;
+    }
+
+    const nowMs = Date.now();
+    const lastMs = Number(state.prettyGcode.simulationLastTickMs) || nowMs;
+    const deltaMs = Math.max(0, nowMs - lastMs);
+    state.prettyGcode.simulationLastTickMs = nowMs;
+
+    const durationMs = Math.max(1, Number(state.prettyGcode.simulationDurationMs) || PRETTY_GCODE_SIM_MIN_DURATION_MS);
+    const speed = Math.max(0.1, Number(state.prettyGcode.simulationSpeed) || 1);
+    const deltaProgress = (deltaMs * speed) / durationMs;
+
+    state.prettyGcode.simulationProgress = clampPrettyGcodeProgress(state.prettyGcode.simulationProgress + deltaProgress);
+    updatePrettyGcodeToolhead({ skipRender: true });
+
+    if (state.prettyGcode.simulationProgress >= 1) {
+      pausePrettyGcodeSimulation({ render: false });
+    }
+
+    if (state.activeView === "pretty-gcode") {
+      renderPrettyGcodeView();
+    }
+  }, PRETTY_GCODE_SIM_TICK_MS);
+
+  if (state.activeView === "pretty-gcode") {
+    renderPrettyGcodeView();
+  }
+
+  return true;
+}
+
+function togglePrettyGcodeSimulationPlayback() {
+  if (!isPrettySimulationMode()) {
+    setPrettyGcodeStatus("Load a file and enter Simulation mode to use playback controls.", "warn");
+    return false;
+  }
+
+  if (state.prettyGcode.simulationPlaying) {
+    pausePrettyGcodeSimulation();
+    return true;
+  }
+
+  return startPrettyGcodeSimulation();
+}
+
+function stepPrettyGcodeSimulation(deltaProgress) {
+  if (!isPrettySimulationMode()) {
+    setPrettyGcodeStatus("Load a file and enter Simulation mode to use rewind or fast forward.", "warn");
+    return false;
+  }
+
+  if (!state.prettyGcode.segments.length) {
+    setPrettyGcodeStatus("No path loaded. Load a file first.", "warn");
+    return false;
+  }
+
+  pausePrettyGcodeSimulation({ render: false });
+  state.prettyGcode.simulationProgress = clampPrettyGcodeProgress(
+    state.prettyGcode.simulationProgress + (Number(deltaProgress) || 0)
+  );
+  updatePrettyGcodeToolhead({ skipRender: true });
+
+  if (state.activeView === "pretty-gcode") {
+    renderPrettyGcodeView();
+  }
+
+  return true;
+}
+
+function setPrettyGcodeProgressInputValue(progress) {
+  if (!els.prettyGcodeProgress) return;
+  els.prettyGcodeProgress.value = String(Math.round(clampPrettyGcodeProgress(progress) * 1000));
+}
+
+function setPrettyGcodeFileLabel(path) {
+  if (!els.prettyGcodeFile) return;
+
+  const sourceLabel = String(state.prettyGcode.sourceLabel || "").trim();
+  if (sourceLabel) {
+    els.prettyGcodeFile.textContent = sourceLabel;
+    return;
+  }
+
+  const normalized = normalizeGcodePath(path);
+  if (!normalized) {
+    els.prettyGcodeFile.textContent = "No active print file.";
+    return;
+  }
+
+  els.prettyGcodeFile.textContent = `gcodes/${normalized}`;
+}
+
+function getPrettyToolheadFromStatus() {
+  const move = state.printStatus.lastGcodeMove || {};
+  const position = Array.isArray(move?.gcode_position) ? move.gcode_position : [];
+
+  const x = readFiniteNumber(position?.[0] ?? move?.position?.[0] ?? move?.gcode_x ?? move?.x);
+  const y = readFiniteNumber(position?.[1] ?? move?.position?.[1] ?? move?.gcode_y ?? move?.y);
+  const z = readFiniteNumber(position?.[2] ?? move?.position?.[2] ?? move?.gcode_z ?? move?.z);
+
+  return {
+    x: Number.isFinite(x) ? x : null,
+    y: Number.isFinite(y) ? y : null,
+    z: Number.isFinite(z) ? z : null,
+  };
+}
+
+function getPrettyGcodeProgress() {
+  if (isPrettySimulationMode()) {
+    return clampPrettyGcodeProgress(state.prettyGcode.simulationProgress);
+  }
+
+  const activeFile = normalizeGcodePath(state.prettyGcode.activeFile);
+  const currentFile = normalizeGcodePath(state.printStatus.lastPrintStats?.filename || state.printStatus.filename);
+  if (!activeFile || !currentFile || activeFile !== currentFile) return 0;
+
+  const progress = Number(state.printStatus.lastVirtualSd?.progress);
+  if (!Number.isFinite(progress)) return 0;
+  return Math.max(0, Math.min(1, progress));
+}
+
+function parsePrettyGcodeText(text) {
+  const lines = String(text || "").replace(/\r/g, "").split("\n");
+
+  let x = 0;
+  let y = 0;
+  let z = 0;
+  let e = 0;
+  let absoluteXYZ = true;
+  let absoluteE = true;
+
+  const segments = [];
+  const extrudingSegmentIndices = [];
+  let extrusionCount = 0;
+
+  let minX = null;
+  let maxX = null;
+  let minY = null;
+  let maxY = null;
+
+  const includePoint = (px, py) => {
+    if (!Number.isFinite(px) || !Number.isFinite(py)) return;
+    minX = minX === null ? px : Math.min(minX, px);
+    maxX = maxX === null ? px : Math.max(maxX, px);
+    minY = minY === null ? py : Math.min(minY, py);
+    maxY = maxY === null ? py : Math.max(maxY, py);
+  };
+
+  for (const rawLine of lines) {
+    if (segments.length >= PRETTY_GCODE_MAX_SEGMENTS) {
+      break;
+    }
+
+    let line = String(rawLine || "");
+    const semicolon = line.indexOf(";");
+    if (semicolon >= 0) {
+      line = line.slice(0, semicolon);
+    }
+
+    line = line.trim();
+    if (!line) continue;
+
+    const tokens = line.split(/\s+/).filter(Boolean);
+    if (!tokens.length) continue;
+
+    const command = tokens[0].toUpperCase();
+    const params = {};
+
+    for (let i = 1; i < tokens.length; i += 1) {
+      const token = tokens[i];
+      if (!token || token.length < 2) continue;
+      const key = token[0].toUpperCase();
+      const value = Number(token.slice(1));
+      if (Number.isFinite(value)) {
+        params[key] = value;
+      }
+    }
+
+    if (command === "G90") {
+      absoluteXYZ = true;
+      continue;
+    }
+
+    if (command === "G91") {
+      absoluteXYZ = false;
+      continue;
+    }
+
+    if (command === "M82") {
+      absoluteE = true;
+      continue;
+    }
+
+    if (command === "M83") {
+      absoluteE = false;
+      continue;
+    }
+
+    if (command === "G92") {
+      if (Object.prototype.hasOwnProperty.call(params, "X")) x = params.X;
+      if (Object.prototype.hasOwnProperty.call(params, "Y")) y = params.Y;
+      if (Object.prototype.hasOwnProperty.call(params, "Z")) z = params.Z;
+      if (Object.prototype.hasOwnProperty.call(params, "E")) e = params.E;
+      continue;
+    }
+
+    if (!["G0", "G1", "G2", "G3"].includes(command)) {
+      continue;
+    }
+
+    const nextX = Object.prototype.hasOwnProperty.call(params, "X")
+      ? (absoluteXYZ ? params.X : x + params.X)
+      : x;
+    const nextY = Object.prototype.hasOwnProperty.call(params, "Y")
+      ? (absoluteXYZ ? params.Y : y + params.Y)
+      : y;
+    const nextZ = Object.prototype.hasOwnProperty.call(params, "Z")
+      ? (absoluteXYZ ? params.Z : z + params.Z)
+      : z;
+    const nextE = Object.prototype.hasOwnProperty.call(params, "E")
+      ? (absoluteE ? params.E : e + params.E)
+      : e;
+
+    const hasMotion = nextX !== x || nextY !== y;
+
+    if (hasMotion) {
+      const extruding = nextE > e + 0.00001;
+
+      segments.push({
+        x1: x,
+        y1: y,
+        x2: nextX,
+        y2: nextY,
+        z: nextZ,
+        extruding,
+      });
+
+      includePoint(x, y);
+      includePoint(nextX, nextY);
+
+      if (extruding) {
+        extrusionCount += 1;
+        extrudingSegmentIndices.push(segments.length - 1);
+      }
+    }
+
+    x = nextX;
+    y = nextY;
+    z = nextZ;
+    e = nextE;
+  }
+
+  const bounds = minX === null || minY === null || maxX === null || maxY === null
+    ? null
+    : {
+        minX,
+        minY,
+        maxX,
+        maxY,
+      };
+
+  return {
+    segments,
+    extrudingSegmentIndices,
+    extrusionCount,
+    bounds,
+  };
+}
+
+function ensurePrettyGcodeCanvasSize() {
+  if (!els.prettyGcodeCanvas) return { width: 0, height: 0, dpr: 1 };
+
+  const rect = els.prettyGcodeCanvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  const targetWidth = Math.max(1, Math.round(rect.width * dpr));
+  const targetHeight = Math.max(1, Math.round(rect.height * dpr));
+
+  if (els.prettyGcodeCanvas.width !== targetWidth || els.prettyGcodeCanvas.height !== targetHeight) {
+    els.prettyGcodeCanvas.width = targetWidth;
+    els.prettyGcodeCanvas.height = targetHeight;
+  }
+
+  return {
+    width: Math.max(1, rect.width),
+    height: Math.max(1, rect.height),
+    dpr,
+  };
+}
+
+function renderPrettyGcodeCanvas() {
+  if (!els.prettyGcodeCanvas) return;
+
+  const canvasInfo = ensurePrettyGcodeCanvasSize();
+  const ctx = els.prettyGcodeCanvas.getContext("2d");
+  if (!ctx) return;
+
+  const { width, height, dpr } = canvasInfo;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, width, height);
+
+  ctx.fillStyle = "rgba(4, 10, 20, 0.95)";
+  ctx.fillRect(0, 0, width, height);
+
+  const pretty = state.prettyGcode;
+  const segments = Array.isArray(pretty.segments) ? pretty.segments : [];
+  const bounds = pretty.bounds;
+
+  if (!segments.length || !bounds) {
+    ctx.fillStyle = "rgba(148, 163, 184, 0.92)";
+    ctx.font = "13px JetBrains Mono";
+    ctx.textAlign = "center";
+    ctx.fillText("No path data loaded.", width / 2, height / 2);
+    return;
+  }
+
+  const padding = 20;
+  const spanX = Math.max(1e-6, bounds.maxX - bounds.minX);
+  const spanY = Math.max(1e-6, bounds.maxY - bounds.minY);
+
+  const fitScale = Math.min((width - padding * 2) / spanX, (height - padding * 2) / spanY);
+  const toolhead = pretty.toolhead || { x: null, y: null };
+  const shouldFollow = !!pretty.followToolhead && Number.isFinite(toolhead.x) && Number.isFinite(toolhead.y);
+
+  const scale = Math.max(0.0001, shouldFollow ? fitScale * 1.6 : fitScale);
+  const centerX = shouldFollow ? toolhead.x : (bounds.minX + bounds.maxX) * 0.5;
+  const centerY = shouldFollow ? toolhead.y : (bounds.minY + bounds.maxY) * 0.5;
+
+  const toScreen = (worldX, worldY) => ({
+    x: (worldX - centerX) * scale + width * 0.5,
+    y: height * 0.5 - (worldY - centerY) * scale,
+  });
+
+  ctx.strokeStyle = "rgba(71, 85, 105, 0.55)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  const bedA = toScreen(bounds.minX, bounds.minY);
+  const bedB = toScreen(bounds.maxX, bounds.minY);
+  const bedC = toScreen(bounds.maxX, bounds.maxY);
+  const bedD = toScreen(bounds.minX, bounds.maxY);
+  ctx.moveTo(bedA.x, bedA.y);
+  ctx.lineTo(bedB.x, bedB.y);
+  ctx.lineTo(bedC.x, bedC.y);
+  ctx.lineTo(bedD.x, bedD.y);
+  ctx.closePath();
+  ctx.stroke();
+
+  const progress = getPrettyGcodeProgress();
+  const extrusionTotal = Math.max(1, Number(pretty.extrusionCount) || 0);
+  const printedExtrusions = Math.round(progress * extrusionTotal);
+
+  let extrusionSeen = 0;
+
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+
+  ctx.strokeStyle = "rgba(51, 65, 85, 0.55)";
+  ctx.lineWidth = 0.9;
+  ctx.beginPath();
+  segments.forEach((segment) => {
+    if (segment.extruding) return;
+    const p1 = toScreen(segment.x1, segment.y1);
+    const p2 = toScreen(segment.x2, segment.y2);
+    ctx.moveTo(p1.x, p1.y);
+    ctx.lineTo(p2.x, p2.y);
+  });
+  ctx.stroke();
+
+  ctx.strokeStyle = "rgba(71, 85, 105, 0.68)";
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+
+  segments.forEach((segment) => {
+    if (!segment.extruding) return;
+    extrusionSeen += 1;
+    if (extrusionSeen <= printedExtrusions) return;
+    const p1 = toScreen(segment.x1, segment.y1);
+    const p2 = toScreen(segment.x2, segment.y2);
+    ctx.moveTo(p1.x, p1.y);
+    ctx.lineTo(p2.x, p2.y);
+  });
+  ctx.stroke();
+
+  extrusionSeen = 0;
+  ctx.strokeStyle = "rgba(34, 211, 238, 0.95)";
+  ctx.lineWidth = 1.7;
+  ctx.beginPath();
+
+  segments.forEach((segment) => {
+    if (!segment.extruding) return;
+    extrusionSeen += 1;
+    if (extrusionSeen > printedExtrusions) return;
+    const p1 = toScreen(segment.x1, segment.y1);
+    const p2 = toScreen(segment.x2, segment.y2);
+    ctx.moveTo(p1.x, p1.y);
+    ctx.lineTo(p2.x, p2.y);
+  });
+  ctx.stroke();
+
+  if (Number.isFinite(toolhead.x) && Number.isFinite(toolhead.y)) {
+    const marker = toScreen(toolhead.x, toolhead.y);
+    ctx.fillStyle = "rgba(249, 115, 22, 0.96)";
+    ctx.beginPath();
+    ctx.arc(marker.x, marker.y, 4.2, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = "rgba(249, 115, 22, 0.35)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(marker.x - 9, marker.y);
+    ctx.lineTo(marker.x + 9, marker.y);
+    ctx.moveTo(marker.x, marker.y - 9);
+    ctx.lineTo(marker.x, marker.y + 9);
+    ctx.stroke();
+  }
+}
+
+function renderPrettyGcodeView() {
+  if (els.prettyGcodeFollow) {
+    els.prettyGcodeFollow.checked = !!state.prettyGcode.followToolhead;
+  }
+
+  const simulationMode = isPrettySimulationMode();
+  const hasSegments = Array.isArray(state.prettyGcode.segments) && state.prettyGcode.segments.length > 0;
+
+  setPrettyGcodeFileLabel(state.prettyGcode.activeFile);
+  updatePrettyGcodeToolhead({ skipRender: true });
+
+  const progress = getPrettyGcodeProgress();
+  setPrettyGcodeProgressInputValue(progress);
+
+  if (els.prettyGcodeMode) {
+    els.prettyGcodeMode.textContent = simulationMode ? "Mode: Simulation" : "Mode: Live";
+  }
+
+  if (els.prettyGcodePlayPause) {
+    els.prettyGcodePlayPause.textContent = state.prettyGcode.simulationPlaying ? "Pause" : "Play";
+    els.prettyGcodePlayPause.disabled = !simulationMode || !hasSegments || state.prettyGcode.isLoading;
+  }
+
+  if (els.prettyGcodeRewind) {
+    els.prettyGcodeRewind.disabled = !simulationMode || !hasSegments || state.prettyGcode.isLoading;
+  }
+
+  if (els.prettyGcodeFastForward) {
+    els.prettyGcodeFastForward.disabled = !simulationMode || !hasSegments || state.prettyGcode.isLoading;
+  }
+
+  if (els.prettyGcodeProgress) {
+    els.prettyGcodeProgress.disabled = !simulationMode || !hasSegments || state.prettyGcode.isLoading;
+  }
+
+  if (els.prettyGcodeLive) {
+    els.prettyGcodeLive.disabled = !simulationMode;
+  }
+
+  if (els.prettyGcodeLoadFile) {
+    els.prettyGcodeLoadFile.disabled = state.prettyGcode.isLoading;
+  }
+
+  if (!simulationMode && !state.client) {
+    setPrettyGcodeStatus("Connect to Moonraker to use live print tracking.", "warn");
+    renderPrettyGcodeCanvas();
+    return;
+  }
+
+  if (!simulationMode && state.connectionStatus !== "connected") {
+    setPrettyGcodeStatus("Moonraker disconnected. Reconnect to stream live path updates.", "warn");
+    renderPrettyGcodeCanvas();
+    return;
+  }
+
+  if (state.prettyGcode.isLoading) {
+    setPrettyGcodeStatus(`Loading ${state.prettyGcode.loadingFile || "print file"}...`, "info");
+    renderPrettyGcodeCanvas();
+    return;
+  }
+
+  if (state.prettyGcode.lastError) {
+    setPrettyGcodeStatus(`Pretty GCode failed: ${state.prettyGcode.lastError}`, "error");
+    renderPrettyGcodeCanvas();
+    return;
+  }
+
+  const segments = state.prettyGcode.segments || [];
+  const percent = Math.round(progress * 1000) / 10;
+  const toolhead = state.prettyGcode.toolhead || { x: null, y: null, z: null };
+  const toolheadLabel = Number.isFinite(toolhead.x) && Number.isFinite(toolhead.y)
+    ? ` | Toolhead: X${toolhead.x.toFixed(2)} Y${toolhead.y.toFixed(2)}`
+    : "";
+
+  if (!segments.length) {
+    if (simulationMode) {
+      setPrettyGcodeStatus("Load a GCode file and press Play to run simulation.", "info");
+    } else {
+      setPrettyGcodeStatus("No parsed path yet. Start a print or press Reload.", "info");
+    }
+  } else if (simulationMode) {
+    const playState = state.prettyGcode.simulationPlaying ? "Playing" : "Paused";
+    setPrettyGcodeStatus(
+      `Simulation ${playState} | Progress: ${percent.toFixed(1)}%${toolheadLabel}`,
+      "info"
+    );
+  } else {
+    setPrettyGcodeStatus(
+      `Loaded ${segments.length.toLocaleString()} moves | Progress: ${percent.toFixed(1)}%${toolheadLabel}`,
+      "info"
+    );
+  }
+
+  renderPrettyGcodeCanvas();
+}
+
+async function loadPrettyGcodeSimulationFile(file) {
+  const candidate = file || null;
+  if (!candidate) return false;
+
+  const displayName = String(candidate.name || "local-file.gcode").trim() || "local-file.gcode";
+
+  pausePrettyGcodeSimulation({ render: false });
+
+  const requestId = state.prettyGcode.parseRequestId + 1;
+  state.prettyGcode.parseRequestId = requestId;
+  state.prettyGcode.isLoading = true;
+  state.prettyGcode.loadingFile = displayName;
+  state.prettyGcode.lastError = "";
+  state.prettyGcode.sourceMode = "simulation";
+  state.prettyGcode.sourceLabel = `local/${displayName}`;
+  state.prettyGcode.activeFile = displayName;
+  state.prettyGcode.simulationProgress = 0;
+  state.prettyGcode.simulationPlaying = false;
+  state.prettyGcode.simulationLastTickMs = null;
+
+  renderPrettyGcodeView();
+
+  try {
+    const fileText = await candidate.text();
+    if (requestId !== state.prettyGcode.parseRequestId) {
+      return false;
+    }
+
+    const parsed = parsePrettyGcodeText(fileText);
+    state.prettyGcode.sourceTextLength = String(fileText || "").length;
+    state.prettyGcode.segments = parsed.segments;
+    state.prettyGcode.extrudingSegmentIndices = parsed.extrudingSegmentIndices;
+    state.prettyGcode.bounds = parsed.bounds;
+    state.prettyGcode.extrusionCount = parsed.extrusionCount;
+    state.prettyGcode.simulationDurationMs = estimatePrettyGcodeSimulationDurationMs(
+      parsed.segments.length,
+      parsed.extrusionCount
+    );
+    state.prettyGcode.lastLoadedAtMs = Date.now();
+    state.prettyGcode.lastError = "";
+    updatePrettyGcodeToolhead({ skipRender: true });
+    return true;
+  } catch (error) {
+    const message = error?.message || String(error);
+    if (requestId === state.prettyGcode.parseRequestId) {
+      state.prettyGcode.lastError = message;
+      state.prettyGcode.segments = [];
+      state.prettyGcode.extrudingSegmentIndices = [];
+      state.prettyGcode.bounds = null;
+      state.prettyGcode.extrusionCount = 0;
+      state.prettyGcode.simulationDurationMs = PRETTY_GCODE_SIM_MIN_DURATION_MS;
+    }
+    return false;
+  } finally {
+    if (requestId === state.prettyGcode.parseRequestId) {
+      state.prettyGcode.isLoading = false;
+      state.prettyGcode.loadingFile = "";
+      renderPrettyGcodeView();
+    }
+  }
+}
+
+async function requestPrettyGcodeSimulationFromHost(path) {
+  const normalized = normalizeGcodePath(path);
+  if (!normalized || !state.client || state.connectionStatus !== "connected") {
+    setPrettyGcodeStatus("Connect to Moonraker to load host print files.", "warn");
+    return false;
+  }
+
+  pausePrettyGcodeSimulation({ render: false });
+
+  const requestId = state.prettyGcode.parseRequestId + 1;
+  state.prettyGcode.parseRequestId = requestId;
+  state.prettyGcode.isLoading = true;
+  state.prettyGcode.loadingFile = normalized;
+  state.prettyGcode.lastError = "";
+  state.prettyGcode.sourceMode = "simulation";
+  state.prettyGcode.sourceLabel = `gcodes/${normalized}`;
+  state.prettyGcode.activeFile = normalized;
+  state.prettyGcode.simulationProgress = 0;
+  state.prettyGcode.simulationPlaying = false;
+  state.prettyGcode.simulationLastTickMs = null;
+
+  if (state.activeView === "pretty-gcode") {
+    renderPrettyGcodeView();
+  }
+
+  try {
+    const fileText = await state.client.getFileText("gcodes", normalized);
+    if (requestId !== state.prettyGcode.parseRequestId) {
+      return false;
+    }
+
+    const parsed = parsePrettyGcodeText(fileText);
+    state.prettyGcode.sourceTextLength = String(fileText || "").length;
+    state.prettyGcode.segments = parsed.segments;
+    state.prettyGcode.extrudingSegmentIndices = parsed.extrudingSegmentIndices;
+    state.prettyGcode.bounds = parsed.bounds;
+    state.prettyGcode.extrusionCount = parsed.extrusionCount;
+    state.prettyGcode.simulationDurationMs = estimatePrettyGcodeSimulationDurationMs(
+      parsed.segments.length,
+      parsed.extrusionCount
+    );
+    state.prettyGcode.lastLoadedAtMs = Date.now();
+    state.prettyGcode.lastError = "";
+    updatePrettyGcodeToolhead({ skipRender: true });
+    return true;
+  } catch (error) {
+    const message = error?.message || String(error);
+    if (requestId === state.prettyGcode.parseRequestId) {
+      state.prettyGcode.lastError = message;
+      state.prettyGcode.segments = [];
+      state.prettyGcode.extrudingSegmentIndices = [];
+      state.prettyGcode.bounds = null;
+      state.prettyGcode.extrusionCount = 0;
+      state.prettyGcode.simulationDurationMs = PRETTY_GCODE_SIM_MIN_DURATION_MS;
+    }
+    return false;
+  } finally {
+    if (requestId === state.prettyGcode.parseRequestId) {
+      state.prettyGcode.isLoading = false;
+      state.prettyGcode.loadingFile = "";
+      if (state.activeView === "pretty-gcode") {
+        renderPrettyGcodeView();
+      }
+    }
+  }
+}
+
+async function loadPrettyGcodeFile(path, { force = false } = {}) {
+  const normalized = normalizeGcodePath(path);
+  if (!normalized || !state.client || state.connectionStatus !== "connected") {
+    return false;
+  }
+
+  pausePrettyGcodeSimulation({ render: false });
+  state.prettyGcode.sourceMode = "live";
+  state.prettyGcode.sourceLabel = "";
+  state.prettyGcode.simulationProgress = 0;
+  state.prettyGcode.simulationPlaying = false;
+  state.prettyGcode.simulationLastTickMs = null;
+
+  if (
+    !force
+    && state.prettyGcode.activeFile === normalized
+    && state.prettyGcode.isLoading
+    && state.prettyGcode.loadingFile === normalized
+  ) {
+    return true;
+  }
+
+  if (
+    !force
+    && state.prettyGcode.activeFile === normalized
+    && !state.prettyGcode.lastError
+    && Number.isFinite(state.prettyGcode.lastLoadedAtMs)
+  ) {
+    return true;
+  }
+
+  const requestId = state.prettyGcode.parseRequestId + 1;
+  state.prettyGcode.parseRequestId = requestId;
+  state.prettyGcode.isLoading = true;
+  state.prettyGcode.loadingFile = normalized;
+  state.prettyGcode.lastError = "";
+  state.prettyGcode.activeFile = normalized;
+
+  renderPrettyGcodeView();
+
+  try {
+    const fileText = await state.client.getFileText("gcodes", normalized);
+    if (requestId !== state.prettyGcode.parseRequestId) {
+      return false;
+    }
+
+    const parsed = parsePrettyGcodeText(fileText);
+    state.prettyGcode.sourceTextLength = String(fileText || "").length;
+    state.prettyGcode.segments = parsed.segments;
+    state.prettyGcode.extrudingSegmentIndices = parsed.extrudingSegmentIndices;
+    state.prettyGcode.bounds = parsed.bounds;
+    state.prettyGcode.extrusionCount = parsed.extrusionCount;
+    state.prettyGcode.lastLoadedAtMs = Date.now();
+    state.prettyGcode.lastError = "";
+    state.prettyGcode.simulationDurationMs = estimatePrettyGcodeSimulationDurationMs(
+      parsed.segments.length,
+      parsed.extrusionCount
+    );
+    updatePrettyGcodeToolhead({ skipRender: true });
+    return true;
+  } catch (error) {
+    const message = error?.message || String(error);
+    if (requestId === state.prettyGcode.parseRequestId) {
+      state.prettyGcode.lastError = message;
+      state.prettyGcode.segments = [];
+      state.prettyGcode.extrudingSegmentIndices = [];
+      state.prettyGcode.bounds = null;
+      state.prettyGcode.extrusionCount = 0;
+    }
+    return false;
+  } finally {
+    if (requestId === state.prettyGcode.parseRequestId) {
+      state.prettyGcode.isLoading = false;
+      state.prettyGcode.loadingFile = "";
+      renderPrettyGcodeView();
+    }
+  }
+}
+
+async function syncPrettyGcodeForActiveFile(path, { force = false } = {}) {
+  const normalized = normalizeGcodePath(path);
+  if (!normalized) {
+    pausePrettyGcodeSimulation({ render: false });
+    state.prettyGcode.activeFile = "";
+    state.prettyGcode.sourceLabel = "";
+    state.prettyGcode.segments = [];
+    state.prettyGcode.extrudingSegmentIndices = [];
+    state.prettyGcode.bounds = null;
+    state.prettyGcode.extrusionCount = 0;
+    state.prettyGcode.sourceTextLength = 0;
+    state.prettyGcode.lastLoadedAtMs = null;
+    state.prettyGcode.lastError = "";
+    state.prettyGcode.simulationProgress = 0;
+    state.prettyGcode.simulationDurationMs = PRETTY_GCODE_SIM_MIN_DURATION_MS;
+    state.prettyGcode.simulationLastTickMs = null;
+    state.prettyGcode.toolhead = { x: null, y: null, z: null };
+    if (state.activeView === "pretty-gcode") {
+      renderPrettyGcodeView();
+    }
+    return false;
+  }
+
+  const loaded = await loadPrettyGcodeFile(normalized, { force });
+  if (state.activeView === "pretty-gcode") {
+    renderPrettyGcodeView();
+  }
+
+  return loaded;
+}
+
+async function requestPrettyGcodeReload() {
+  if (isPrettySimulationMode()) {
+    if (!state.prettyGcode.segments.length) {
+      setPrettyGcodeStatus("No simulation file loaded to restart.", "warn");
+      return false;
+    }
+
+    pausePrettyGcodeSimulation({ render: false });
+    state.prettyGcode.simulationProgress = 0;
+    state.prettyGcode.simulationLastTickMs = null;
+    updatePrettyGcodeToolhead({ skipRender: true });
+    if (state.activeView === "pretty-gcode") {
+      renderPrettyGcodeView();
+    }
+    return true;
+  }
+
+  const filename = normalizeGcodePath(state.printStatus.lastPrintStats?.filename || state.printStatus.filename || state.prettyGcode.activeFile);
+  if (!filename) {
+    setPrettyGcodeStatus("No active print file to reload.", "warn");
+    return false;
+  }
+
+  return syncPrettyGcodeForActiveFile(filename, { force: true });
+}
+
+async function requestPrettyGcodeLiveMode() {
+  pausePrettyGcodeSimulation({ render: false });
+  state.prettyGcode.sourceMode = "live";
+  state.prettyGcode.sourceLabel = "";
+  state.prettyGcode.simulationProgress = 0;
+  state.prettyGcode.simulationLastTickMs = null;
+
+  const filename = normalizeGcodePath(state.printStatus.lastPrintStats?.filename || state.printStatus.filename);
+  if (!filename || !state.client || state.connectionStatus !== "connected") {
+    await syncPrettyGcodeForActiveFile("");
+    updatePrettyGcodeToolhead({ skipRender: true });
+    if (state.activeView === "pretty-gcode") {
+      renderPrettyGcodeView();
+    }
+    return false;
+  }
+
+  const loaded = await syncPrettyGcodeForActiveFile(filename, { force: true });
+  updatePrettyGcodeToolhead({ skipRender: true });
+  if (state.activeView === "pretty-gcode") {
+    renderPrettyGcodeView();
+  }
+  return loaded;
+}
+function updatePrettyGcodeToolhead({ skipRender = false } = {}) {
+  if (isPrettySimulationMode()) {
+    state.prettyGcode.toolhead = getPrettySimulationToolhead();
+  } else {
+    state.prettyGcode.toolhead = getPrettyToolheadFromStatus();
+  }
+
+  if (!skipRender && state.activeView === "pretty-gcode") {
+    renderPrettyGcodeView();
+  }
+}
 function toGcodeTimestampMs(value) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric) || numeric <= 0) return null;
@@ -6453,6 +7436,17 @@ function renderJobsList() {
       await requestJobsFilePrint(entry.path);
     });
 
+    const simulateButton = document.createElement("button");
+    simulateButton.type = "button";
+    simulateButton.className = "jobs-entry-btn";
+    simulateButton.textContent = state.jobs.actionInFlight && state.jobs.activePath === entry.path && state.jobs.actionLabel === "simulate"
+      ? "Loading..."
+      : "Simulate";
+    simulateButton.disabled = busy;
+    simulateButton.addEventListener("click", async () => {
+      await requestJobsFileSimulate(entry.path);
+    });
+
     const renameButton = document.createElement("button");
     renameButton.type = "button";
     renameButton.className = "jobs-entry-btn";
@@ -6489,7 +7483,7 @@ function renderJobsList() {
       await requestJobsFileDelete(entry.path);
     });
 
-    actions.append(printButton, renameButton, moveButton, downloadButton, deleteButton);
+    actions.append(printButton, simulateButton, renameButton, moveButton, downloadButton, deleteButton);
     row.append(thumbWrap, body, actions);
     els.fileList.appendChild(row);
 
@@ -6931,6 +7925,41 @@ async function requestJobsFolderDelete(path) {
     const message = error?.message || String(error);
     state.jobs.lastError = message;
     appendConsole(`Folder delete failed (${normalizedPath}): ${message}`, "error");
+    renderJobsCard();
+    return false;
+  } finally {
+    state.jobs.actionInFlight = false;
+    state.jobs.actionLabel = "";
+    state.jobs.activePath = "";
+    renderJobsCard();
+  }
+}
+
+async function requestJobsFileSimulate(path) {
+  const normalizedPath = normalizeGcodePath(path);
+  if (!normalizedPath || !state.client || state.connectionStatus !== "connected") return false;
+
+  state.jobs.actionInFlight = true;
+  state.jobs.actionLabel = "simulate";
+  state.jobs.activePath = normalizedPath;
+  renderJobsCard();
+
+  try {
+    const loaded = await requestPrettyGcodeSimulationFromHost(normalizedPath);
+    if (!loaded) {
+      state.jobs.lastError = state.prettyGcode.lastError || "Failed to load simulation file.";
+      renderJobsCard();
+      return false;
+    }
+
+    state.jobs.lastError = "";
+    appendConsole(`Loaded simulation file: ${formatJobsRootPath(normalizedPath)}`, "info");
+    await requestViewChange("pretty-gcode");
+    return true;
+  } catch (error) {
+    const message = error?.message || String(error);
+    state.jobs.lastError = message;
+    appendConsole(`Simulation load failed (${normalizedPath}): ${message}`, "error");
     renderJobsCard();
     return false;
   } finally {
@@ -8022,6 +9051,33 @@ async function requestViewChange(viewName) {
     return;
   }
 
+  if (viewName === "pretty-gcode") {
+    updatePrettyGcodeToolhead({ skipRender: true });
+
+    if (isPrettySimulationMode() && state.prettyGcode.segments.length) {
+      renderPrettyGcodeView();
+      return;
+    }
+
+    if (!state.client || state.connectionStatus !== "connected") {
+      renderPrettyGcodeView();
+      return;
+    }
+
+    const activeFilename = normalizeGcodePath(
+      state.printStatus.lastPrintStats?.filename || state.printStatus.filename || state.prettyGcode.activeFile
+    );
+
+    if (!activeFilename) {
+      await syncPrettyGcodeForActiveFile("");
+      renderPrettyGcodeView();
+      return;
+    }
+
+    await syncPrettyGcodeForActiveFile(activeFilename);
+    return;
+  }
+
   if (viewName !== "configuration") return;
 
   if (!state.client) {
@@ -8307,6 +9363,69 @@ function wireEvents() {
   els.jobsRefresh?.addEventListener("click", async () => {
     closeJobsToolbarMenus();
     await loadJobsFiles({ source: "user" });
+  });
+
+  els.prettyGcodeFollow?.addEventListener("change", () => {
+    state.prettyGcode.followToolhead = !!els.prettyGcodeFollow?.checked;
+    renderPrettyGcodeView();
+  });
+
+  els.prettyGcodeReload?.addEventListener("click", async () => {
+    await requestPrettyGcodeReload();
+  });
+
+  els.prettyGcodeLoadFile?.addEventListener("click", async () => {
+    if (!state.client || state.connectionStatus !== "connected") {
+      setPrettyGcodeStatus("Connect to Moonraker to browse host GCode files.", "warn");
+      return;
+    }
+
+    await requestViewChange("files");
+    setJobsStatusMessage("Choose a GCode file and click Simulate to load it in Pretty GCode.", "info");
+  });
+
+  els.prettyGcodeLoadInput?.addEventListener("change", async (event) => {
+    const input = event.currentTarget;
+    const file = input?.files?.[0] || null;
+    input.value = "";
+    if (!file) return;
+    await loadPrettyGcodeSimulationFile(file);
+  });
+
+  els.prettyGcodeLive?.addEventListener("click", async () => {
+    await requestPrettyGcodeLiveMode();
+  });
+
+  els.prettyGcodeRewind?.addEventListener("click", () => {
+    stepPrettyGcodeSimulation(-PRETTY_GCODE_SIM_STEP_DELTA);
+  });
+
+  els.prettyGcodePlayPause?.addEventListener("click", () => {
+    togglePrettyGcodeSimulationPlayback();
+  });
+
+  els.prettyGcodeFastForward?.addEventListener("click", () => {
+    stepPrettyGcodeSimulation(PRETTY_GCODE_SIM_STEP_DELTA);
+  });
+
+  els.prettyGcodeProgress?.addEventListener("input", (event) => {
+    if (!isPrettySimulationMode()) return;
+    const input = event.currentTarget;
+    const raw = Number(input?.value);
+    const progress = Number.isFinite(raw) ? raw / 1000 : 0;
+
+    pausePrettyGcodeSimulation({ render: false });
+    state.prettyGcode.simulationProgress = clampPrettyGcodeProgress(progress);
+    updatePrettyGcodeToolhead({ skipRender: true });
+    if (state.activeView === "pretty-gcode") {
+      renderPrettyGcodeView();
+    }
+  });
+
+  window.addEventListener("resize", () => {
+    if (state.activeView === "pretty-gcode") {
+      renderPrettyGcodeView();
+    }
   });
 
   els.jobsSortToggle?.addEventListener("click", (event) => {
@@ -8922,6 +10041,7 @@ async function init() {
   renderEndstopsCard();
   renderMachineLogFilesCard();
   renderJobsCard();
+  renderPrettyGcodeView();
 
   try {
     await restoreTemperatureHistoryForSession();

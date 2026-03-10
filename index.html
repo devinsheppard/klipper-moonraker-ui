@@ -60,6 +60,18 @@
           </span>
           <span class="nav-item-label">GCode Files</span>
         </button>
+        <button data-view="pretty-gcode" class="nav-item" title="Pretty GCode">
+          <span class="nav-item-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 18V6"></path>
+              <path d="M8 18V10"></path>
+              <path d="M12 18V4"></path>
+              <path d="M16 18v-8"></path>
+              <path d="M20 18v-5"></path>
+            </svg>
+          </span>
+          <span class="nav-item-label">Pretty GCode</span>
+        </button>
         <button data-view="settings" class="nav-item" title="Settings">
           <span class="nav-item-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -853,6 +865,43 @@
         </article>
       </section>
 
+      <section id="view-pretty-gcode" class="view">
+        <article class="card pretty-gcode-card" id="pretty-gcode-card">
+          <div class="card-head pretty-gcode-head">
+            <h3>Pretty GCode</h3>
+            <div class="actions pretty-gcode-actions">
+              <label class="pretty-gcode-follow" for="pretty-gcode-follow">
+                <input id="pretty-gcode-follow" type="checkbox" checked />
+                <span>Follow Toolhead</span>
+              </label>
+              <button type="button" id="pretty-gcode-reload" class="pretty-gcode-reload-btn">Reload</button>
+            </div>
+          </div>
+
+          <p id="pretty-gcode-file" class="muted pretty-gcode-file">No active print file.</p>
+
+          <div class="pretty-gcode-controls" role="group" aria-label="Pretty GCode simulation controls">
+            <span id="pretty-gcode-mode" class="pretty-gcode-mode">Mode: Live</span>
+            <button type="button" id="pretty-gcode-load-file" class="pretty-gcode-control-btn">Load File</button>
+            <button type="button" id="pretty-gcode-live" class="pretty-gcode-control-btn">Live Mode</button>
+            <button type="button" id="pretty-gcode-rewind" class="pretty-gcode-control-btn">Rewind</button>
+            <button type="button" id="pretty-gcode-play-pause" class="pretty-gcode-control-btn">Play</button>
+            <button type="button" id="pretty-gcode-fast-forward" class="pretty-gcode-control-btn">Fast Forward</button>
+          </div>
+
+          <label class="pretty-gcode-progress-wrap" for="pretty-gcode-progress">
+            <span>Simulation Progress</span>
+            <input id="pretty-gcode-progress" type="range" min="0" max="1000" step="1" value="0" />
+          </label>
+
+          <div class="pretty-gcode-canvas-wrap">
+            <canvas id="pretty-gcode-canvas" class="pretty-gcode-canvas" aria-label="Pretty GCode preview"></canvas>
+          </div>
+          <p id="pretty-gcode-status" class="muted pretty-gcode-status">Connect and start a print to load Pretty GCode.</p>
+
+          <input id="pretty-gcode-load-input" type="file" hidden accept=".gcode,.g,.gc,.gco,text/plain" />
+        </article>
+      </section>
       <section id="view-settings" class="view">
         <form id="settings-form" class="settings-layout">
           <div class="grid two-col">

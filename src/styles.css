@@ -1673,6 +1673,121 @@ select {
   color: color-mix(in srgb, var(--danger) 88%, #ffffff 12%);
 }
 
+.pretty-gcode-card {
+  padding: 0;
+  overflow: hidden;
+}
+
+.pretty-gcode-head {
+  margin: 0;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--bg-soft) 78%, rgba(2, 6, 23, 0.4)),
+    color-mix(in srgb, var(--bg) 80%, rgba(2, 6, 23, 0.44))
+  );
+}
+
+.pretty-gcode-head h3 {
+  font-size: 1.08rem;
+  letter-spacing: 0.02em;
+}
+
+.pretty-gcode-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pretty-gcode-follow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+}
+
+.pretty-gcode-follow input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+}
+
+.pretty-gcode-reload-btn {
+  min-width: 84px;
+}
+
+.pretty-gcode-file,
+.pretty-gcode-status {
+  margin: 0;
+  padding: 10px 14px;
+  font-size: 0.8rem;
+}
+
+.pretty-gcode-file {
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  font-family: "JetBrains Mono", monospace;
+  overflow-wrap: anywhere;
+}
+
+.pretty-gcode-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+}
+
+.pretty-gcode-mode {
+  font-size: 0.76rem;
+  color: color-mix(in srgb, var(--muted) 88%, #ffffff 12%);
+  min-width: 90px;
+}
+
+.pretty-gcode-control-btn {
+  min-width: 94px;
+  font-size: 0.74rem;
+  padding: 7px 10px;
+  border-radius: 9px;
+}
+
+.pretty-gcode-progress-wrap {
+  display: grid;
+  gap: 7px;
+  padding: 10px 14px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  font-size: 0.78rem;
+}
+
+.pretty-gcode-progress-wrap input[type="range"] {
+  width: 100%;
+}
+
+.pretty-gcode-canvas-wrap {
+  padding: 12px 14px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  background: color-mix(in srgb, var(--bg-soft) 32%, rgba(2, 6, 23, 0.35));
+}
+
+.pretty-gcode-canvas {
+  width: 100%;
+  height: min(68vh, 620px);
+  min-height: 320px;
+  display: block;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
+  background: color-mix(in srgb, var(--bg) 88%, rgba(2, 6, 23, 0.88));
+}
+
+.pretty-gcode-status[data-level="warn"] {
+  color: color-mix(in srgb, #f59e0b 86%, #ffffff 14%);
+}
+
+.pretty-gcode-status[data-level="error"] {
+  color: color-mix(in srgb, var(--danger) 88%, #ffffff 12%);
+}
+
 .machine-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(290px, 360px);
@@ -2932,6 +3047,41 @@ select {
 
   .dashboard-layout-columns {
     grid-template-columns: 1fr;
+  }
+
+
+  .pretty-gcode-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .pretty-gcode-actions {
+    width: 100%;
+    justify-content: space-between;
+    flex-wrap: wrap;
+  }
+
+  .pretty-gcode-controls {
+    gap: 6px;
+  }
+
+  .pretty-gcode-mode {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .pretty-gcode-control-btn {
+    flex: 1 1 120px;
+    min-width: 0;
+  }
+
+  .pretty-gcode-progress-wrap {
+    padding-top: 8px;
+  }
+
+  .pretty-gcode-canvas {
+    height: min(62vh, 520px);
+    min-height: 260px;
   }
 
   .machine-layout {
