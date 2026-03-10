@@ -1019,10 +1019,201 @@ select {
   background: var(--accent);
 }
 
+
 .file-row {
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 10px;
+}
+
+.machine-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(290px, 360px);
+  gap: 12px;
+  align-items: start;
+}
+
+.machine-main-column,
+.machine-side-column {
+  min-width: 0;
+}
+
+.machine-side-column {
+  display: grid;
+  gap: 12px;
+}
+
+.machine-system-loads-card {
+  padding: 0;
+  overflow: hidden;
+}
+
+.machine-system-loads-card .card-body {
+  padding: 0;
+}
+
+.machine-system-loads-head {
+  margin: 0;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--bg-soft) 78%, rgba(2, 6, 23, 0.4)),
+    color-mix(in srgb, var(--bg) 80%, rgba(2, 6, 23, 0.44))
+  );
+}
+
+.machine-system-loads-head h3 {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1.2rem;
+  letter-spacing: 0.02em;
+}
+
+.machine-system-title-icon {
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.machine-system-title-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.machine-system-loads-head-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.machine-system-devices-label {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.82rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--text) 86%, var(--muted) 14%);
+}
+
+.machine-system-loads-content {
+  padding: 10px 14px 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.machine-system-loads-section {
+  min-width: 0;
+}
+
+.machine-system-loads-section p {
+  margin: 0;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.machine-system-loads-title {
+  margin-bottom: 4px !important;
+  font-size: 1.05rem;
+}
+
+.machine-system-divider {
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+
+.machine-host-section {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.machine-host-details {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.machine-host-network-list {
+  display: grid;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.machine-host-network-list p {
+  margin: 0;
+}
+
+.machine-host-gauges {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  flex: 0 0 auto;
+}
+
+.machine-system-gauge-wrap {
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  min-width: 64px;
+}
+
+.machine-system-gauge-wrap > span {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.84rem;
+  color: color-mix(in srgb, var(--text) 82%, var(--muted) 18%);
+  letter-spacing: 0.03em;
+}
+
+.machine-system-gauge {
+  --gauge-value: 0;
+  width: 70px;
+  height: 70px;
+  border-radius: 999px;
+  background: conic-gradient(
+    color-mix(in srgb, var(--accent) 84%, #60a5fa 16%) calc(var(--gauge-value) * 1%),
+    color-mix(in srgb, var(--muted) 32%, transparent) 0
+  );
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 1.05rem;
+  color: color-mix(in srgb, var(--accent) 90%, #ffffff 10%);
+  font-variant-numeric: tabular-nums;
+}
+
+.machine-system-gauge::before {
+  content: "";
+  position: absolute;
+  inset: 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg) 88%, rgba(2, 6, 23, 0.75));
+  border: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
+}
+
+.machine-system-gauge > span {
+  position: relative;
+  z-index: 1;
+}
+
+.machine-system-gauge-small {
+  width: 56px;
+  height: 56px;
+  font-size: 0.95rem;
+}
+
+.machine-system-gauge-small::before {
+  inset: 6px;
+}
+
+.machine-system-status {
+  margin: 0;
+  font-size: 0.78rem;
 }
 
 .config-layout {
@@ -1484,7 +1675,20 @@ select {
   .dashboard-layout-columns {
     grid-template-columns: 1fr;
   }
-    
+
+  .machine-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .machine-host-section {
+    flex-direction: column;
+  }
+
+  .machine-host-gauges {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
   .config-layout {
     grid-template-columns: 1fr;
     min-height: 0;

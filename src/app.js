@@ -64,6 +64,7 @@ const TEMPERATURE_PRESETS = {
 };
 const TEMPERATURE_DEFAULT_MAX = 250;
 const TEMPERATURE_POLL_INTERVAL_MS = 800;
+const SYSTEM_LOAD_POLL_INTERVAL_MS = 2000;
 const TEMPERATURE_HISTORY_SAMPLE_MS = 800;
 const TEMPERATURE_CHART_WINDOW_MS = 10 * 60 * 1000;
 const TEMPERATURE_CHART_SCROLL_STEP_RATIO = 0.18;
@@ -179,6 +180,22 @@ const els = {
   configSaveRestart: document.getElementById("config-save-restart"),
   configDirtyPrompt: document.getElementById("config-dirty-prompt"),
   configEditor: document.getElementById("config-editor"),
+  machineSystemStatus: document.getElementById("machine-system-status"),
+  machineMcuName: document.getElementById("machine-mcu-name"),
+  machineMcuChip: document.getElementById("machine-mcu-chip"),
+  machineMcuVersion: document.getElementById("machine-mcu-version"),
+  machineMcuStats: document.getElementById("machine-mcu-stats"),
+  machineHostArch: document.getElementById("machine-host-arch"),
+  machineHostVersion: document.getElementById("machine-host-version"),
+  machineHostOs: document.getElementById("machine-host-os"),
+  machineHostStats: document.getElementById("machine-host-stats"),
+  machineHostNetworkList: document.getElementById("machine-host-network-list"),
+  machineDevicesGauge: document.getElementById("machine-devices-gauge"),
+  machineDevicesValue: document.getElementById("machine-devices-value"),
+  machineCpuGauge: document.getElementById("machine-cpu-gauge"),
+  machineCpuGaugeValue: document.getElementById("machine-cpu-gauge-value"),
+  machineMemGauge: document.getElementById("machine-mem-gauge"),
+  machineMemGaugeValue: document.getElementById("machine-mem-gauge-value"),
   settingsForm: document.getElementById("settings-form"),
   moonrakerUrl: document.getElementById("moonraker-url"),
   interfaceTheme: document.getElementById("interface-theme"),
@@ -229,6 +246,7 @@ const els = {
 let layoutDraggedCardId = null;
 let layoutDraggedFromColumn = null;
 let temperaturePollTimer = null;
+let machineLoadPollTimer = null;
 let temperatureHistorySessionId = null;
 let temperatureHistoryDbPromise = null;
 let statusCountdownTimer = null;
@@ -502,6 +520,18 @@ async function restoreTemperatureHistoryForSession() {
 const initialTemperatureHistory = [];
 const initialTemperatureSnapshot = initialTemperatureHistory[initialTemperatureHistory.length - 1] || null;
 
+function createDefaultMachineLoadsState() {
+  return {
+    systemInfo: null,
+    procStats: null,
+    mcuStatus: null,
+    systemStats: null,
+    klipperVersion: "",
+    lastError: "",
+    lastUpdatedMs: null,
+  };
+}
+
 const state = {
   client: null,
   activeView: loadStoredView(),
@@ -562,6 +592,7 @@ const state = {
       layout: null,
     },
   },
+  machineLoads: createDefaultMachineLoadsState(),
   printStatus: {
     filename: "",
     thumbnailPath: "",
@@ -1451,6 +1482,432 @@ function startTemperaturePolling() {
   poll();
   temperaturePollTimer = setInterval(poll, TEMPERATURE_POLL_INTERVAL_MS);
 }
+
+function asFiniteNumber(value, fallback = null) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : fallback;
+}
+
+function formatSystemLoadNumber(value) {
+  const numeric = asFiniteNumber(value, null);
+  return Number.isFinite(numeric) ? numeric.toFixed(2) : "--";
+}
+
+function formatByteMagnitude(bytes) {
+  const numeric = asFiniteNumber(bytes, null);
+  if (!Number.isFinite(numeric) || numeric < 0) return "--";
+
+  if (numeric >= 1024 * 1024 * 1024) {
+    return `${(numeric / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+  }
+
+  if (numeric >= 1024 * 1024) {
+    return `${(numeric / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  if (numeric >= 1024) {
+    return `${(numeric / 1024).toFixed(1)} kB`;
+  }
+
+  return `${Math.round(numeric)} B`;
+}
+
+function formatBandwidthPerSecond(value) {
+  const numeric = asFiniteNumber(value, null);
+  if (!Number.isFinite(numeric) || numeric < 0) return "--";
+
+  if (numeric >= 1024 * 1024) {
+    return `${(numeric / (1024 * 1024)).toFixed(1)} MB/s`;
+  }
+
+  if (numeric >= 1024) {
+    return `${(numeric / 1024).toFixed(1)} kB/s`;
+  }
+
+  return `${numeric.toFixed(1)} B/s`;
+}
+
+function toMemoryBytes(value, { preferKiB = false, allowHeuristic = true } = {}) {
+  const numeric = asFiniteNumber(value, null);
+  if (!Number.isFinite(numeric) || numeric <= 0) return null;
+
+  if (preferKiB) {
+    return numeric * 1024;
+  }
+
+  if (allowHeuristic && numeric < 32 * 1024 * 1024) {
+    return numeric * 1024;
+  }
+
+  return numeric;
+}
+
+function formatMcuFrequency(value) {
+  const numeric = asFiniteNumber(value, null);
+  if (!Number.isFinite(numeric) || numeric <= 0) return "--";
+
+  if (numeric >= 1_000_000) {
+    return `${Math.round(numeric / 1_000_000)} MHz`;
+  }
+
+  if (numeric >= 1000) {
+    return `${Math.round(numeric / 1000)} kHz`;
+  }
+
+  return `${Math.round(numeric)} Hz`;
+}
+
+function extractVersionLabel(value) {
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    return normalized || "";
+  }
+
+  if (!value || typeof value !== "object") {
+    return "";
+  }
+
+  const candidates = [
+    value.git_version,
+    value.version,
+    value.software_version,
+  ];
+
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim()) {
+      return candidate.trim();
+    }
+  }
+
+  return "";
+}
+
+function extractMcuStatsSnapshot(mcuStatus) {
+  const lastStats = mcuStatus?.last_stats && typeof mcuStatus.last_stats === "object"
+    ? mcuStatus.last_stats
+    : {};
+
+  return {
+    load: asFiniteNumber(lastStats.mcu_task_avg ?? mcuStatus?.mcu_task_avg, null),
+    awake: asFiniteNumber(lastStats.mcu_awake ?? mcuStatus?.mcu_awake, null),
+    freq: asFiniteNumber(lastStats.freq ?? mcuStatus?.freq, null),
+  };
+}
+
+function getPreferredIpAddress(interfaceInfo) {
+  const ipAddresses = Array.isArray(interfaceInfo?.ip_addresses) ? interfaceInfo.ip_addresses : [];
+  if (!ipAddresses.length) return "--";
+
+  const preferred = ipAddresses.find((entry) => {
+    const family = String(entry?.family || "").toLowerCase();
+    return family.includes("ipv4") && !entry?.is_link_local;
+  }) || ipAddresses.find((entry) => !entry?.is_link_local) || ipAddresses[0];
+
+  return String(preferred?.address || "").trim() || "--";
+}
+
+function setMachineGauge(gaugeEl, valueEl, percent, label) {
+  const clamped = Number.isFinite(percent)
+    ? Math.max(0, Math.min(100, percent))
+    : 0;
+
+  if (gaugeEl) {
+    gaugeEl.style.setProperty("--gauge-value", clamped.toFixed(2));
+  }
+
+  if (valueEl) {
+    valueEl.textContent = label;
+  }
+}
+
+function setMachineStatusMessage(message) {
+  if (!els.machineSystemStatus) return;
+
+  const normalized = String(message || "").trim();
+  els.machineSystemStatus.textContent = normalized;
+  els.machineSystemStatus.hidden = !normalized;
+}
+
+function renderMachineLoadsCard() {
+  const machineLoads = state.machineLoads || createDefaultMachineLoadsState();
+  const mcuStatus = machineLoads.mcuStatus || {};
+  const systemStats = machineLoads.systemStats || {};
+  const procStats = machineLoads.procStats || {};
+  const systemInfo = machineLoads.systemInfo || {};
+
+  const mcuName = String(mcuStatus?.name || "mcu").trim() || "mcu";
+  const mcuChip = String(
+    mcuStatus?.mcu_constants?.MCU ||
+    mcuStatus?.mcu_constants?.MCU_TYPE ||
+    mcuStatus?.mcu_type ||
+    "unknown"
+  ).trim();
+  const mcuVersionLabel = extractVersionLabel(mcuStatus?.mcu_version) || extractVersionLabel(machineLoads.klipperVersion) || "--";
+  const mcuStats = extractMcuStatsSnapshot(mcuStatus);
+  const mcuLoadLabel = Number.isFinite(mcuStats.load) ? mcuStats.load.toFixed(2) : "--";
+  const mcuAwakeLabel = Number.isFinite(mcuStats.awake) ? mcuStats.awake.toFixed(2) : "--";
+  const mcuFrequencyLabel = formatMcuFrequency(mcuStats.freq);
+
+  if (els.machineMcuName) els.machineMcuName.textContent = mcuName;
+  if (els.machineMcuChip) els.machineMcuChip.textContent = `(${mcuChip || "unknown"})`;
+  if (els.machineMcuVersion) els.machineMcuVersion.textContent = `Version: ${mcuVersionLabel}`;
+  if (els.machineMcuStats) {
+    els.machineMcuStats.textContent = `Load: ${mcuLoadLabel}, Awake: ${mcuAwakeLabel}, Freq: ${mcuFrequencyLabel}`;
+  }
+
+  const cpuInfo = systemInfo?.cpu_info && typeof systemInfo.cpu_info === "object"
+    ? systemInfo.cpu_info
+    : {};
+  const distro = systemInfo?.distribution && typeof systemInfo.distribution === "object"
+    ? systemInfo.distribution
+    : {};
+
+  const hostArch = String(cpuInfo.cpu_desc || cpuInfo.arch || cpuInfo.model || "").trim();
+  const hostBits = asFiniteNumber(cpuInfo.bits ?? cpuInfo.address_bits, null);
+  const hostArchParts = [];
+  if (hostArch) hostArchParts.push(hostArch);
+  if (Number.isFinite(hostBits)) hostArchParts.push(`${Math.round(hostBits)}bit`);
+  const hostArchLabel = hostArchParts.length ? `(${hostArchParts.join(", ")})` : "(unknown)";
+
+  const hostVersionLabel = extractVersionLabel(machineLoads.klipperVersion) || mcuVersionLabel || "--";
+  const distroName = String(distro.name || distro.pretty_name || distro.id || "").trim();
+  const distroVersion = String(distro.version || "").trim();
+  const distroCodename = String(distro.codename || "").trim();
+  const hostOsLabel = distroName
+    ? `${distroName}${distroVersion ? ` ${distroVersion}` : ""}${distroCodename ? ` (${distroCodename})` : ""}`
+    : "Unknown";
+
+  const hostLoad = asFiniteNumber(systemStats?.sysload, null);
+  const hostTemp = asFiniteNumber(procStats?.cpu_temp ?? systemStats?.cpu_temp, null);
+  let cpuPercent = asFiniteNumber(procStats?.system_cpu_usage?.cpu, null);
+  if (!Number.isFinite(cpuPercent) && Number.isFinite(hostLoad)) {
+    cpuPercent = Math.max(0, Math.min(100, hostLoad * 100));
+  }
+
+  const totalMemoryBytes = toMemoryBytes(
+    cpuInfo?.total_memory ?? cpuInfo?.mem_total ?? procStats?.total_memory ?? procStats?.mem_total,
+    { preferKiB: false }
+  );
+  const availableMemoryBytes = toMemoryBytes(
+    systemStats?.memavail ?? procStats?.mem_available ?? procStats?.memavail,
+    { preferKiB: true }
+  );
+
+  let usedMemoryBytes = null;
+  let memPercent = asFiniteNumber(procStats?.memory_usage?.percent ?? procStats?.memory_percent, null);
+
+  if (Number.isFinite(totalMemoryBytes) && Number.isFinite(availableMemoryBytes)) {
+    usedMemoryBytes = Math.max(totalMemoryBytes - availableMemoryBytes, 0);
+    memPercent = totalMemoryBytes > 0 ? (usedMemoryBytes / totalMemoryBytes) * 100 : null;
+  } else if (Number.isFinite(totalMemoryBytes) && Number.isFinite(memPercent)) {
+    usedMemoryBytes = totalMemoryBytes * Math.max(0, Math.min(100, memPercent)) / 100;
+  }
+
+  const memUsageLabel = Number.isFinite(usedMemoryBytes) && Number.isFinite(totalMemoryBytes)
+    ? `${formatByteMagnitude(usedMemoryBytes)} / ${formatByteMagnitude(totalMemoryBytes)}`
+    : "--";
+  const tempLabel = Number.isFinite(hostTemp) ? `${Math.round(hostTemp)}°C` : "--";
+
+  if (els.machineHostArch) els.machineHostArch.textContent = hostArchLabel;
+  if (els.machineHostVersion) els.machineHostVersion.textContent = `Version: ${hostVersionLabel}`;
+  if (els.machineHostOs) els.machineHostOs.textContent = `OS: ${hostOsLabel}`;
+  if (els.machineHostStats) {
+    els.machineHostStats.textContent = `Load: ${formatSystemLoadNumber(hostLoad)}, Mem: ${memUsageLabel}, Temp: ${tempLabel}`;
+  }
+
+  if (els.machineHostNetworkList) {
+    els.machineHostNetworkList.innerHTML = "";
+
+    const networkStats = procStats?.network && typeof procStats.network === "object" ? procStats.network : {};
+    const networkInfo = systemInfo?.network && typeof systemInfo.network === "object" ? systemInfo.network : {};
+    const interfaceNames = [...new Set([...Object.keys(networkInfo), ...Object.keys(networkStats)])].sort();
+
+    if (!interfaceNames.length) {
+      const empty = document.createElement("p");
+      empty.className = "muted";
+      empty.textContent = "No network interfaces reported.";
+      els.machineHostNetworkList.appendChild(empty);
+    } else {
+      interfaceNames.forEach((name) => {
+        const ifaceStats = networkStats[name] || {};
+        const ifaceInfo = networkInfo[name] || {};
+        const ipAddress = getPreferredIpAddress(ifaceInfo);
+
+        let bandwidth = asFiniteNumber(
+          ifaceStats?.bandwidth ?? ifaceStats?.tx_bandwidth ?? ifaceStats?.rx_bandwidth,
+          null
+        );
+        const rxBandwidth = asFiniteNumber(ifaceStats?.rx_bandwidth, null);
+        const txBandwidth = asFiniteNumber(ifaceStats?.tx_bandwidth, null);
+        if (!Number.isFinite(bandwidth) && (Number.isFinite(rxBandwidth) || Number.isFinite(txBandwidth))) {
+          bandwidth = (Number.isFinite(rxBandwidth) ? rxBandwidth : 0) + (Number.isFinite(txBandwidth) ? txBandwidth : 0);
+        }
+
+        const receivedBytes = toMemoryBytes(ifaceStats?.rx_bytes ?? ifaceStats?.received_bytes, { preferKiB: false, allowHeuristic: false });
+        const transmittedBytes = toMemoryBytes(ifaceStats?.tx_bytes ?? ifaceStats?.transmitted_bytes, { preferKiB: false, allowHeuristic: false });
+
+        const linePrimary = document.createElement("p");
+        linePrimary.textContent = `${name} (${ipAddress}): Bandwidth: ${formatBandwidthPerSecond(bandwidth)}`;
+
+        const lineSecondary = document.createElement("p");
+        lineSecondary.className = "muted";
+        lineSecondary.textContent = `Received: ${formatByteMagnitude(receivedBytes)}, Transmitted: ${formatByteMagnitude(transmittedBytes)}`;
+
+        els.machineHostNetworkList.append(linePrimary, lineSecondary);
+      });
+    }
+  }
+
+  const mcuDeviceCount = mcuStatus && Object.keys(mcuStatus).length ? 1 : 0;
+  setMachineGauge(
+    els.machineDevicesGauge,
+    els.machineDevicesValue,
+    mcuDeviceCount > 0 ? 14 : 0,
+    String(mcuDeviceCount)
+  );
+
+  setMachineGauge(
+    els.machineCpuGauge,
+    els.machineCpuGaugeValue,
+    cpuPercent,
+    Number.isFinite(cpuPercent) ? `${Math.round(cpuPercent)}` : "--"
+  );
+
+  setMachineGauge(
+    els.machineMemGauge,
+    els.machineMemGaugeValue,
+    memPercent,
+    Number.isFinite(memPercent) ? `${Math.round(memPercent)}` : "--"
+  );
+
+  if (!state.client) {
+    setMachineStatusMessage("Connect to Moonraker to load system stats.");
+  } else if (machineLoads.lastError) {
+    setMachineStatusMessage(`System load update issue: ${machineLoads.lastError}`);
+  } else if (!machineLoads.lastUpdatedMs) {
+    setMachineStatusMessage("Loading system stats...");
+  } else {
+    setMachineStatusMessage("");
+  }
+}
+
+async function refreshMachineLoadsSnapshot({ fetchStatic = false } = {}) {
+  if (!state.client) {
+    renderMachineLoadsCard();
+    return;
+  }
+
+  const machineLoads = state.machineLoads;
+  const systemInfoPromise = (fetchStatic || !machineLoads.systemInfo)
+    ? state.client.getMachineSystemInfo()
+    : Promise.resolve(null);
+  const serverInfoPromise = (fetchStatic || !machineLoads.klipperVersion)
+    ? state.client.getServerInfo()
+    : Promise.resolve(null);
+
+  const [mcuSystemResult, procResult, systemInfoResult, serverInfoResult] = await Promise.allSettled([
+    state.client.getMcuAndSystemStats(),
+    state.client.getMachineProcStats(),
+    systemInfoPromise,
+    serverInfoPromise,
+  ]);
+
+  const errors = [];
+  let updated = false;
+
+  if (mcuSystemResult.status === "fulfilled") {
+    const statusSnapshot = mcuSystemResult.value?.result?.status || {};
+    machineLoads.mcuStatus = statusSnapshot?.mcu || null;
+    machineLoads.systemStats = statusSnapshot?.system_stats || null;
+    updated = true;
+  } else {
+    errors.push(mcuSystemResult.reason?.message || String(mcuSystemResult.reason));
+  }
+
+  if (procResult.status === "fulfilled") {
+    machineLoads.procStats = procResult.value?.result || null;
+    updated = true;
+  } else {
+    errors.push(procResult.reason?.message || String(procResult.reason));
+  }
+
+  if (systemInfoResult.status === "fulfilled") {
+    if (systemInfoResult.value) {
+      machineLoads.systemInfo = systemInfoResult.value?.result?.system_info || systemInfoResult.value?.result || null;
+      updated = true;
+    }
+  } else {
+    errors.push(systemInfoResult.reason?.message || String(systemInfoResult.reason));
+  }
+
+  if (serverInfoResult.status === "fulfilled") {
+    if (serverInfoResult.value) {
+      const serverInfo = serverInfoResult.value?.result || {};
+      const versionLabel = extractVersionLabel(serverInfo?.klippy_version)
+        || extractVersionLabel(serverInfo?.software_version);
+      if (versionLabel) {
+        machineLoads.klipperVersion = versionLabel;
+      }
+      updated = true;
+    }
+  } else {
+    errors.push(serverInfoResult.reason?.message || String(serverInfoResult.reason));
+  }
+
+  if (updated) {
+    machineLoads.lastUpdatedMs = Date.now();
+  }
+
+  machineLoads.lastError = errors.length ? errors[0] : "";
+
+  if (errors.length) {
+    log.debug("Machine loads poll completed with warnings.", {
+      errorCount: errors.length,
+      firstError: errors[0],
+    });
+  }
+
+  renderMachineLoadsCard();
+}
+
+function stopMachineLoadPolling() {
+  if (machineLoadPollTimer) {
+    clearInterval(machineLoadPollTimer);
+    machineLoadPollTimer = null;
+  }
+}
+
+function startMachineLoadPolling() {
+  stopMachineLoadPolling();
+  if (!state.client) return;
+
+  let inFlight = false;
+
+  const poll = async () => {
+    if (!state.client || inFlight) return;
+    inFlight = true;
+
+    try {
+      await refreshMachineLoadsSnapshot();
+    } catch (error) {
+      const message = error?.message || String(error);
+      state.machineLoads.lastError = message;
+      log.debug("Machine loads poll failed.", { error: message });
+      renderMachineLoadsCard();
+    } finally {
+      inFlight = false;
+    }
+  };
+
+  poll();
+  machineLoadPollTimer = setInterval(poll, SYSTEM_LOAD_POLL_INTERVAL_MS);
+}
+
+function resetMachineLoadsState() {
+  state.machineLoads = createDefaultMachineLoadsState();
+  renderMachineLoadsCard();
+}
+
 function updateTemperatureSnapshotFromStatus(status, { recordHistory = true } = {}) {
   const extruder = status?.extruder || {};
   const bed = status?.heater_bed || {};
@@ -2279,6 +2736,8 @@ async function connectMoonraker() {
   appendConsole(`Connecting to ${state.moonrakerUrl}`, "info");
   log.info("Connecting to Moonraker.", { baseUrl: state.moonrakerUrl });
   stopTemperaturePolling();
+  stopMachineLoadPolling();
+  resetMachineLoadsState();
 
   if (state.client?.ws && state.client.ws.readyState <= 1) {
     try {
@@ -2300,6 +2759,8 @@ async function connectMoonraker() {
     if (status === "connected") {
       appendConsole("Moonraker connected.", "info");
       startTemperaturePolling();
+      startMachineLoadPolling();
+      void refreshMachineLoadsSnapshot({ fetchStatic: true });
       log.info("Moonraker websocket connected.");
       return;
     }
@@ -2307,6 +2768,9 @@ async function connectMoonraker() {
     if (status === "disconnected") {
       appendConsole("Moonraker disconnected.", "warn");
       stopTemperaturePolling();
+      stopMachineLoadPolling();
+      state.machineLoads.lastError = "Moonraker disconnected.";
+      renderMachineLoadsCard();
       log.warn("Moonraker websocket disconnected.");
       return;
     }
@@ -2314,6 +2778,9 @@ async function connectMoonraker() {
     if (status === "error") {
       appendConsole("Moonraker websocket error.", "error");
       stopTemperaturePolling();
+      stopMachineLoadPolling();
+      state.machineLoads.lastError = "Moonraker websocket error.";
+      renderMachineLoadsCard();
       log.error("Moonraker websocket error.");
       return;
     }
@@ -2379,6 +2846,15 @@ async function connectMoonraker() {
     const message = error?.message || String(error);
     appendConsole(`Temperature load failed: ${message}`, "warn");
     log.warn("Temperature load failed.", { error: message });
+  }
+
+  try {
+    await refreshMachineLoadsSnapshot({ fetchStatic: true });
+  } catch (error) {
+    const message = error?.message || String(error);
+    state.machineLoads.lastError = message;
+    renderMachineLoadsCard();
+    log.debug("Initial machine loads snapshot failed.", { error: message });
   }
 
   try {
@@ -3441,6 +3917,7 @@ async function init() {
 
   applyDashboardLayout();
   setupCollapsibleCards();
+  renderMachineLoadsCard();
 
   try {
     await restoreTemperatureHistoryForSession();

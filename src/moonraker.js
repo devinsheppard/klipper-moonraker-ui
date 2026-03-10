@@ -136,6 +136,18 @@ export class MoonrakerClient {
     return this.call("/server/info");
   }
 
+  async getMachineSystemInfo() {
+    return this.call("/machine/system_info");
+  }
+
+  async getMachineProcStats() {
+    return this.call("/machine/proc_stats");
+  }
+
+  async getMcuAndSystemStats() {
+    return this.call("/printer/objects/query?mcu&system_stats");
+  }
+
   async getFileText(root, path) {
     const normalizedRoot = String(root || "").trim();
     const encodedPath = encodePathForUrl(path);
@@ -232,5 +244,4 @@ export class MoonrakerClient {
     throw new Error(`Failed to delete config file: ${normalizedPath}`);
   }
 }
-
 
