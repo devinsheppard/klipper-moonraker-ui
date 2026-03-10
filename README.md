@@ -17,6 +17,7 @@ This repository now includes:
 - G-code console send UI
 - Macro loader/executor scaffold
 - File list scaffold
+- KlipperView visualizer and dashboard card
 
 ## Run Locally
 
@@ -70,12 +71,18 @@ npm run preview
 - UI state/event wiring is in `src/app.js`.
 - Styling direction is in `src/styles.css`.
 
+## Licensing
+
+- Third-party license tracking is maintained in `THIRD_PARTY_LICENSES.md`.
+- Auto-generated dependency license inventory is in `THIRD_PARTY_LICENSES_REPORT.md`.
+- Run `npm run licenses:report` manually, or use `npm run build:dist` to generate it automatically for release builds.
+- Any dependency add/update should include an update to those files before release.
 
 ## Production Deployment (Moonraker)
 
 If your Moonraker server serves this UI from built files, deploy from `dist/` only.
 
-1. Run `npm run build` (this now includes `verify:dist`).
+1. Run `npm run build:dist` (this generates the license report, then runs build + `verify:dist`).
 2. Deploy the full `dist/` folder together:
    - `dist/index.html`
    - `dist/assets/*`
@@ -83,4 +90,3 @@ If your Moonraker server serves this UI from built files, deploy from `dist/` on
 4. After deploy, hard refresh the browser once to clear old cached entry HTML.
 
 Tip: `npm run verify:dist` can be run by itself to validate `dist/index.html` -> `dist/assets/*` references before copying to your server.
-

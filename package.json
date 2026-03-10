@@ -8,7 +8,8 @@
     "build": "vue-tsc -b && vite build && npm run verify:dist",
     "preview": "vite preview",
     "verify:dist": "node scripts/verify-dist.mjs",
-    "build:dist": "npm run build"
+    "build:dist": "npm run licenses:report && npm run build",
+    "licenses:report": "node scripts/generate-license-report.mjs"
   },
   "dependencies": {
     "three": "^0.181.1",

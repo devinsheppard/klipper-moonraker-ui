@@ -6,6 +6,7 @@
   --muted: #93a4bd;
   --accent: #06b6d4;
   --accent-2: #22c55e;
+  --global-header-height: 64px;
 }
 
 * {
@@ -61,8 +62,32 @@ input {
   padding: 9px 10px;
 }
 
-.shell {
+.app-layout {
   min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.global-header {
+  min-height: var(--global-header-height);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-bottom: 1px solid var(--line);
+  background: rgba(2, 8, 20, 0.78);
+  backdrop-filter: blur(8px);
+}
+
+.global-header h1 {
+  margin: 0;
+  font-size: 1.53rem;
+  font-weight: 700;
+  letter-spacing: 0.24em;
+}
+
+.shell {
+  min-height: calc(100vh - var(--global-header-height));
+  flex: 1 1 auto;
   display: grid;
   grid-template-columns: 260px 1fr;
 }

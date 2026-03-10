@@ -10,19 +10,20 @@
   <link rel="stylesheet" href="./src/styles.css" />
 </head>
 <body>
-  <div class="shell">
+  <div class="app-layout">
+    <header class="global-header" role="banner">
+      <button id="sidebar-toggle" class="sidebar-toggle global-header-menu-toggle" type="button" aria-label="Collapse sidebar" aria-expanded="true" title="Collapse sidebar">
+        <span class="sidebar-toggle-icon" aria-hidden="true"></span>
+      </button>
+      <h1>FORGE</h1>
+    </header>
+    <div class="shell">
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-head">
         <div class="brand">
-          <div class="brand-dot"></div>
-          <h1>Forge UI</h1>
+          <h1>Menu</h1>
         </div>
-        <button id="sidebar-toggle" class="sidebar-toggle" type="button" aria-label="Collapse sidebar" aria-expanded="true" title="Collapse sidebar">
-          <span class="sidebar-toggle-icon" aria-hidden="true"></span>
-        </button>
       </div>
-
-      <p class="muted">Custom Moonraker frontend with Fluidd-level feature goals.</p>
       <nav class="nav">
         <button data-view="dashboard" class="nav-item active" title="Dashboard">
           <span class="nav-item-icon" aria-hidden="true">
@@ -140,7 +141,7 @@
                     <line x1="17" y1="14" x2="20" y2="14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></line>
                   </svg>
                 </span>
-                <span>Temperatures</span>
+                <span>Thermals</span>
               </h3>
               <button type="button" id="temp-cooldown" class="temp-cooldown-btn">
                 <span class="temp-cooldown-icon" aria-hidden="true">
@@ -254,7 +255,7 @@
           </article>
 
           <article class="card" id="card-motion">
-            <h3>Motion</h3>
+            <h3>Controls</h3>
             <div class="actions">
               <button data-jog="X+">X+</button>
               <button data-jog="X-">X-</button>
@@ -866,7 +867,7 @@
       </section>
 
       <section id="view-pretty-gcode" class="view">
-        <article class="card pretty-gcode-card" id="pretty-gcode-card">
+        <article class="card pretty-gcode-card" id="card-klipperview">
           <div class="card-head pretty-gcode-head">
             <h3>KlipperView</h3>
             <div class="actions pretty-gcode-actions">
@@ -1015,6 +1016,10 @@
                 <input id="dash-show-console" type="checkbox" />
                 <span>Show Console</span>
               </label>
+              <label class="checkbox-row" for="dash-show-klipperview">
+                <input id="dash-show-klipperview" type="checkbox" />
+                <span>Show KlipperView</span>
+              </label>
               <div class="actions">
                 <button type="button" id="open-dashboard-layout">Customize Layout</button>
               </div>
@@ -1027,6 +1032,7 @@
         </form>
       </section>
     </main>
+      </div>
   </div>
 
   <dialog id="dashboard-layout-dialog" class="layout-dialog">
@@ -1059,3 +1065,11 @@
   <script type="module" src="./src/app.js"></script>
 </body>
 </html>
+
+
+
+
+
+
+
+

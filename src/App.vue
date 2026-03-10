@@ -538,7 +538,12 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="shell">
+  <div class="app-layout">
+    <header class="global-header" role="banner">
+      <h1>FORGE</h1>
+    </header>
+
+    <div class="shell">
     <aside class="sidebar">
       <div class="brand">
         <div class="brand-dot" />
@@ -860,6 +865,7 @@ onUnmounted(() => {
         </article>
       </section>
     </main>
+    </div>
   </div>
 </template>
 

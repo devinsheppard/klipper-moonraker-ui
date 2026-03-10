@@ -8,6 +8,8 @@
   --accent: #22d3ee;
   --accent-2: #34d399;
   --danger: #f97316;
+  --card-header-font-size: 1.12rem;
+  --global-header-height: 64px;
 }
 
 :root[data-theme="ocean"] {
@@ -61,10 +63,42 @@ body {
     var(--bg);
 }
 
+.app-layout {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.global-header {
+  min-height: var(--global-header-height);
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 14px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--bg-soft) 62%, rgba(2, 6, 23, 0.68));
+  backdrop-filter: blur(8px);
+}
+
+
+.global-header h1 {
+  margin: 0;
+  font-size: 1.53rem;
+  font-weight: 700;
+  letter-spacing: 0.26em;
+}
+
+.global-header-menu-toggle {
+  margin-right: 2px;
+}
+
+
 .shell {
   display: grid;
+  flex: 1 1 auto;
   grid-template-columns: 270px 1fr;
-  min-height: 100vh;
+  min-height: calc(100vh - var(--global-header-height));
   transition: grid-template-columns 220ms ease;
 }
 
@@ -80,7 +114,7 @@ body {
 .sidebar-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 10px;
 }
 
@@ -186,17 +220,30 @@ body {
 }
 
 .sidebar-toggle-icon {
-  width: 12px;
-  height: 12px;
-  border-right: 3px solid #ffffff;
-  border-bottom: 3px solid #ffffff;
-  transform: rotate(135deg) translateX(1px);
-  transform-origin: center;
-  transition: transform 140ms ease;
+  position: relative;
+  width: 18px;
+  height: 2px;
+  border-radius: 999px;
+  background: #ffffff;
 }
 
-.sidebar-toggle[data-state="collapsed"] .sidebar-toggle-icon {
-  transform: rotate(-45deg) translateX(-1px);
+.sidebar-toggle-icon::before,
+.sidebar-toggle-icon::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  width: 18px;
+  height: 2px;
+  border-radius: 999px;
+  background: #ffffff;
+}
+
+.sidebar-toggle-icon::before {
+  top: -6px;
+}
+
+.sidebar-toggle-icon::after {
+  top: 6px;
 }
 
 body.sidebar-collapsed .shell {
@@ -471,6 +518,21 @@ select {
 .settings-actions {
   display: flex;
   justify-content: flex-start;
+}
+
+.settings-inline-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.settings-inline-row > select {
+  flex: 1 1 auto;
+}
+
+.settings-inline-row > button {
+  flex: 0 0 auto;
 }
 
 .checkbox-row {
@@ -818,7 +880,6 @@ select {
   align-items: center;
   gap: 12px;
   letter-spacing: 0.02em;
-  font-size: 1.55rem;
 }
 
 .temperature-title-icon,
@@ -864,7 +925,6 @@ select {
   align-items: center;
   gap: 9px;
   font-family: "JetBrains Mono", monospace;
-  font-size: 1.2rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -1242,7 +1302,6 @@ select {
 }
 
 .jobs-head h3 {
-  font-size: 1.08rem;
   letter-spacing: 0.02em;
 }
 
@@ -1690,7 +1749,6 @@ select {
 }
 
 .pretty-gcode-head h3 {
-  font-size: 1.08rem;
   letter-spacing: 0.02em;
 }
 
@@ -1945,7 +2003,6 @@ select {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  font-size: 1.2rem;
   letter-spacing: 0.02em;
 }
 
@@ -2120,7 +2177,6 @@ select {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  font-size: 1.1rem;
   letter-spacing: 0.02em;
 }
 
@@ -2349,7 +2405,6 @@ select {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  font-size: 1.08rem;
   letter-spacing: 0.02em;
 }
 
@@ -2476,7 +2531,6 @@ select {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  font-size: 1.08rem;
   letter-spacing: 0.02em;
 }
 
@@ -2815,8 +2869,16 @@ select {
 .card-head h2,
 .card-head h3,
 .camera-card-head h2,
-.camera-card-head h3 {
+.camera-card-head h3,
+.temperature-card-head h3,
+.jobs-head h3,
+.pretty-gcode-head h3,
+.machine-system-loads-head h3,
+.machine-update-head h3,
+.machine-endstops-head h3,
+.machine-log-files-head h3 {
   margin: 0;
+  font-size: var(--card-header-font-size);
 }
 
 .card-head-actions {
@@ -3077,34 +3139,12 @@ select {
     padding: 16px;
   }
 
-  .sidebar-toggle {
-    display: none;
-  }
-
   body.sidebar-collapsed .shell {
     grid-template-columns: 1fr;
   }
 
   body.sidebar-collapsed .sidebar {
-    padding: 16px;
-  }
-
-  body.sidebar-collapsed .brand {
-    display: flex;
-  }
-
-  body.sidebar-collapsed .sidebar > .muted,
-  body.sidebar-collapsed .status-block {
-    display: block;
-  }
-
-  body.sidebar-collapsed .nav-item {
-    justify-content: flex-start;
-    padding: 10px 12px;
-  }
-
-  body.sidebar-collapsed .nav-item-label {
-    display: inline;
+    display: none;
   }
 
   .two-col {
@@ -3365,7 +3405,6 @@ select {
   .temperature-card-head h3 {
     flex: 1 1 auto;
     min-width: 0;
-    font-size: 1.4rem;
     gap: 8px;
   }
 
@@ -3422,3 +3461,16 @@ select {
     padding: 8px 10px;
   }
 }
+
+.file-input-proxy {
+  position: fixed;
+  top: -9999px;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+
+

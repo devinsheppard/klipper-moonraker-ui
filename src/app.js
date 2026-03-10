@@ -11,6 +11,7 @@ const CAMERA_MODES = {
 const INTERFACE_THEMES = ["ocean", "ember", "graphite"];
 const INTERFACE_DENSITIES = ["comfortable", "compact"];
 const CARD_COLLAPSE_KEY_PREFIX = "card_collapsed_";
+const KLIPPERVIEW_CARD_ID = "card-klipperview";
 const DASHBOARD_CARD_IDS = [
   "card-print-progress",
   "card-temperatures",
@@ -20,22 +21,24 @@ const DASHBOARD_CARD_IDS = [
   "card-dashboard-console",
   "camera-main-card",
   "camera-toolhead-card",
+  KLIPPERVIEW_CARD_ID,
 ];
 
 const DASHBOARD_LAYOUT_DEFAULT = {
   left: ["card-print-progress", "card-motion", "camera-main-card", "card-macros"],
-  right: ["card-temperatures", "card-quick-commands", "card-dashboard-console", "camera-toolhead-card"],
+  right: ["card-temperatures", "card-quick-commands", "card-dashboard-console", KLIPPERVIEW_CARD_ID, "camera-toolhead-card"],
 };
 
 const DASHBOARD_CARD_LABELS = {
   "card-print-progress": "Status",
-  "card-temperatures": "Temperatures",
-  "card-motion": "Motion",
+  "card-temperatures": "Thermals",
+  "card-motion": "Controls",
   "card-quick-commands": "Quick Commands",
   "card-macros": "Macros",
   "card-dashboard-console": "Console",
   "camera-main-card": "Main Camera",
   "camera-toolhead-card": "Toolhead Cam",
+  [KLIPPERVIEW_CARD_ID]: "KlipperView",
 };
 
 const PRINTER_STATE_META = {
@@ -92,7 +95,6 @@ const JOBS_COLUMN_DEFINITIONS = [
   { key: "filament_type", label: "Filament Type" },
   { key: "filament_name", label: "Filament Name" },
   { key: "nozzle_diameter", label: "Nozzle Diameter" },
-  { key: "slicer", label: "Slicer" },
   { key: "first_layer_extruder_temp", label: "First Layer Nozzle Temp" },
   { key: "first_layer_bed_temp", label: "First Layer Bed Temp" },
   { key: "chamber_temp", label: "Chamber Temp" },
@@ -363,7 +365,8 @@ const els = {
   jobsCancel: document.getElementById("jobs-cancel"),
   jobsBreadcrumbs: document.getElementById("jobs-breadcrumbs"),
   jobsStatus: document.getElementById("jobs-status"),
-  prettyGcodeCard: document.getElementById("pretty-gcode-card"),
+  prettyGcodeView: document.getElementById("view-pretty-gcode"),
+  prettyGcodeCard: document.getElementById(KLIPPERVIEW_CARD_ID),
   prettyGcodeCanvas: document.getElementById("pretty-gcode-canvas"),
   prettyGcodeStatus: document.getElementById("pretty-gcode-status"),
   prettyGcodeFile: document.getElementById("pretty-gcode-file"),
@@ -453,6 +456,7 @@ const els = {
   dashShowMainCamera: document.getElementById("dash-show-main-camera"),
   dashShowToolheadCamera: document.getElementById("dash-show-toolhead-camera"),
   dashShowConsole: document.getElementById("dash-show-console"),
+  dashShowKlipperView: document.getElementById("dash-show-klipperview"),
   openDashboardLayout: document.getElementById("open-dashboard-layout"),
   dashboardLayoutDialog: document.getElementById("dashboard-layout-dialog"),
   dashboardLayoutClose: document.getElementById("dashboard-layout-close"),
@@ -537,6 +541,27 @@ function loadStoredChoice(key, fallback, allowedValues) {
   return allowedValues.includes(raw) ? raw : fallback;
 }
 
+function ensureFileInputPicker(input) {
+  if (!(input instanceof HTMLInputElement) || input.type !== "file") return null;
+  if (input.hasAttribute("hidden")) {
+    input.removeAttribute("hidden");
+  }
+  input.classList.add("file-input-proxy");
+  return input;
+}
+function openFileInputPicker(input) {
+  const picker = ensureFileInputPicker(input);
+  if (!picker || picker.disabled) return;
+  if (typeof picker.showPicker === "function") {
+    try {
+      picker.showPicker();
+      return;
+    } catch {
+      // Fall back to click for browsers that reject showPicker.
+    }
+  }
+  picker.click();
+}
 function isKnownView(viewName) {
   return Object.prototype.hasOwnProperty.call(VIEW_TITLES, viewName);
 }
@@ -1000,6 +1025,7 @@ const state = {
     showMainCamera: loadStoredBool("dashboard_show_main_camera", true),
     showToolheadCamera: loadStoredBool("dashboard_show_toolhead_camera", true),
     showConsole: loadStoredBool("dashboard_show_console", true),
+    showKlipperView: loadStoredBool("dashboard_show_klipperview", true),
     layout: loadDashboardLayout(),
   },
   camera: {
@@ -1978,7 +2004,6 @@ function resetConsoleStoreTracking() {
   state.console.storeSyncFailed = false;
 }
 
-
 function updateSidebarToggleUi() {
   if (!els.sidebarToggle) return;
 
@@ -2010,25 +2035,52 @@ function applyInterfaceSettings() {
   updateMachineSideToggleUi();
 }
 
+function isPrettyGcodeViewerVisible() {
+  if (!els.prettyGcodeCard || !els.prettyGcodeCanvas) return false;
+  if (els.prettyGcodeCard.classList.contains("card-hidden")) return false;
+  return state.activeView === "pretty-gcode" || state.activeView === "dashboard";
+}
+
+function syncPrettyGcodeCardPlacement() {
+  if (!els.prettyGcodeCard) return;
+
+  if (state.activeView === "pretty-gcode") {
+    if (els.prettyGcodeView && els.prettyGcodeCard.parentElement !== els.prettyGcodeView) {
+      els.prettyGcodeView.appendChild(els.prettyGcodeCard);
+    }
+    return;
+  }
+
+  const inLeftColumn = (state.dashboard.layout?.left || []).includes(KLIPPERVIEW_CARD_ID);
+  const targetColumn = inLeftColumn ? els.dashboardColLeft : els.dashboardColRight;
+  if (targetColumn && els.prettyGcodeCard.parentElement !== targetColumn) {
+    targetColumn.appendChild(els.prettyGcodeCard);
+  }
+}
+
 function applyDashboardLayout() {
   if (!els.dashboardColLeft || !els.dashboardColRight) return;
 
   state.dashboard.layout = normalizeDashboardLayout(state.dashboard.layout);
+  const keepKlipperViewInViewer = state.activeView === "pretty-gcode";
 
   const leftFragment = document.createDocumentFragment();
   state.dashboard.layout.left.forEach((cardId) => {
+    if (keepKlipperViewInViewer && cardId === KLIPPERVIEW_CARD_ID) return;
     const card = document.getElementById(cardId);
     if (card) leftFragment.appendChild(card);
   });
 
   const rightFragment = document.createDocumentFragment();
   state.dashboard.layout.right.forEach((cardId) => {
+    if (keepKlipperViewInViewer && cardId === KLIPPERVIEW_CARD_ID) return;
     const card = document.getElementById(cardId);
     if (card) rightFragment.appendChild(card);
   });
 
   els.dashboardColLeft.appendChild(leftFragment);
   els.dashboardColRight.appendChild(rightFragment);
+  syncPrettyGcodeCardPlacement();
 }
 
 function applyDashboardSettings() {
@@ -2041,6 +2093,7 @@ function applyDashboardSettings() {
     [els.cardMainCamera, state.dashboard.showMainCamera],
     [els.cardToolheadCamera, state.dashboard.showToolheadCamera],
     [els.cardDashboardConsole, state.dashboard.showConsole],
+    [els.prettyGcodeCard, state.dashboard.showKlipperView],
   ];
 
   visibilityMap.forEach(([card, visible]) => {
@@ -2284,7 +2337,7 @@ function setConnectionUi(status) {
     if (status === "error") setPrinterState("error");
   }
 
-  if (state.activeView === "pretty-gcode") {
+  if (isPrettyGcodeViewerVisible()) {
     renderPrettyGcodeView();
   }
 }
@@ -2736,7 +2789,7 @@ function updateStatusFileInfo(printStats, gcodeMove = null, motionReport = null)
   renderJobsJobControls();
 
   if (!simulationMode) {
-    updatePrettyGcodeToolhead({ skipRender: state.activeView !== "pretty-gcode" });
+    updatePrettyGcodeToolhead({ skipRender: !isPrettyGcodeViewerVisible() });
   }
 
   if (state.activeView === "files") {
@@ -2747,7 +2800,7 @@ function updateStatusFileInfo(printStats, gcodeMove = null, motionReport = null)
     setStatusThumbnail("");
     if (!simulationMode && state.prettyGcode.activeFile) {
       void syncPrettyGcodeForActiveFile("");
-    } else if (state.activeView === "pretty-gcode") {
+    } else if (isPrettyGcodeViewerVisible()) {
       renderPrettyGcodeView();
     }
     return;
@@ -2759,7 +2812,7 @@ function updateStatusFileInfo(printStats, gcodeMove = null, motionReport = null)
 
   void syncStatusFileMetadata(normalized);
 
-  if (!simulationMode && (state.activeView === "pretty-gcode" || state.prettyGcode.activeFile)) {
+  if (!simulationMode && (isPrettyGcodeViewerVisible() || state.prettyGcode.activeFile)) {
     void syncPrettyGcodeForActiveFile(normalized);
   }
 }
@@ -2770,7 +2823,12 @@ function switchView(viewName) {
   els.views.forEach((view) => view.classList.toggle("active", view.id === `view-${viewName}`));
   els.pageTitle.textContent = VIEW_TITLES[viewName] || viewName.slice(0, 1).toUpperCase() + viewName.slice(1);
   state.activeView = viewName;
+  syncPrettyGcodeCardPlacement();
   localStorage.setItem(ACTIVE_VIEW_STORAGE_KEY, viewName);
+
+  if (isPrettyGcodeViewerVisible()) {
+    renderPrettyGcodeView();
+  }
 }
 
 function inferAxisCommand(axisToken) {
@@ -2828,7 +2886,6 @@ function renderCameraCards() {
   els.mainCameraFullscreen.disabled = !mainReady;
   els.toolheadCameraFullscreen.disabled = !toolheadReady;
 }
-
 
 function formatTemperatureValue(value) {
   if (typeof value !== "number" || Number.isNaN(value)) return "--.-\u00B0C";
@@ -5595,7 +5652,7 @@ function pausePrettyGcodeSimulation({ render = true } = {}) {
   state.prettyGcode.simulationPlaying = false;
   state.prettyGcode.simulationLastTickMs = null;
   stopPrettyGcodeSimulationTicker();
-  if (render && state.activeView === "pretty-gcode") {
+  if (render && isPrettyGcodeViewerVisible()) {
     renderPrettyGcodeView();
   }
 }
@@ -5686,12 +5743,12 @@ function startPrettyGcodeSimulation() {
       pausePrettyGcodeSimulation({ render: false });
     }
 
-    if (state.activeView === "pretty-gcode") {
+    if (isPrettyGcodeViewerVisible()) {
       renderPrettyGcodeView();
     }
   }, PRETTY_GCODE_SIM_TICK_MS);
 
-  if (state.activeView === "pretty-gcode") {
+  if (isPrettyGcodeViewerVisible()) {
     renderPrettyGcodeView();
   }
 
@@ -5729,7 +5786,7 @@ function stepPrettyGcodeSimulation(deltaProgress) {
   );
   updatePrettyGcodeToolhead({ skipRender: true });
 
-  if (state.activeView === "pretty-gcode") {
+  if (isPrettyGcodeViewerVisible()) {
     renderPrettyGcodeView();
   }
 
@@ -5924,7 +5981,7 @@ function setPrettyGcodeLayerSelection(layerIndex, { pin = true, render = true } 
   state.prettyGcode.selectedLayerIndex = clampPrettyGcodeLayerIndex(layerIndex);
   state.prettyGcode.layerSelectionPinned = !!pin;
 
-  if (render && state.activeView === "pretty-gcode") {
+  if (render && isPrettyGcodeViewerVisible()) {
     renderPrettyGcodeView();
   }
 }
@@ -6368,7 +6425,7 @@ function ensurePrettyGcodeThreeScene() {
     const tick = () => {
       prettyGcodeThreeState.animationFrame = window.requestAnimationFrame(tick);
 
-      const isViewerVisible = state.activeView === "pretty-gcode";
+      const isViewerVisible = isPrettyGcodeViewerVisible();
       if (!isViewerVisible || !prettyGcodeThreeState.renderer || !prettyGcodeThreeState.scene || !prettyGcodeThreeState.camera) {
         return;
       }
@@ -6994,7 +7051,7 @@ async function requestPrettyGcodeSimulationFromHost(path) {
   state.prettyGcode.layerSelectionPinned = false;
   state.prettyGcode.selectedLayerIndex = 0;
 
-  if (state.activeView === "pretty-gcode") {
+  if (isPrettyGcodeViewerVisible()) {
     renderPrettyGcodeView();
   }
 
@@ -7026,7 +7083,7 @@ async function requestPrettyGcodeSimulationFromHost(path) {
     if (requestId === state.prettyGcode.parseRequestId) {
       state.prettyGcode.isLoading = false;
       state.prettyGcode.loadingFile = "";
-      if (state.activeView === "pretty-gcode") {
+      if (isPrettyGcodeViewerVisible()) {
         renderPrettyGcodeView();
       }
     }
@@ -7118,14 +7175,14 @@ async function syncPrettyGcodeForActiveFile(path, { force = false } = {}) {
     state.prettyGcode.simulationDurationMs = PRETTY_GCODE_SIM_MIN_DURATION_MS;
     state.prettyGcode.simulationLastTickMs = null;
     state.prettyGcode.toolhead = { x: null, y: null, z: null };
-    if (state.activeView === "pretty-gcode") {
+    if (isPrettyGcodeViewerVisible()) {
       renderPrettyGcodeView();
     }
     return false;
   }
 
   const loaded = await loadPrettyGcodeFile(normalized, { force });
-  if (state.activeView === "pretty-gcode") {
+  if (isPrettyGcodeViewerVisible()) {
     renderPrettyGcodeView();
   }
 
@@ -7145,7 +7202,7 @@ async function requestPrettyGcodeReload() {
     state.prettyGcode.layerSelectionPinned = false;
     state.prettyGcode.selectedLayerIndex = 0;
     updatePrettyGcodeToolhead({ skipRender: true });
-    if (state.activeView === "pretty-gcode") {
+    if (isPrettyGcodeViewerVisible()) {
       renderPrettyGcodeView();
     }
     return true;
@@ -7173,7 +7230,7 @@ async function requestPrettyGcodeLiveMode() {
   if (!filename || !state.client || state.connectionStatus !== "connected") {
     await syncPrettyGcodeForActiveFile("");
     updatePrettyGcodeToolhead({ skipRender: true });
-    if (state.activeView === "pretty-gcode") {
+    if (isPrettyGcodeViewerVisible()) {
       renderPrettyGcodeView();
     }
     return false;
@@ -7181,7 +7238,7 @@ async function requestPrettyGcodeLiveMode() {
 
   const loaded = await syncPrettyGcodeForActiveFile(filename, { force: true });
   updatePrettyGcodeToolhead({ skipRender: true });
-  if (state.activeView === "pretty-gcode") {
+  if (isPrettyGcodeViewerVisible()) {
     renderPrettyGcodeView();
   }
   return loaded;
@@ -7193,7 +7250,7 @@ function updatePrettyGcodeToolhead({ skipRender = false } = {}) {
     state.prettyGcode.toolhead = getPrettyToolheadFromStatus();
   }
 
-  if (!skipRender && state.activeView === "pretty-gcode") {
+  if (!skipRender && isPrettyGcodeViewerVisible()) {
     renderPrettyGcodeView();
   }
 }
@@ -7473,8 +7530,6 @@ function setJobsStatusMessage(message, level = "info") {
 function parseJobsMetadata(metadata) {
   const estimatedTime = Number(metadata?.estimated_time);
   const layerCount = Number(metadata?.layer_count);
-  const slicer = String(metadata?.slicer || "").trim();
-  const slicerVersion = String(metadata?.slicer_version || "").trim();
 
   return {
     thumbnailPath: pickThumbnailPath(metadata),
@@ -7488,7 +7543,6 @@ function parseJobsMetadata(metadata) {
     filamentType: String(metadata?.filament_type || "").trim(),
     filamentName: String(metadata?.filament_name || "").trim(),
     nozzleDiameter: readPositiveNumber(metadata?.nozzle_diameter),
-    slicerLabel: slicer ? `${slicer}${slicerVersion ? ` ${slicerVersion}` : ""}` : "",
     firstLayerExtruderTemp: readFiniteNumber(metadata?.first_layer_extr_temp ?? metadata?.first_layer_extruder_temp),
     firstLayerBedTemp: readFiniteNumber(metadata?.first_layer_bed_temp),
     chamberTemp: readFiniteNumber(metadata?.chamber_temp),
@@ -7525,7 +7579,6 @@ async function ensureJobsMetadata(path) {
       filamentType: "",
       filamentName: "",
       nozzleDiameter: null,
-      slicerLabel: "",
       firstLayerExtruderTemp: null,
       firstLayerBedTemp: null,
       chamberTemp: null,
@@ -7999,11 +8052,6 @@ function buildJobsEntryMetaLine(fileEntry, metadata) {
 
     if (columnKey === "nozzle_diameter") {
       parts.push(`Nozzle: ${formatJobsLength(metadata?.nozzleDiameter)}`);
-      return;
-    }
-
-    if (columnKey === "slicer") {
-      parts.push(`Slicer: ${metadata?.slicerLabel || "--"}`);
       return;
     }
 
@@ -8834,6 +8882,13 @@ function normalizeJobsUploadRelativePath(file) {
     .replace(/\/+/g, "/");
 }
 
+function getJobsFileExtension(filename) {
+  const normalized = String(filename || "").trim().toLowerCase();
+  const dotIndex = normalized.lastIndexOf(".");
+  if (dotIndex < 0) return "";
+  return normalized.slice(dotIndex);
+}
+
 function splitJobsUploadPath(path) {
   const normalized = normalizeJobsDirectory(path);
   if (!normalized) {
@@ -8926,7 +8981,7 @@ async function requestJobsUpload(files, { preserveRelativePaths = false, printAf
     }
 
     state.jobs.lastError = "";
-    appendConsole(`Uploaded ${uploaded} print file${uploaded === 1 ? "" : "s"}.`, "info");
+    appendConsole(`Uploaded ${uploaded} file${uploaded === 1 ? "" : "s"}.`, "info");
     await loadJobsFiles({ source: "upload", silent: true });
 
     if (printAfterUpload && uploadedPaths.length) {
@@ -10191,7 +10246,7 @@ function wireEvents() {
   els.prettyGcodeShowMirror?.addEventListener("change", () => {
     state.prettyGcode.showMirror = !!els.prettyGcodeShowMirror?.checked;
     requestPrettyGcodeThreeRender();
-    if (state.activeView === "pretty-gcode") {
+    if (isPrettyGcodeViewerVisible()) {
       renderPrettyGcodeView();
     }
   });
@@ -10199,7 +10254,7 @@ function wireEvents() {
   els.prettyGcodeShowNozzle?.addEventListener("change", () => {
     state.prettyGcode.showNozzle = !!els.prettyGcodeShowNozzle?.checked;
     requestPrettyGcodeThreeRender();
-    if (state.activeView === "pretty-gcode") {
+    if (isPrettyGcodeViewerVisible()) {
       renderPrettyGcodeView();
     }
   });
@@ -10208,7 +10263,7 @@ function wireEvents() {
     state.prettyGcode.orbitWhenIdle = !!els.prettyGcodeOrbitIdle?.checked;
     prettyGcodeThreeState.lastInteractionMs = Date.now();
     requestPrettyGcodeThreeRender();
-    if (state.activeView === "pretty-gcode") {
+    if (isPrettyGcodeViewerVisible()) {
       renderPrettyGcodeView();
     }
   });
@@ -10261,7 +10316,7 @@ function wireEvents() {
     state.prettyGcode.simulationProgress = clampPrettyGcodeProgress(progress);
     state.prettyGcode.layerSelectionPinned = false;
     updatePrettyGcodeToolhead({ skipRender: true });
-    if (state.activeView === "pretty-gcode") {
+    if (isPrettyGcodeViewerVisible()) {
       renderPrettyGcodeView();
     }
   });
@@ -10293,7 +10348,7 @@ function wireEvents() {
   });
 
   window.addEventListener("resize", () => {
-    if (state.activeView === "pretty-gcode") {
+    if (isPrettyGcodeViewerVisible()) {
       renderPrettyGcodeView();
     }
   });
@@ -10329,29 +10384,28 @@ function wireEvents() {
 
   els.jobsUploadBtn?.addEventListener("click", () => {
     closeJobsToolbarMenus();
-    els.jobsUploadInput?.click();
+    openFileInputPicker(els.jobsUploadInput);
   });
 
   els.jobsUploadFolderBtn?.addEventListener("click", () => {
     closeJobsToolbarMenus();
-    els.jobsUploadFolderInput?.click();
+    openFileInputPicker(els.jobsUploadFolderInput);
   });
 
   els.jobsUploadPrintBtn?.addEventListener("click", () => {
     closeJobsToolbarMenus();
-    els.jobsUploadPrintInput?.click();
+    openFileInputPicker(els.jobsUploadPrintInput);
   });
 
   els.jobsAddFileBtn?.addEventListener("click", () => {
     closeJobsToolbarMenus();
-    els.jobsAddFileInput?.click();
+    openFileInputPicker(els.jobsAddFileInput);
   });
 
   els.jobsUploadInput?.addEventListener("change", async (event) => {
     const input = event.currentTarget;
     const files = [...(input?.files || [])];
     if (!files.length) return;
-
     await requestJobsUpload(files, { mode: "upload-files" });
     input.value = "";
   });
@@ -10360,7 +10414,6 @@ function wireEvents() {
     const input = event.currentTarget;
     const files = [...(input?.files || [])];
     if (!files.length) return;
-
     await requestJobsUpload(files, { preserveRelativePaths: true, mode: "upload-folder" });
     input.value = "";
   });
@@ -10376,10 +10429,9 @@ function wireEvents() {
 
   els.jobsAddFileInput?.addEventListener("change", async (event) => {
     const input = event.currentTarget;
-    const file = input?.files?.[0] || null;
-    if (!file) return;
-
-    await requestJobsUpload([file], { mode: "add-file" });
+    const files = [...(input?.files || [])];
+    if (!files.length) return;
+    await requestJobsUpload(files, { mode: "add-file" });
     input.value = "";
   });
 
@@ -10509,7 +10561,7 @@ function wireEvents() {
   });
 
   els.configUploadBtn?.addEventListener("click", () => {
-    els.configUploadInput?.click();
+    openFileInputPicker(els.configUploadInput);
   });
 
   els.configUploadInput?.addEventListener("change", async (event) => {
@@ -10619,6 +10671,7 @@ function wireEvents() {
     state.dashboard.showMainCamera = els.dashShowMainCamera.checked;
     state.dashboard.showToolheadCamera = els.dashShowToolheadCamera.checked;
     state.dashboard.showConsole = !!els.dashShowConsole?.checked;
+    state.dashboard.showKlipperView = !!els.dashShowKlipperView?.checked;
 
     state.camera.enabled = els.cameraEnabled.checked;
     state.camera.url = els.cameraUrl.value.trim();
@@ -10642,6 +10695,7 @@ function wireEvents() {
     localStorage.setItem("dashboard_show_main_camera", String(state.dashboard.showMainCamera));
     localStorage.setItem("dashboard_show_toolhead_camera", String(state.dashboard.showToolheadCamera));
     localStorage.setItem("dashboard_show_console", String(state.dashboard.showConsole));
+    localStorage.setItem("dashboard_show_klipperview", String(state.dashboard.showKlipperView));
     localStorage.setItem("dashboard_layout", JSON.stringify(state.dashboard.layout));
     localStorage.setItem("dashboard_layout_order", JSON.stringify(flattenDashboardLayout(state.dashboard.layout)));
     localStorage.setItem("camera_enabled", String(state.camera.enabled));
@@ -10661,6 +10715,7 @@ function wireEvents() {
       theme: state.interface.theme,
       density: state.interface.density,
     });
+
     await connectMoonraker();
   });
 
@@ -10830,7 +10885,6 @@ function wireEvents() {
 
 async function init() {
   els.moonrakerUrl.value = state.moonrakerUrl;
-
   els.interfaceTheme.value = state.interface.theme;
   els.interfaceCompact.checked = state.interface.compact;
   els.interfaceDensity.value = state.interface.density;
@@ -10843,6 +10897,7 @@ async function init() {
   els.dashShowMainCamera.checked = state.dashboard.showMainCamera;
   els.dashShowToolheadCamera.checked = state.dashboard.showToolheadCamera;
   if (els.dashShowConsole) els.dashShowConsole.checked = state.dashboard.showConsole;
+  if (els.dashShowKlipperView) els.dashShowKlipperView.checked = state.dashboard.showKlipperView;
 
   els.cameraEnabled.checked = state.camera.enabled;
   els.cameraUrl.value = state.camera.url;
@@ -10939,3 +10994,4 @@ init().catch((error) => {
   setConnectionUi("error");
   appendConsole(`Init failed: ${message}`, "error");
 });
+
