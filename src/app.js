@@ -46,6 +46,14 @@ const PRINTER_STATE_META = {
   error: { label: "Error", color: "#ef4444" },
 };
 
+const VIEW_TITLES = {
+  dashboard: "Dashboard",
+  console: "Console",
+  configuration: "Machine",
+  files: "Files",
+  settings: "Settings",
+};
+
 const CONSOLE_LOG_LEVELS = new Set(["debug", "info", "warn", "error"]);
 const TEMPERATURE_PRESETS = {
   hotend: [0, 170, 200, 215, 240, 260],
@@ -64,6 +72,30 @@ const TEMPERATURE_COLORS = {
   hotend: "#ff4a3f",
   bed: "#2ea3ff",
 };
+const CONFIG_FILE_TYPES = {
+  ALL: "all",
+  EXAMPLE: "example",
+  LOG: "log",
+  BACKUP: "backup",
+  CONFIG: "config",
+  DOC: "doc",
+};
+const CONFIG_FILE_TYPE_LABELS = {
+  [CONFIG_FILE_TYPES.EXAMPLE]: "Examples",
+  [CONFIG_FILE_TYPES.LOG]: "Logs",
+  [CONFIG_FILE_TYPES.BACKUP]: "Backups",
+  [CONFIG_FILE_TYPES.CONFIG]: "Configs",
+  [CONFIG_FILE_TYPES.DOC]: "Other docs",
+};
+const CONFIG_FILE_TYPE_RANK = {
+  [CONFIG_FILE_TYPES.EXAMPLE]: 0,
+  [CONFIG_FILE_TYPES.LOG]: 1,
+  [CONFIG_FILE_TYPES.BACKUP]: 2,
+  [CONFIG_FILE_TYPES.CONFIG]: 3,
+  [CONFIG_FILE_TYPES.DOC]: 4,
+};
+const CONFIG_FILE_HIDDEN_ROOTS = new Set(["gcodes", "timelapse", "timelapse_frames"]);
+const CONFIG_FILE_FALLBACK_ROOTS = ["config", "logs", "docs", "config_example", "config_examples"];
 function getThemeColorValue(cssVarName, fallback) {
   const value = getComputedStyle(document.documentElement).getPropertyValue(cssVarName).trim();
   return value || fallback;
@@ -130,6 +162,20 @@ const els = {
   macroList: document.getElementById("macro-list"),
   dashboardMacroList: document.getElementById("dashboard-macro-list"),
   fileList: document.getElementById("file-list"),
+  configRefresh: document.getElementById("config-refresh"),
+  configUploadBtn: document.getElementById("config-upload-btn"),
+  configUploadInput: document.getElementById("config-upload-input"),
+  configFilter: document.getElementById("config-filter"),
+  configFileList: document.getElementById("config-file-list"),
+  configCurrentFile: document.getElementById("config-current-file"),
+  configStatus: document.getElementById("config-status"),
+  configDownload: document.getElementById("config-download"),
+  configDelete: document.getElementById("config-delete"),
+  configNewBtn: document.getElementById("config-new-btn"),
+  configIgnoreChanges: document.getElementById("config-ignore-changes"),
+  configSaveRestart: document.getElementById("config-save-restart"),
+  configDirtyPrompt: document.getElementById("config-dirty-prompt"),
+  configEditor: document.getElementById("config-editor"),
   settingsForm: document.getElementById("settings-form"),
   moonrakerUrl: document.getElementById("moonraker-url"),
   interfaceTheme: document.getElementById("interface-theme"),
@@ -433,7 +479,18 @@ const initialTemperatureSnapshot = initialTemperatureHistory[initialTemperatureH
 
 const state = {
   client: null,
+  activeView: "dashboard",
   moonrakerUrl: localStorage.getItem("moonraker_url") || "http://127.0.0.1:7125",
+  config: {
+    files: [],
+    filteredFiles: [],
+    selectedPath: "",
+    originalContent: "",
+    draftContent: "",
+    isDirty: false,
+    isLoadingFile: false,
+    fileTypeFilter: CONFIG_FILE_TYPES.ALL,
+  },
   interface: {
     theme: loadStoredChoice("interface_theme", "ocean", INTERFACE_THEMES),
     compact: loadStoredBool("interface_compact", false),
@@ -1245,7 +1302,8 @@ function updateStatusFileInfo(printStats, gcodeMove = null, motionReport = null)
 function switchView(viewName) {
   els.navItems.forEach((btn) => btn.classList.toggle("active", btn.dataset.view === viewName));
   els.views.forEach((view) => view.classList.toggle("active", view.id === `view-${viewName}`));
-  els.pageTitle.textContent = viewName.slice(0, 1).toUpperCase() + viewName.slice(1);
+  els.pageTitle.textContent = VIEW_TITLES[viewName] || viewName.slice(0, 1).toUpperCase() + viewName.slice(1);
+  state.activeView = viewName;
 }
 
 function inferAxisCommand(axisToken) {
@@ -2318,6 +2376,8 @@ async function connectMoonraker() {
     appendConsole(`File list load failed: ${message}`, "error");
     log.error("File list load failed.", { error: message });
   }
+
+  await loadConfigFiles({ preserveSelection: true });
 }
 
 function renderMacroButtons(container, macroKeys) {
@@ -2364,9 +2424,722 @@ function renderFiles(files) {
   files.slice(0, 40).forEach((file) => {
     const row = document.createElement("div");
     row.className = "file-row";
-    row.innerHTML = `<strong>${file.path}</strong><div class=\"muted\">${Math.round((file.size || 0) / 1024)} KB</div>`;
+    row.innerHTML = `<strong>${file.path}</strong><div class="muted">${Math.round((file.size || 0) / 1024)} KB</div>`;
     els.fileList.appendChild(row);
   });
+}
+
+function normalizeConfigPath(path) {
+  return String(path || "")
+    .trim()
+    .replace(/\\/g, "/")
+    .replace(/^\/+/, "")
+    .replace(/^config\//i, "");
+}
+
+function getConfigDirectory(path) {
+  const normalized = normalizeConfigPath(path);
+  if (!normalized) return "";
+
+  const parts = normalized.split("/").filter(Boolean);
+  if (parts.length <= 1) return "";
+  return parts.slice(0, -1).join("/");
+}
+
+function formatFileSize(size) {
+  const numeric = Number(size);
+  if (!Number.isFinite(numeric) || numeric < 0) return "";
+  if (numeric < 1024) return `${numeric} B`;
+  if (numeric < 1024 * 1024) return `${Math.round(numeric / 1024)} KB`;
+  return `${(numeric / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function normalizeConfigFileType(type) {
+  const normalized = String(type || "").toLowerCase().trim();
+
+  switch (normalized) {
+    case CONFIG_FILE_TYPES.EXAMPLE:
+    case CONFIG_FILE_TYPES.LOG:
+    case CONFIG_FILE_TYPES.BACKUP:
+    case CONFIG_FILE_TYPES.CONFIG:
+    case CONFIG_FILE_TYPES.DOC:
+      return normalized;
+    default:
+      return CONFIG_FILE_TYPES.ALL;
+  }
+}
+
+function getConfigFileType(path, rootName = "") {
+  const normalized = String(path || "").toLowerCase();
+  const normalizedRoot = String(rootName || "").toLowerCase().trim();
+  if (!normalized) return null;
+
+  if (normalizedRoot.includes("example")) return CONFIG_FILE_TYPES.EXAMPLE;
+  if (normalized.includes("example")) return CONFIG_FILE_TYPES.EXAMPLE;
+
+  const isDocsImageOrPrintContent =
+    normalizedRoot === "docs" &&
+    (
+      normalized.startsWith("img/") ||
+      normalized.startsWith("prints/") ||
+      normalized.startsWith("_klipper3d/") ||
+      normalized.startsWith("_kliper3d/")
+    );
+
+  if (isDocsImageOrPrintContent) {
+    return CONFIG_FILE_TYPES.DOC;
+  }
+
+  const filename = normalized.split("/").pop() || normalized;
+  const isKlipperBackup = /^printer-\d{8}_\d{6}\.cfg$/i.test(filename);
+  const isCrowsnestBackup = /^crowsnest\.conf\.\d{4}-\d{2}-\d{2}-\d{4}$/i.test(filename);
+
+  if (isKlipperBackup || isCrowsnestBackup || /\.bak(?:$|[._-]|\d)/i.test(normalized) || /\.bkp(?:$|[._-]|\d)/i.test(normalized)) {
+    return CONFIG_FILE_TYPES.BACKUP;
+  }
+
+  if (/\.log(?:$|[._-]|\d)/i.test(normalized)) {
+    return CONFIG_FILE_TYPES.LOG;
+  }
+
+  if (/\.(conf|cfg|config)$/i.test(normalized)) {
+    return CONFIG_FILE_TYPES.CONFIG;
+  }
+
+  if (/\.(doc|md)$/i.test(normalized)) {
+    return CONFIG_FILE_TYPES.DOC;
+  }
+
+  return null;
+}
+
+function normalizeRootRelativePath(path, rootName) {
+  const normalized = String(path || "")
+    .trim()
+    .replace(/\\/g, "/")
+    .replace(/^\/+/, "");
+
+  const root = String(rootName || "")
+    .trim()
+    .replace(/^\/+/, "")
+    .replace(/\/+$/, "");
+
+  if (!root) return normalized;
+
+  const prefix = `${root}/`;
+  if (normalized.toLowerCase().startsWith(prefix.toLowerCase())) {
+    return normalized.slice(prefix.length);
+  }
+
+  return normalized;
+}
+
+function buildConfigEntryPath(rootName, relativePath) {
+  const root = String(rootName || "").trim();
+  const relative = normalizeRootRelativePath(relativePath, rootName);
+  if (!root || !relative) return "";
+  return `${root}/${relative}`;
+}
+
+function getConfigFileEntry(path) {
+  const normalizedPath = String(path || "").trim();
+  if (!normalizedPath) return null;
+
+  return state.config.files.find((entry) => entry.path === normalizedPath) || null;
+}
+
+function setConfigStatus(message, level = "info") {
+  if (!els.configStatus) return;
+  els.configStatus.textContent = message;
+  els.configStatus.dataset.level = level;
+}
+
+function setConfigDirtyState(isDirty) {
+  const selectedEntry = getConfigFileEntry(state.config.selectedPath);
+  const hasActualChanges = state.config.draftContent !== state.config.originalContent;
+  const isEditableConfigFile = selectedEntry?.root === "config";
+
+  state.config.isDirty = !!isDirty && hasActualChanges && isEditableConfigFile;
+
+  if (els.configDirtyPrompt) {
+    els.configDirtyPrompt.hidden = !state.config.isDirty;
+  }
+}
+
+function syncConfigSelectionUi() {
+  const hasSelection = !!state.config.selectedPath;
+
+  if (els.configCurrentFile) {
+    els.configCurrentFile.textContent = hasSelection ? state.config.selectedPath : "No file selected";
+  }
+
+  if (els.configDownload) {
+    els.configDownload.hidden = !hasSelection;
+    els.configDownload.disabled = !hasSelection;
+  }
+
+  if (els.configDelete) {
+    els.configDelete.hidden = !hasSelection;
+    els.configDelete.disabled = !hasSelection;
+  }
+
+  if (!hasSelection && els.configEditor) {
+    els.configEditor.value = "";
+    els.configEditor.disabled = true;
+  }
+
+  setConfigDirtyState(state.config.isDirty);
+}
+
+function applyConfigFilter() {
+  const selectedType = normalizeConfigFileType(state.config.fileTypeFilter);
+  state.config.fileTypeFilter = selectedType;
+
+  state.config.filteredFiles = state.config.files.filter((entry) => {
+    if (selectedType === CONFIG_FILE_TYPES.ALL) return true;
+    return entry.fileType === selectedType;
+  });
+
+  renderConfigFileList();
+}
+
+function renderConfigFileList() {
+  if (!els.configFileList) return;
+
+  els.configFileList.innerHTML = "";
+
+  if (!state.config.filteredFiles.length) {
+    const empty = document.createElement("p");
+    empty.className = "muted";
+
+    const selectedType = normalizeConfigFileType(state.config.fileTypeFilter);
+    if (!state.config.files.length) {
+      empty.textContent = "No supported files found (.conf, .cfg, .config, .log, .bak, .bkp, .doc, .md).";
+    } else if (selectedType === CONFIG_FILE_TYPES.ALL) {
+      empty.textContent = "No files found for the selected file type.";
+    } else {
+      const label = CONFIG_FILE_TYPE_LABELS[selectedType] || "files";
+      empty.textContent = `No ${label.toLowerCase()} found.`;
+    }
+
+    els.configFileList.appendChild(empty);
+    return;
+  }
+
+  let lastFileType = "";
+
+  state.config.filteredFiles.forEach((entry) => {
+    if (entry.fileType !== lastFileType) {
+      const groupLabel = document.createElement("p");
+      groupLabel.className = "config-file-group muted";
+      groupLabel.textContent = CONFIG_FILE_TYPE_LABELS[entry.fileType] || "Files";
+      els.configFileList.appendChild(groupLabel);
+      lastFileType = entry.fileType;
+    }
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "config-file-item";
+    button.classList.toggle("active", entry.path === state.config.selectedPath);
+    button.title = entry.path;
+
+    const label = document.createElement("span");
+    label.className = "config-file-path";
+    label.textContent = entry.path;
+
+    const sizeLabel = document.createElement("span");
+    sizeLabel.className = "config-file-size muted";
+    sizeLabel.textContent = formatFileSize(entry.size);
+
+    button.append(label, sizeLabel);
+    button.addEventListener("click", async () => {
+      await requestConfigFileOpen(entry.path);
+    });
+
+    els.configFileList.appendChild(button);
+  });
+}
+
+function extractConfigFiles(fileResponse, rootName = "config") {
+  const result = fileResponse?.result;
+  const rawFiles = Array.isArray(result)
+    ? result
+    : Array.isArray(result?.files)
+      ? result.files
+      : [];
+
+  const byPath = new Map();
+
+  rawFiles.forEach((entry) => {
+    if (!entry) return;
+
+    if (typeof entry === "object" && String(entry.type || "").toLowerCase() === "directory") {
+      return;
+    }
+
+    const candidatePath = typeof entry === "string"
+      ? entry
+      : typeof entry.path === "string"
+        ? entry.path
+        : [entry.dirname, entry.filename].filter(Boolean).join("/");
+
+    const relativePath = normalizeRootRelativePath(candidatePath, rootName);
+    if (!relativePath || relativePath.endsWith("/")) return;
+
+    const fileType = getConfigFileType(relativePath, rootName);
+    if (!fileType) return;
+
+    const entryPath = buildConfigEntryPath(rootName, relativePath);
+    if (!entryPath) return;
+
+    const sizeValue = Number(entry?.size);
+    const size = Number.isFinite(sizeValue) && sizeValue >= 0 ? sizeValue : null;
+
+    if (!byPath.has(entryPath)) {
+      byPath.set(entryPath, {
+        path: entryPath,
+        root: rootName,
+        relativePath,
+        size,
+        fileType,
+      });
+    }
+  });
+
+  return [...byPath.values()].sort((a, b) => {
+    const aRank = CONFIG_FILE_TYPE_RANK[a.fileType] ?? Number.MAX_SAFE_INTEGER;
+    const bRank = CONFIG_FILE_TYPE_RANK[b.fileType] ?? Number.MAX_SAFE_INTEGER;
+    if (aRank !== bRank) return aRank - bRank;
+    return a.path.localeCompare(b.path);
+  });
+}
+
+async function resolveConfigRoots() {
+  if (!state.client) {
+    return [...CONFIG_FILE_FALLBACK_ROOTS];
+  }
+
+  try {
+    const infoResponse = await state.client.getServerInfo();
+    const payload = infoResponse?.result || {};
+    const registered = Array.isArray(payload.registered_directories) ? payload.registered_directories : [];
+
+    const roots = registered
+      .map((entry) => String(entry || "").trim())
+      .filter(Boolean)
+      .filter((rootName) => !CONFIG_FILE_HIDDEN_ROOTS.has(rootName));
+
+    const uniqueRoots = [...new Set(roots)];
+    CONFIG_FILE_FALLBACK_ROOTS.forEach((rootName) => {
+      if (!uniqueRoots.includes(rootName)) {
+        uniqueRoots.push(rootName);
+      }
+    });
+
+    return uniqueRoots;
+  } catch (error) {
+    log.debug("Config root discovery failed; using fallback roots.", {
+      error: error?.message || String(error),
+    });
+    return [...CONFIG_FILE_FALLBACK_ROOTS];
+  }
+}
+async function loadConfigFiles({ preserveSelection = true } = {}) {
+  if (!state.client) {
+    setConfigStatus("Connect to Moonraker from Settings to manage configuration files.", "warn");
+    return [];
+  }
+
+  if (state.activeView === "configuration" && els.configFileList) {
+    els.configFileList.innerHTML = '<p class="muted">Loading configuration files...</p>';
+  }
+
+  try {
+    const roots = await resolveConfigRoots();
+    const rootResponses = await Promise.allSettled(
+      roots.map((rootName) => state.client.getFilesByRoot(rootName))
+    );
+
+    const files = rootResponses.flatMap((response, index) => {
+      if (response.status !== "fulfilled") return [];
+      return extractConfigFiles(response.value, roots[index]);
+    });
+
+    files.sort((a, b) => {
+      const aRank = CONFIG_FILE_TYPE_RANK[a.fileType] ?? Number.MAX_SAFE_INTEGER;
+      const bRank = CONFIG_FILE_TYPE_RANK[b.fileType] ?? Number.MAX_SAFE_INTEGER;
+      if (aRank !== bRank) return aRank - bRank;
+      return a.path.localeCompare(b.path);
+    });
+
+    state.config.files = files;
+
+    if (preserveSelection && state.config.selectedPath) {
+      const selectionStillExists = files.some((entry) => entry.path === state.config.selectedPath);
+      if (!selectionStillExists) {
+        state.config.selectedPath = "";
+        state.config.originalContent = "";
+        state.config.draftContent = "";
+        setConfigDirtyState(false);
+      }
+    }
+
+    applyConfigFilter();
+    syncConfigSelectionUi();
+
+    setConfigStatus(`Loaded ${files.length} supported file${files.length === 1 ? "" : "s"}.`);
+    return files;
+  } catch (error) {
+    const message = error?.message || String(error);
+    setConfigStatus(`Failed to load configuration files: ${message}`, "error");
+    appendConsole(`Config file load failed: ${message}`, "error");
+    log.error("Config file load failed.", { error: message });
+
+    if (els.configFileList) {
+      els.configFileList.innerHTML = `<p class="muted">Failed to load config files: ${message}</p>`;
+    }
+
+    return [];
+  }
+}
+
+async function loadConfigFile(path) {
+  const entry = getConfigFileEntry(path);
+  if (!entry || !state.client || state.config.isLoadingFile) return false;
+
+  state.config.isLoadingFile = true;
+  setConfigStatus(`Loading ${entry.path}...`);
+
+  if (els.configEditor) {
+    els.configEditor.disabled = true;
+  }
+
+  try {
+    const content = await state.client.getFileText(entry.root, entry.relativePath);
+    state.config.selectedPath = entry.path;
+    state.config.originalContent = content;
+    state.config.draftContent = content;
+
+    if (els.configEditor) {
+      els.configEditor.value = content;
+      els.configEditor.disabled = entry.root !== "config";
+    }
+
+    setConfigDirtyState(false);
+    syncConfigSelectionUi();
+    renderConfigFileList();
+    setConfigStatus(`Loaded ${entry.path}.`);
+    return true;
+  } catch (error) {
+    const message = error?.message || String(error);
+    setConfigStatus(`Failed to load ${entry.path}: ${message}`, "error");
+    appendConsole(`Config open failed: ${message}`, "error");
+    log.error("Config file load failed.", { path: entry.path, error: message });
+    syncConfigSelectionUi();
+    return false;
+  } finally {
+    state.config.isLoadingFile = false;
+  }
+}
+
+function discardConfigDraft({ notify = true } = {}) {
+  if (!state.config.selectedPath) return;
+
+  state.config.draftContent = state.config.originalContent;
+
+  if (els.configEditor) {
+    els.configEditor.value = state.config.originalContent;
+    els.configEditor.disabled = false;
+  }
+
+  setConfigDirtyState(false);
+
+  if (notify) {
+    setConfigStatus(`Ignored changes for ${state.config.selectedPath}.`, "warn");
+    appendConsole(`Ignored unsaved changes: ${state.config.selectedPath}`, "warn");
+  }
+}
+
+async function saveConfigAndRestartFirmware() {
+  const selectedEntry = getConfigFileEntry(state.config.selectedPath);
+  if (!selectedEntry || !state.client) {
+    setConfigStatus("Select a configuration file before saving.", "warn");
+    return false;
+  }
+
+  if (selectedEntry.root !== "config") {
+    setConfigStatus("Save & Restart Firmware is only available for files under config/.", "warn");
+    return false;
+  }
+
+  const selectedPath = normalizeConfigPath(selectedEntry.relativePath);
+  const nextContent = els.configEditor ? els.configEditor.value : state.config.draftContent;
+  state.config.draftContent = nextContent;
+
+  setConfigStatus(`Saving ${selectedPath}...`);
+
+  try {
+    await state.client.saveConfigFileText(selectedPath, nextContent);
+
+    state.config.originalContent = nextContent;
+    state.config.draftContent = nextContent;
+    setConfigDirtyState(false);
+    syncConfigSelectionUi();
+
+    appendConsole(`Config saved: ${selectedPath}`, "info");
+    setConfigStatus(`Saved ${selectedPath}. Restarting firmware...`);
+
+    const restarted = await executeGcodeAction("FIRMWARE_RESTART", {
+      actionLabel: "Firmware restart",
+      successMessage: "Firmware restart requested after config save.",
+    });
+
+    if (!restarted) {
+      appendConsole("Firmware restart failed after config save.", "warn");
+      setConfigStatus(`Saved ${selectedPath}, but firmware restart failed.`, "warn");
+    } else {
+      setConfigStatus(`Saved ${selectedPath} and requested firmware restart.`);
+    }
+
+    await loadConfigFiles({ preserveSelection: true });
+    return true;
+  } catch (error) {
+    const message = error?.message || String(error);
+    appendConsole(`Config save failed: ${message}`, "error");
+    setConfigStatus(`Failed to save ${selectedPath}: ${message}`, "error");
+    log.error("Config save failed.", {
+      path: selectedPath,
+      error: message,
+    });
+    return false;
+  }
+}
+
+async function resolveConfigDirtyChanges() {
+  if (!state.config.isDirty || !state.config.selectedPath) {
+    return true;
+  }
+
+  const shouldSave = window.confirm(
+    `Unsaved changes detected in ${state.config.selectedPath}.\n\nPress OK to Save and Restart Firmware, or Cancel to Ignore Changes.`
+  );
+
+  if (shouldSave) {
+    return saveConfigAndRestartFirmware();
+  }
+
+  discardConfigDraft({ notify: true });
+  return true;
+}
+
+async function requestConfigFileOpen(path) {
+  const normalizedPath = String(path || "").trim();
+  if (!normalizedPath || normalizedPath === state.config.selectedPath) return;
+
+  if (state.config.isDirty) {
+    const resolved = await resolveConfigDirtyChanges();
+    if (!resolved) return;
+  }
+
+  await loadConfigFile(normalizedPath);
+}
+
+async function requestViewChange(viewName) {
+  if (!viewName || viewName === state.activeView) return;
+
+  if (state.activeView === "configuration" && viewName !== "configuration" && state.config.isDirty) {
+    const resolved = await resolveConfigDirtyChanges();
+    if (!resolved) return;
+  }
+
+  switchView(viewName);
+
+  if (viewName !== "configuration") return;
+
+  if (!state.client) {
+    setConfigStatus("Connect to Moonraker from Settings to manage configuration files.", "warn");
+    return;
+  }
+
+  if (!state.config.files.length) {
+    await loadConfigFiles({ preserveSelection: true });
+  } else {
+    applyConfigFilter();
+    syncConfigSelectionUi();
+  }
+}
+
+async function handleConfigUpload(file) {
+  if (!file) return false;
+
+  if (!state.client) {
+    setConfigStatus("Connect to Moonraker from Settings before uploading.", "warn");
+    return false;
+  }
+
+  const selectedEntry = getConfigFileEntry(state.config.selectedPath);
+  const directory = selectedEntry?.root === "config" ? getConfigDirectory(selectedEntry.relativePath) : "";
+
+  setConfigStatus(`Uploading ${file.name}...`);
+
+  try {
+    await state.client.uploadFile("config", file, directory, file.name);
+
+    appendConsole(`Config uploaded: ${file.name}`, "info");
+    await loadConfigFiles({ preserveSelection: true });
+
+    const uploadedPath = normalizeConfigPath(directory ? `${directory}/${file.name}` : file.name);
+    if (uploadedPath) {
+      await requestConfigFileOpen(buildConfigEntryPath("config", uploadedPath));
+    }
+
+    setConfigStatus(`Uploaded ${file.name}.`);
+    return true;
+  } catch (error) {
+    const message = error?.message || String(error);
+    appendConsole(`Config upload failed: ${message}`, "error");
+    setConfigStatus(`Failed to upload ${file.name}: ${message}`, "error");
+    log.error("Config upload failed.", {
+      filename: file.name,
+      error: message,
+    });
+    return false;
+  }
+}
+
+function isValidNewConfigPath(path) {
+  if (!path || path.endsWith("/")) return false;
+
+  const segments = path.split("/").filter(Boolean);
+  if (!segments.length) return false;
+
+  return !segments.some((segment) => segment === "." || segment === "..");
+}
+
+function buildNewConfigPathSuggestion() {
+  const selectedEntry = getConfigFileEntry(state.config.selectedPath);
+  const directory = selectedEntry?.root === "config" ? getConfigDirectory(selectedEntry.relativePath) : "";
+  return directory ? `${directory}/new-file.cfg` : "new-file.cfg";
+}
+
+async function createNewConfigFile() {
+  if (!state.client) {
+    setConfigStatus("Connect to Moonraker from Settings before creating files.", "warn");
+    return false;
+  }
+
+  if (state.config.isDirty) {
+    const resolved = await resolveConfigDirtyChanges();
+    if (!resolved) return false;
+  }
+
+  const suggestedPath = buildNewConfigPathSuggestion();
+  const requestedPath = window.prompt("Enter the new config file path (relative to config/):", suggestedPath);
+  if (requestedPath === null) return false;
+
+  const normalizedPath = normalizeConfigPath(requestedPath);
+  if (!isValidNewConfigPath(normalizedPath)) {
+    setConfigStatus("Enter a valid file path for the new config file.", "warn");
+    return false;
+  }
+
+  const targetEntryPath = buildConfigEntryPath("config", normalizedPath);
+  const alreadyExists = state.config.files.some((entry) => entry.path === targetEntryPath);
+  if (alreadyExists) {
+    setConfigStatus(`File already exists: ${normalizedPath}`, "warn");
+    await requestConfigFileOpen(targetEntryPath);
+    return false;
+  }
+
+  setConfigStatus(`Creating ${normalizedPath}...`);
+
+  try {
+    await state.client.saveConfigFileText(normalizedPath, "");
+    appendConsole(`Config file created: ${normalizedPath}`, "info");
+
+    await loadConfigFiles({ preserveSelection: true });
+    await requestConfigFileOpen(targetEntryPath);
+
+    setConfigStatus(`Created ${normalizedPath}.`);
+    return true;
+  } catch (error) {
+    const message = error?.message || String(error);
+    appendConsole(`Config file create failed: ${message}`, "error");
+    setConfigStatus(`Failed to create ${normalizedPath}: ${message}`, "error");
+    log.error("Config file create failed.", {
+      path: normalizedPath,
+      error: message,
+    });
+    return false;
+  }
+}
+
+async function deleteActiveConfigFile() {
+  const selectedEntry = getConfigFileEntry(state.config.selectedPath);
+  if (!selectedEntry) return false;
+
+  if (!state.client) {
+    setConfigStatus("Connect to Moonraker from Settings before deleting files.", "warn");
+    return false;
+  }
+
+  if (selectedEntry.root !== "config") {
+    setConfigStatus("Deleting is only available for files under config/.", "warn");
+    return false;
+  }
+
+  const selectedPath = normalizeConfigPath(selectedEntry.relativePath);
+  const dirtyWarning = state.config.isDirty ? "\n\nUnsaved edits will be lost." : "";
+  const confirmed = window.confirm(`Delete ${selectedPath}? This cannot be undone.${dirtyWarning}`);
+  if (!confirmed) return false;
+
+  setConfigStatus(`Deleting ${selectedPath}...`, "warn");
+
+  try {
+    await state.client.deleteConfigFile(selectedPath);
+    appendConsole(`Config deleted: ${selectedPath}`, "warn");
+
+    state.config.selectedPath = "";
+    state.config.originalContent = "";
+    state.config.draftContent = "";
+    setConfigDirtyState(false);
+    syncConfigSelectionUi();
+
+    await loadConfigFiles({ preserveSelection: false });
+
+    setConfigStatus(`Deleted ${selectedPath}.`);
+    return true;
+  } catch (error) {
+    const message = error?.message || String(error);
+    appendConsole(`Config delete failed: ${message}`, "error");
+    setConfigStatus(`Failed to delete ${selectedPath}: ${message}`, "error");
+    log.error("Config delete failed.", {
+      path: selectedPath,
+      error: message,
+    });
+    return false;
+  }
+}
+
+function downloadActiveConfigFile() {
+  const selectedEntry = getConfigFileEntry(state.config.selectedPath);
+  if (!selectedEntry) return;
+
+  const content = els.configEditor ? els.configEditor.value : state.config.draftContent;
+  const filename = selectedEntry.relativePath.split("/").pop() || "config.txt";
+
+  const blob = new Blob([content], { type: "text/plain" });
+  const url = URL.createObjectURL(blob);
+
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+
+  URL.revokeObjectURL(url);
+  appendConsole(`Config downloaded: ${selectedEntry.path}`, "info");
 }
 
 async function executeGcodeAction(script, { actionLabel = script, successMessage = null } = {}) {
@@ -2404,8 +3177,68 @@ async function executeGcodeAction(script, { actionLabel = script, successMessage
 }
 
 function wireEvents() {
-  els.navItems.forEach((btn) => btn.addEventListener("click", () => switchView(btn.dataset.view)));
+  els.navItems.forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      await requestViewChange(btn.dataset.view);
+    });
+  });
   els.sidebarToggle?.addEventListener("click", toggleSidebar);
+
+  els.configRefresh?.addEventListener("click", async () => {
+    await loadConfigFiles({ preserveSelection: true });
+  });
+
+  els.configUploadBtn?.addEventListener("click", () => {
+    els.configUploadInput?.click();
+  });
+
+  els.configUploadInput?.addEventListener("change", async (event) => {
+    const input = event.currentTarget;
+    const file = input?.files?.[0] || null;
+    if (!file) return;
+
+    await handleConfigUpload(file);
+    input.value = "";
+  });
+
+  els.configNewBtn?.addEventListener("click", async () => {
+    await createNewConfigFile();
+  });
+
+  els.configDelete?.addEventListener("click", async () => {
+    await deleteActiveConfigFile();
+  });
+
+  els.configFilter?.addEventListener("change", () => {
+    state.config.fileTypeFilter = normalizeConfigFileType(els.configFilter.value);
+    applyConfigFilter();
+  });
+
+  els.configDownload?.addEventListener("click", () => {
+    downloadActiveConfigFile();
+  });
+
+  els.configIgnoreChanges?.addEventListener("click", () => {
+    discardConfigDraft({ notify: true });
+  });
+
+  els.configSaveRestart?.addEventListener("click", async () => {
+    await saveConfigAndRestartFirmware();
+  });
+
+  els.configEditor?.addEventListener("input", () => {
+    if (!state.config.selectedPath) return;
+
+    state.config.draftContent = els.configEditor.value;
+    const isDirty = state.config.draftContent !== state.config.originalContent;
+    setConfigDirtyState(isDirty);
+
+    if (isDirty) {
+      setConfigStatus(`Unsaved changes in ${state.config.selectedPath}. Choose Ignore Changes or Save & Restart Firmware.`, "warn");
+    } else {
+      setConfigStatus(`Loaded ${state.config.selectedPath}.`);
+    }
+  });
 
   els.openDashboardLayout?.addEventListener("click", openDashboardLayoutDialog);
   els.dashboardLayoutClose?.addEventListener("click", closeDashboardLayoutDialog);
@@ -2555,6 +3388,12 @@ async function init() {
   els.toolheadCameraEnabled.checked = state.toolheadCamera.enabled;
   els.toolheadCameraUrl.value = state.toolheadCamera.url;
   els.toolheadCameraRenderMode.value = state.toolheadCamera.renderMode;
+
+  if (els.configFilter) {
+    els.configFilter.value = normalizeConfigFileType(state.config.fileTypeFilter);
+  }
+  syncConfigSelectionUi();
+  setConfigStatus("Connect to Moonraker from Settings to manage configuration files.", "warn");
 
   applyDashboardLayout();
   setupCollapsibleCards();

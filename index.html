@@ -44,13 +44,13 @@
           </span>
           <span class="nav-item-label">Console</span>
         </button>
-        <button data-view="macros" class="nav-item" title="Macros">
+        <button data-view="configuration" class="nav-item" title="Machine">
           <span class="nav-item-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M13 3L4 14h7l-1 7 9-11h-7z"></path>
+              <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.3-3.4a6 6 0 0 1-7.94 7.94l-6.91 6.91a1 1 0 0 1-1.41-1.41l6.91-6.91A6 6 0 0 1 5.34 3.34l3.4 3.4z"></path>
             </svg>
           </span>
-          <span class="nav-item-label">Macros</span>
+          <span class="nav-item-label">Machine</span>
         </button>
         <button data-view="files" class="nav-item" title="Files">
           <span class="nav-item-icon" aria-hidden="true">
@@ -296,12 +296,84 @@
           </form>
         </article>
       </section>
-
-      <section id="view-macros" class="view">
-        <article class="card">
-          <h3>Macros</h3>
-          <p class="muted">Loaded from Moonraker configuration.</p>
-          <div id="macro-list" class="macro-list"></div>
+      <section id="view-configuration" class="view">
+        <article class="card config-card">
+          <div class="card-head">
+            <h3>Configuration</h3>
+            <div class="actions config-actions-bar">
+              <button type="button" id="config-refresh" class="config-action-btn" aria-label="Refresh files" title="Refresh files">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <polyline points="23 4 23 10 17 10"></polyline>
+                  <polyline points="1 20 1 14 7 14"></polyline>
+                  <path d="M3.5 9a9 9 0 0 1 14.65-3.36L23 10"></path>
+                  <path d="M20.5 15a9 9 0 0 1-14.65 3.36L1 14"></path>
+                </svg>
+              </button>
+              <button type="button" id="config-upload-btn" class="config-action-btn" aria-label="Upload file" title="Upload file">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="17 8 12 3 7 8"></polyline>
+                  <line x1="12" y1="3" x2="12" y2="15"></line>
+                </svg>
+              </button>
+              <button type="button" id="config-new-btn" class="config-action-btn" aria-label="Create new file" title="Create new file">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <polyline points="14 2 14 8 20 8"></polyline>
+                  <line x1="12" y1="11" x2="12" y2="17"></line>
+                  <line x1="9" y1="14" x2="15" y2="14"></line>
+                </svg>
+              </button>
+              <button type="button" id="config-download" class="config-action-btn" aria-label="Download selected file" title="Download selected file" hidden>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="7 10 12 15 17 10"></polyline>
+                  <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+              </button>
+              <button type="button" id="config-delete" class="config-action-btn danger" aria-label="Delete selected file" title="Delete selected file" hidden>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <polyline points="3 6 5 6 21 6"></polyline>
+                  <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                  <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+                  <line x1="10" y1="11" x2="10" y2="17"></line>
+                  <line x1="14" y1="11" x2="14" y2="17"></line>
+                </svg>
+              </button>
+              <input id="config-upload-input" type="file" hidden />
+            </div>
+          </div>
+          <div class="config-layout">
+            <aside class="config-files-panel">
+              <label for="config-filter" class="muted">File type</label>
+              <select id="config-filter" aria-label="Filter files by type">
+                <option value="all">All file types</option>
+                <option value="example">Examples</option>
+                <option value="log">Logs</option>
+                <option value="backup">Backups</option>
+                <option value="config">Configs</option>
+                <option value="doc">Other docs</option>
+              </select>
+              <div id="config-file-list" class="config-file-list"></div>
+            </aside>
+            <section class="config-editor-panel">
+              <div class="config-editor-head">
+                <div class="config-editor-meta">
+                  <strong id="config-current-file">No file selected</strong>
+                  <p id="config-status" class="muted">Select a configuration file to view and edit.</p>
+                </div>
+                
+              </div>
+              <div id="config-dirty-prompt" class="config-dirty-prompt" hidden>
+                <span>Unsaved changes detected for this file.</span>
+                <div class="actions">
+                  <button type="button" id="config-ignore-changes">Ignore Changes</button>
+                  <button type="button" id="config-save-restart">Save &amp; Restart Firmware</button>
+                </div>
+              </div>
+              <textarea id="config-editor" class="config-editor" spellcheck="false" disabled placeholder="Select a configuration file to start editing."></textarea>
+            </section>
+          </div>
         </article>
       </section>
 
