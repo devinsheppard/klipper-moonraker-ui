@@ -53,6 +53,9 @@ const VIEW_TITLES = {
   files: "Files",
   settings: "Settings",
 };
+const ACTIVE_VIEW_STORAGE_KEY = "active_view";
+const CONFIG_SELECTED_PATH_STORAGE_KEY = "config_selected_path";
+const CONFIG_FILE_FILTER_STORAGE_KEY = "config_file_type_filter";
 
 const CONSOLE_LOG_LEVELS = new Set(["debug", "info", "warn", "error"]);
 const TEMPERATURE_PRESETS = {
@@ -246,6 +249,28 @@ function loadStoredChoice(key, fallback, allowedValues) {
   const raw = localStorage.getItem(key);
   if (!raw) return fallback;
   return allowedValues.includes(raw) ? raw : fallback;
+}
+
+function isKnownView(viewName) {
+  return Object.prototype.hasOwnProperty.call(VIEW_TITLES, viewName);
+}
+
+function loadStoredView(fallback = "dashboard") {
+  const raw = localStorage.getItem(ACTIVE_VIEW_STORAGE_KEY);
+  return isKnownView(raw) ? raw : fallback;
+}
+
+function loadStoredConfigSelectedPath() {
+  return String(localStorage.getItem(CONFIG_SELECTED_PATH_STORAGE_KEY) || "").trim();
+}
+
+function loadStoredConfigFileTypeFilter() {
+  return normalizeConfigFileType(localStorage.getItem(CONFIG_FILE_FILTER_STORAGE_KEY));
+}
+
+function persistConfigViewState() {
+  localStorage.setItem(CONFIG_SELECTED_PATH_STORAGE_KEY, state.config.selectedPath || "");
+  localStorage.setItem(CONFIG_FILE_FILTER_STORAGE_KEY, normalizeConfigFileType(state.config.fileTypeFilter));
 }
 
 function slugify(value) {
@@ -479,17 +504,17 @@ const initialTemperatureSnapshot = initialTemperatureHistory[initialTemperatureH
 
 const state = {
   client: null,
-  activeView: "dashboard",
+  activeView: loadStoredView(),
   moonrakerUrl: localStorage.getItem("moonraker_url") || "http://127.0.0.1:7125",
   config: {
     files: [],
     filteredFiles: [],
-    selectedPath: "",
+    selectedPath: loadStoredConfigSelectedPath(),
     originalContent: "",
     draftContent: "",
     isDirty: false,
     isLoadingFile: false,
-    fileTypeFilter: CONFIG_FILE_TYPES.ALL,
+    fileTypeFilter: loadStoredConfigFileTypeFilter(),
   },
   interface: {
     theme: loadStoredChoice("interface_theme", "ocean", INTERFACE_THEMES),
@@ -1300,10 +1325,12 @@ function updateStatusFileInfo(printStats, gcodeMove = null, motionReport = null)
 }
 
 function switchView(viewName) {
+  if (!isKnownView(viewName)) return;
   els.navItems.forEach((btn) => btn.classList.toggle("active", btn.dataset.view === viewName));
   els.views.forEach((view) => view.classList.toggle("active", view.id === `view-${viewName}`));
   els.pageTitle.textContent = VIEW_TITLES[viewName] || viewName.slice(0, 1).toUpperCase() + viewName.slice(1);
   state.activeView = viewName;
+  localStorage.setItem(ACTIVE_VIEW_STORAGE_KEY, viewName);
 }
 
 function inferAxisCommand(axisToken) {
@@ -2567,10 +2594,12 @@ function setConfigDirtyState(isDirty) {
 }
 
 function syncConfigSelectionUi() {
-  const hasSelection = !!state.config.selectedPath;
+  const selectedEntry = getConfigFileEntry(state.config.selectedPath);
+  const hasSelection = !!selectedEntry;
+  const selectedPath = hasSelection ? selectedEntry.path : "";
 
   if (els.configCurrentFile) {
-    els.configCurrentFile.textContent = hasSelection ? state.config.selectedPath : "No file selected";
+    els.configCurrentFile.textContent = selectedPath || "No file selected";
   }
 
   if (els.configDownload) {
@@ -2594,6 +2623,7 @@ function syncConfigSelectionUi() {
 function applyConfigFilter() {
   const selectedType = normalizeConfigFileType(state.config.fileTypeFilter);
   state.config.fileTypeFilter = selectedType;
+  persistConfigViewState();
 
   state.config.filteredFiles = state.config.files.filter((entry) => {
     if (selectedType === CONFIG_FILE_TYPES.ALL) return true;
@@ -2781,11 +2811,22 @@ async function loadConfigFiles({ preserveSelection = true } = {}) {
         state.config.originalContent = "";
         state.config.draftContent = "";
         setConfigDirtyState(false);
+        persistConfigViewState();
       }
     }
 
     applyConfigFilter();
     syncConfigSelectionUi();
+
+    if (
+      preserveSelection &&
+      state.activeView === "configuration" &&
+      state.config.selectedPath &&
+      !state.config.originalContent &&
+      !state.config.draftContent
+    ) {
+      await loadConfigFile(state.config.selectedPath);
+    }
 
     setConfigStatus(`Loaded ${files.length} supported file${files.length === 1 ? "" : "s"}.`);
     return files;
@@ -2817,6 +2858,7 @@ async function loadConfigFile(path) {
   try {
     const content = await state.client.getFileText(entry.root, entry.relativePath);
     state.config.selectedPath = entry.path;
+    persistConfigViewState();
     state.config.originalContent = content;
     state.config.draftContent = content;
 
@@ -3100,6 +3142,7 @@ async function deleteActiveConfigFile() {
     appendConsole(`Config deleted: ${selectedPath}`, "warn");
 
     state.config.selectedPath = "";
+    persistConfigViewState();
     state.config.originalContent = "";
     state.config.draftContent = "";
     setConfigDirtyState(false);
@@ -3392,6 +3435,7 @@ async function init() {
   if (els.configFilter) {
     els.configFilter.value = normalizeConfigFileType(state.config.fileTypeFilter);
   }
+  switchView(state.activeView);
   syncConfigSelectionUi();
   setConfigStatus("Connect to Moonraker from Settings to manage configuration files.", "warn");
 
