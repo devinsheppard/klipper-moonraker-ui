@@ -10,6 +10,7 @@ const CAMERA_MODES = {
 
 const INTERFACE_THEMES = ["ocean", "ember", "graphite"];
 const INTERFACE_DENSITIES = ["comfortable", "compact"];
+const CONTROL_DISTANCE_VALUES = [0.1, 1, 10, 100];
 const CARD_COLLAPSE_KEY_PREFIX = "card_collapsed_";
 const KLIPPERVIEW_CARD_ID = "card-klipperview";
 const DASHBOARD_CARD_IDS = [
@@ -438,6 +439,10 @@ const els = {
   machineEndstopsSummary: document.getElementById("machine-endstops-summary"),
   machineEndstopsList: document.getElementById("machine-endstops-list"),
   machineEndstopsStatus: document.getElementById("machine-endstops-status"),
+  controlsEndstopsQuery: document.getElementById("controls-endstops-query"),
+  controlsEndstopsSummary: document.getElementById("controls-endstops-summary"),
+  controlsEndstopsList: document.getElementById("controls-endstops-list"),
+  controlsEndstopsStatus: document.getElementById("controls-endstops-status"),
   machineLogFilesRefresh: document.getElementById("machine-log-files-refresh"),
   machineLogFilesDeleteAll: document.getElementById("machine-log-files-delete-all"),
   machineLogFilesSummary: document.getElementById("machine-log-files-summary"),
@@ -488,8 +493,26 @@ const els = {
   cameraDialog: document.getElementById("camera-fullscreen-dialog"),
   cameraDialogClose: document.getElementById("camera-fullscreen-close"),
   cameraDialogContent: document.getElementById("camera-fullscreen-content"),
-  home: document.getElementById("btn-home"),
-  jog: [...document.querySelectorAll("[data-jog]")],
+  controlsCard: document.getElementById("card-motion"),
+  controlsKeyboardSurface: document.getElementById("controls-keyboard-surface"),
+  controlsJogButtons: [...document.querySelectorAll("[data-control-jog-axis]")],
+  controlsHomeButtons: [...document.querySelectorAll("[data-control-home]")],
+  controlsDistanceButtons: [...document.querySelectorAll("[data-jog-distance]")],
+  controlsFeedrateInput: document.getElementById("controls-feedrate-input"),
+  controlsFeedrateSet: document.getElementById("controls-feedrate-set"),
+  controlsFlowrateInput: document.getElementById("controls-flowrate-input"),
+  controlsFlowrateSet: document.getElementById("controls-flowrate-set"),
+  controlsExtrusionAmount: document.getElementById("controls-extrusion-amount"),
+  controlsExtrude: document.getElementById("controls-extrude"),
+  controlsRetract: document.getElementById("controls-retract"),
+  controlsToolRow: document.getElementById("controls-tool-row"),
+  controlsToolSelect: document.getElementById("controls-tool-select"),
+  controlsToolSet: document.getElementById("controls-tool-set"),
+  controlsMotorsOff: document.getElementById("controls-motors-off"),
+  controlsFanOn: document.getElementById("controls-fan-on"),
+  controlsFanOff: document.getElementById("controls-fan-off"),
+  controlsFanSpeed: document.getElementById("controls-fan-speed"),
+  controlsFanSpeedValue: document.getElementById("controls-fan-speed-value"),
   quickGcode: [...document.querySelectorAll("[data-gcode]")],
 };
 
@@ -539,6 +562,13 @@ function loadStoredChoice(key, fallback, allowedValues) {
   const raw = localStorage.getItem(key);
   if (!raw) return fallback;
   return allowedValues.includes(raw) ? raw : fallback;
+}
+
+function loadStoredPositiveNumber(key, fallback, { min = 0.1, max = Infinity } = {}) {
+  const raw = Number(localStorage.getItem(key));
+  if (!Number.isFinite(raw)) return fallback;
+  if (raw < min || raw > max) return fallback;
+  return raw;
 }
 
 function ensureFileInputPicker(input) {
@@ -1028,6 +1058,15 @@ const state = {
     showKlipperView: loadStoredBool("dashboard_show_klipperview", true),
     layout: loadDashboardLayout(),
   },
+  controls: {
+    distance: Number(loadStoredChoice("controls_jog_distance", "10", CONTROL_DISTANCE_VALUES.map(String))),
+    extrusionAmount: loadStoredPositiveNumber("controls_extrusion_amount", 10, { min: 0.1, max: 1000 }),
+    fanSpeed: loadStoredPositiveNumber("controls_fan_speed", 100, { min: 0, max: 100 }),
+    tools: [{ label: "Hotend", command: "T0" }],
+    keyboardActive: false,
+    feedRateResetter: null,
+    flowRateResetter: null,
+  },
   camera: {
     enabled: loadStoredBool("camera_enabled", true),
     url: localStorage.getItem("camera_url") || "",
@@ -1092,6 +1131,7 @@ const state = {
     lastFilamentUsed: null,
     lastVirtualSd: {},
     lastMotionReport: {},
+    lastToolhead: {},
     countdownTargetMs: null,
   },
 };
@@ -2349,6 +2389,7 @@ function setPrinterState(value) {
   els.printerState.textContent = meta.label;
   els.printerDot.style.background = meta.color;
   renderJobsJobControls();
+  renderControlsPanel();
 }
 
 function setStatusFilename(filename) {
@@ -2656,7 +2697,7 @@ function formatStatusSpeedMmPerSec(mmPerSec) {
   return `${mmPerSec.toFixed(1)} mm/s`;
 }
 
-function updateStatusRatesAndFilament(printStats, gcodeMove = null, motionReport = null) {
+function updateStatusRatesAndFilament(printStats, gcodeMove = null, motionReport = null, toolhead = null) {
   if (gcodeMove && typeof gcodeMove === "object") {
     state.printStatus.lastGcodeMove = {
       ...state.printStatus.lastGcodeMove,
@@ -2668,6 +2709,13 @@ function updateStatusRatesAndFilament(printStats, gcodeMove = null, motionReport
     state.printStatus.lastMotionReport = {
       ...state.printStatus.lastMotionReport,
       ...motionReport,
+    };
+  }
+
+  if (toolhead && typeof toolhead === "object") {
+    state.printStatus.lastToolhead = {
+      ...state.printStatus.lastToolhead,
+      ...toolhead,
     };
   }
 
@@ -2776,7 +2824,7 @@ async function syncStatusFileMetadata(filename) {
   }
 }
 
-function updateStatusFileInfo(printStats, gcodeMove = null, motionReport = null) {
+function updateStatusFileInfo(printStats, gcodeMove = null, motionReport = null, toolhead = null) {
   const stats = mergePrintStatsSnapshot(printStats);
   const filename = typeof stats.filename === "string" ? stats.filename : "";
   const normalized = filename.trim();
@@ -2784,8 +2832,9 @@ function updateStatusFileInfo(printStats, gcodeMove = null, motionReport = null)
 
   setStatusFilename(filename);
   updateStatusTiming(stats);
-  updateStatusRatesAndFilament(stats, gcodeMove, motionReport);
+  updateStatusRatesAndFilament(stats, gcodeMove, motionReport, toolhead);
   renderStatusLayer(stats);
+  renderControlsPanel();
   renderJobsJobControls();
 
   if (!simulationMode) {
@@ -2831,12 +2880,461 @@ function switchView(viewName) {
   }
 }
 
-function inferAxisCommand(axisToken) {
-  const axis = axisToken[0];
-  const positive = axisToken[1] === "+";
-  const distance = axis === "Z" ? 1 : 10;
-  const signed = positive ? distance : -distance;
-  return `G91\nG0 ${axis}${signed} F6000\nG90`;
+function normalizeControlDistance(value) {
+  const numeric = Number(value);
+  const matched = CONTROL_DISTANCE_VALUES.find((candidate) => Math.abs(candidate - numeric) < 0.000001);
+  return Number.isFinite(matched) ? matched : 10;
+}
+
+function formatControlNumber(value, decimals = 3) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return "0";
+  if (Math.abs(numeric) < 0.000001) return "0";
+
+  const rounded = Number(numeric.toFixed(decimals));
+  return String(rounded);
+}
+
+function normalizeFanSpeedPercent(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 100;
+  return Math.max(0, Math.min(100, Math.round(numeric)));
+}
+
+function fanSpeedPercentToPwm(percent) {
+  const normalized = normalizeFanSpeedPercent(percent);
+  return Math.round((normalized / 100) * 255);
+}
+
+function normalizeHomedAxes(value) {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^xyz]/g, "");
+
+  return new Set(normalized.split("").filter(Boolean));
+}
+
+function setControlsHomingClass(element, isHomed) {
+  if (!(element instanceof HTMLElement)) return;
+
+  element.classList.toggle("controls-homing-ready", !!isHomed);
+  element.classList.toggle("controls-homing-pending", !isHomed);
+}
+
+function getControlsAvailability() {
+  const printerState = String(els.printerState?.dataset?.state || "unknown").trim().toLowerCase();
+  const connected = state.connectionStatus === "connected";
+  const operational = connected && !["unknown", "connecting", "disconnected", "error"].includes(printerState);
+  const printing = printerState === "printing";
+
+  return { connected, operational, printing };
+}
+
+function clearControlsResetTimer(timerKey) {
+  const handle = state.controls?.[timerKey];
+  if (!handle) return;
+  clearTimeout(handle);
+  state.controls[timerKey] = null;
+}
+
+function scheduleControlsInputReset(timerKey, input) {
+  clearControlsResetTimer(timerKey);
+
+  state.controls[timerKey] = setTimeout(() => {
+    if (input instanceof HTMLInputElement && document.activeElement !== input) {
+      input.value = "";
+    }
+    state.controls[timerKey] = null;
+  }, 5000);
+}
+
+function setControlsKeyboardActive(active) {
+  const { operational, printing } = getControlsAvailability();
+  const nextState = !!active && operational && !printing;
+
+  state.controls.keyboardActive = nextState;
+}
+
+function setControlDistance(distance, { persist = true } = {}) {
+  const normalized = normalizeControlDistance(distance);
+  state.controls.distance = normalized;
+
+  if (persist) {
+    localStorage.setItem("controls_jog_distance", String(normalized));
+  }
+
+  renderControlDistanceButtons();
+}
+
+function renderControlDistanceButtons() {
+  const selected = normalizeControlDistance(state.controls.distance);
+
+  els.controlsDistanceButtons.forEach((button) => {
+    const value = normalizeControlDistance(button.dataset.jogDistance);
+    const active = Math.abs(value - selected) < 0.000001;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", active ? "true" : "false");
+  });
+}
+
+function updateControlsToolsFromConfig(settings = {}) {
+  const rawKeys = Object.keys(settings || {});
+  const toolIndices = [];
+
+  rawKeys.forEach((key) => {
+    const normalized = String(key || "").trim().toLowerCase();
+    if (!normalized) return;
+
+    if (normalized === "extruder") {
+      toolIndices.push(0);
+      return;
+    }
+
+    const match = normalized.match(/^extruder(\d+)$/);
+    if (!match) return;
+
+    const index = Number(match[1]);
+    if (Number.isFinite(index) && index >= 0) {
+      toolIndices.push(index);
+    }
+  });
+
+  if (!toolIndices.length) {
+    toolIndices.push(0);
+  }
+
+  const uniqueSorted = [...new Set(toolIndices)].sort((a, b) => a - b);
+  state.controls.tools = uniqueSorted.map((index) => ({
+    label: index === 0 ? "Hotend" : `Tool ${index}`,
+    command: `T${index}`,
+  }));
+
+  renderControlsPanel();
+}
+
+function renderControlToolOptions() {
+  if (!els.controlsToolRow || !els.controlsToolSelect) return;
+
+  const tools = Array.isArray(state.controls.tools) && state.controls.tools.length
+    ? state.controls.tools
+    : [{ label: "Hotend", command: "T0" }];
+
+  els.controlsToolSelect.innerHTML = "";
+
+  tools.forEach((tool) => {
+    const option = document.createElement("option");
+    option.value = tool.command;
+    option.textContent = tool.label;
+    els.controlsToolSelect.appendChild(option);
+  });
+
+  els.controlsToolRow.hidden = tools.length <= 1;
+}
+
+function renderControlsPanel() {
+  if (!els.controlsCard) return;
+
+  const { operational, printing } = getControlsAvailability();
+  const motionDisabled = !operational || printing;
+  const commandDisabled = !operational;
+  const homedAxes = normalizeHomedAxes(state.printStatus.lastToolhead?.homed_axes);
+  const xHomed = homedAxes.has("x");
+  const yHomed = homedAxes.has("y");
+  const zHomed = homedAxes.has("z");
+  const xyHomed = xHomed && yHomed;
+  const allAxesHomed = xyHomed && zHomed;
+
+  renderControlDistanceButtons();
+  renderControlToolOptions();
+
+  if (els.controlsExtrusionAmount) {
+    if (document.activeElement !== els.controlsExtrusionAmount) {
+      els.controlsExtrusionAmount.value = formatControlNumber(state.controls.extrusionAmount, 2);
+    }
+    els.controlsExtrusionAmount.disabled = motionDisabled;
+  }
+
+  if (els.controlsFeedrateInput) {
+    if (!els.controlsFeedrateInput.value) {
+      const speedFactor = Number(state.printStatus.lastGcodeMove?.speed_factor);
+      els.controlsFeedrateInput.placeholder = Number.isFinite(speedFactor)
+        ? String(Math.max(1, Math.round(speedFactor * 100)))
+        : "100";
+    }
+    els.controlsFeedrateInput.disabled = commandDisabled;
+  }
+
+  if (els.controlsFlowrateInput) {
+    if (!els.controlsFlowrateInput.value) {
+      const flowFactor = Number(state.printStatus.lastGcodeMove?.extrude_factor);
+      els.controlsFlowrateInput.placeholder = Number.isFinite(flowFactor)
+        ? String(Math.max(1, Math.round(flowFactor * 100)))
+        : "100";
+    }
+    els.controlsFlowrateInput.disabled = commandDisabled;
+  }
+
+  if (els.controlsFanSpeed) {
+    const fanSpeed = normalizeFanSpeedPercent(state.controls.fanSpeed);
+    state.controls.fanSpeed = fanSpeed;
+
+    if (document.activeElement !== els.controlsFanSpeed) {
+      els.controlsFanSpeed.value = String(fanSpeed);
+    }
+
+    els.controlsFanSpeed.disabled = commandDisabled;
+  }
+
+  if (els.controlsFanSpeedValue) {
+    els.controlsFanSpeedValue.textContent = `${normalizeFanSpeedPercent(state.controls.fanSpeed)}%`;
+  }
+
+  els.controlsJogButtons.forEach((button) => {
+    button.disabled = motionDisabled;
+    const axis = String(button.dataset.controlJogAxis || "").trim().toLowerCase();
+    const axisHomed = axis === "x" ? xHomed : axis === "y" ? yHomed : axis === "z" ? zHomed : allAxesHomed;
+    setControlsHomingClass(button, axisHomed);
+  });
+
+  els.controlsHomeButtons.forEach((button) => {
+    button.disabled = motionDisabled;
+    const target = String(button.dataset.controlHome || "").trim().toLowerCase();
+    const targetHomed = target === "xy" ? xyHomed : target === "z" ? zHomed : allAxesHomed;
+    setControlsHomingClass(button, targetHomed);
+  });
+
+  els.controlsDistanceButtons.forEach((button) => {
+    button.disabled = motionDisabled;
+  });
+
+  if (els.controlsFeedrateSet) els.controlsFeedrateSet.disabled = commandDisabled;
+  if (els.controlsFlowrateSet) els.controlsFlowrateSet.disabled = commandDisabled;
+  if (els.controlsExtrude) els.controlsExtrude.disabled = motionDisabled;
+  if (els.controlsRetract) els.controlsRetract.disabled = motionDisabled;
+  if (els.controlsToolSelect) els.controlsToolSelect.disabled = commandDisabled;
+  if (els.controlsToolSet) els.controlsToolSet.disabled = commandDisabled;
+  if (els.controlsMotorsOff) {
+    els.controlsMotorsOff.disabled = motionDisabled;
+    setControlsHomingClass(els.controlsMotorsOff, allAxesHomed);
+  }
+  if (els.controlsFanOn) els.controlsFanOn.disabled = commandDisabled;
+  if (els.controlsFanOff) els.controlsFanOff.disabled = commandDisabled;
+
+  if (motionDisabled) {
+    setControlsKeyboardActive(false);
+  }
+}
+
+function buildControlJogCommand(axis, directionMultiplier) {
+  const normalizedAxis = String(axis || "").trim().toUpperCase();
+  if (!["X", "Y", "Z"].includes(normalizedAxis)) return "";
+
+  const direction = Number(directionMultiplier);
+  if (!Number.isFinite(direction) || direction === 0) return "";
+
+  const distance = normalizeControlDistance(state.controls.distance) * direction;
+  return `G91\nG0 ${normalizedAxis}${formatControlNumber(distance, 3)} F6000\nG90`;
+}
+
+async function sendControlJogCommand(axis, directionMultiplier) {
+  const script = buildControlJogCommand(axis, directionMultiplier);
+  if (!script) return;
+
+  await executeGcodeAction(script, {
+    actionLabel: `Jog ${String(axis || "").toUpperCase()}${Number(directionMultiplier) > 0 ? "+" : "-"}`,
+  });
+}
+
+async function sendControlHomeCommand(target) {
+  const normalized = String(target || "").trim().toLowerCase();
+  let script = "G28";
+
+  if (normalized === "xy") {
+    script = "G28 X Y";
+  } else if (normalized === "z") {
+    script = "G28 Z";
+  }
+
+  await executeGcodeAction(script, {
+    actionLabel: `Home ${normalized || "all"}`,
+  });
+}
+
+async function sendFeedRateCommand() {
+  const rate = Number(els.controlsFeedrateInput?.value);
+  if (!Number.isFinite(rate) || rate < 1) return;
+
+  const sent = await executeGcodeAction(`M220 S${Math.round(rate)}`, {
+    actionLabel: "Set feed rate modifier",
+    successMessage: `Feed rate set to ${Math.round(rate)}%.`,
+  });
+
+  if (sent && els.controlsFeedrateInput) {
+    els.controlsFeedrateInput.value = "";
+    clearControlsResetTimer("feedRateResetter");
+  }
+}
+
+async function sendFlowRateCommand() {
+  const rate = Number(els.controlsFlowrateInput?.value);
+  if (!Number.isFinite(rate) || rate < 1) return;
+
+  const sent = await executeGcodeAction(`M221 S${Math.round(rate)}`, {
+    actionLabel: "Set flow rate modifier",
+    successMessage: `Flow rate set to ${Math.round(rate)}%.`,
+  });
+
+  if (sent && els.controlsFlowrateInput) {
+    els.controlsFlowrateInput.value = "";
+    clearControlsResetTimer("flowRateResetter");
+  }
+}
+
+function syncExtrusionAmountFromInput() {
+  if (!els.controlsExtrusionAmount) return;
+
+  const parsed = Number(els.controlsExtrusionAmount.value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    els.controlsExtrusionAmount.value = formatControlNumber(state.controls.extrusionAmount, 2);
+    return;
+  }
+
+  state.controls.extrusionAmount = Math.max(0.1, Math.min(1000, parsed));
+  localStorage.setItem("controls_extrusion_amount", String(state.controls.extrusionAmount));
+}
+
+async function sendExtrusionCommand(direction) {
+  syncExtrusionAmountFromInput();
+
+  const dir = Number(direction);
+  if (!Number.isFinite(dir) || dir === 0) return;
+
+  const amount = state.controls.extrusionAmount * (dir > 0 ? 1 : -1);
+  const script = `M83\nG1 E${formatControlNumber(amount, 3)} F300\nM82`;
+
+  await executeGcodeAction(script, {
+    actionLabel: dir > 0 ? "Extrude" : "Retract",
+  });
+}
+
+async function sendToolSelectionCommand() {
+  const command = String(els.controlsToolSelect?.value || "").trim();
+  if (!command) return;
+
+  await executeGcodeAction(command, {
+    actionLabel: `Switch tool (${command})`,
+  });
+}
+
+async function sendControlsFanSpeed(percent, { persist = true, successMessage = null } = {}) {
+  const normalized = normalizeFanSpeedPercent(percent);
+  state.controls.fanSpeed = normalized;
+
+  if (persist) {
+    localStorage.setItem("controls_fan_speed", String(normalized));
+  }
+
+  renderControlsPanel();
+
+  const sent = await executeGcodeAction(`M106 S${fanSpeedPercentToPwm(normalized)}`, {
+    actionLabel: "Set fan speed",
+    successMessage,
+  });
+
+  return sent;
+}
+
+function handleControlsKeyboardEvent(event) {
+  if (!state.controls.keyboardActive) return;
+
+  const target = event.target;
+  if (target instanceof HTMLElement && ["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName)) {
+    return;
+  }
+
+  let buttonId = "";
+  let visualizeClick = true;
+
+  switch (event.key) {
+    case "ArrowLeft":
+      buttonId = "control-xdec";
+      break;
+    case "ArrowUp":
+      buttonId = "control-yinc";
+      break;
+    case "ArrowRight":
+      buttonId = "control-xinc";
+      break;
+    case "ArrowDown":
+      buttonId = "control-ydec";
+      break;
+    case "1":
+      buttonId = "control-distance01";
+      visualizeClick = false;
+      break;
+    case "2":
+      buttonId = "control-distance1";
+      visualizeClick = false;
+      break;
+    case "3":
+      buttonId = "control-distance10";
+      visualizeClick = false;
+      break;
+    case "4":
+      buttonId = "control-distance100";
+      visualizeClick = false;
+      break;
+    case "PageUp":
+    case "w":
+    case "W":
+      buttonId = "control-zinc";
+      break;
+    case "PageDown":
+    case "s":
+    case "S":
+      buttonId = "control-zdec";
+      break;
+    case "Home":
+      buttonId = "control-xyhome";
+      break;
+    case "End":
+      buttonId = "control-zhome";
+      break;
+    default:
+      if (event.code === "Numpad1") {
+        buttonId = "control-distance01";
+        visualizeClick = false;
+      } else if (event.code === "Numpad2") {
+        buttonId = "control-distance1";
+        visualizeClick = false;
+      } else if (event.code === "Numpad3") {
+        buttonId = "control-distance10";
+        visualizeClick = false;
+      } else if (event.code === "Numpad4") {
+        buttonId = "control-distance100";
+        visualizeClick = false;
+      } else {
+        return;
+      }
+  }
+
+  const button = document.getElementById(buttonId);
+  if (!(button instanceof HTMLButtonElement) || button.disabled) {
+    event.preventDefault();
+    return;
+  }
+
+  event.preventDefault();
+
+  if (visualizeClick) {
+    button.classList.add("controls-jog-btn-active");
+    setTimeout(() => {
+      button.classList.remove("controls-jog-btn-active");
+    }, 150);
+  }
+
+  button.click();
 }
 
 function renderCameraIntoContainer(container, config, title) {
@@ -2929,14 +3427,19 @@ function startTemperaturePolling() {
     inFlight = true;
 
     try {
-      const statusResponse = await state.client.call("/printer/objects/query?extruder&heater_bed&print_stats&virtual_sdcard&gcode_move&motion_report");
+      const statusResponse = await state.client.call("/printer/objects/query?extruder&heater_bed&print_stats&virtual_sdcard&gcode_move&motion_report&toolhead");
       const statusSnapshot = statusResponse?.result?.status || {};
 
       updateTemperatureSnapshotFromStatus(statusSnapshot);
 
       const virtualSd = mergeVirtualSdSnapshot(statusSnapshot?.virtual_sdcard || null);
       renderStatusProgress(virtualSd);
-      updateStatusFileInfo(statusSnapshot?.print_stats || {}, statusSnapshot?.gcode_move || null, statusSnapshot?.motion_report || null);
+      updateStatusFileInfo(
+        statusSnapshot?.print_stats || {},
+        statusSnapshot?.gcode_move || null,
+        statusSnapshot?.motion_report || null,
+        statusSnapshot?.toolhead || null
+      );
     } catch (error) {
       const message = error?.message || String(error);
       log.debug("Status poll skipped.", { error: message });
@@ -3416,9 +3919,15 @@ function sortEndstopEntries(entries) {
 
 function setEndstopsStatusMessage(message, level = "info") {
   const normalized = String(message || "").trim();
-  if (!els.machineEndstopsStatus) return;
-  els.machineEndstopsStatus.textContent = normalized;
-  els.machineEndstopsStatus.dataset.level = level;
+  const statusElements = [
+    els.machineEndstopsStatus,
+    els.controlsEndstopsStatus,
+  ].filter(Boolean);
+
+  statusElements.forEach((element) => {
+    element.textContent = normalized;
+    element.dataset.level = level;
+  });
 }
 
 function renderEndstopsCard() {
@@ -3432,63 +3941,78 @@ function renderEndstopsCard() {
     }))
   );
 
-  if (els.machineEndstopsQuery) {
-    els.machineEndstopsQuery.disabled = !isConnected || endstopsState.queryInFlight;
-    els.machineEndstopsQuery.textContent = endstopsState.queryInFlight ? "Querying..." : "Query";
-  }
+  const renderTargets = [
+    {
+      query: els.machineEndstopsQuery,
+      summary: els.machineEndstopsSummary,
+      list: els.machineEndstopsList,
+    },
+    {
+      query: els.controlsEndstopsQuery,
+      summary: els.controlsEndstopsSummary,
+      list: els.controlsEndstopsList,
+    },
+  ];
 
-  if (els.machineEndstopsList) {
-    els.machineEndstopsList.innerHTML = "";
-
-    if (!entries.length) {
-      const empty = document.createElement("p");
-      empty.className = "muted";
-      empty.textContent = isConnected
-        ? "No endstop data available yet."
-        : "Endstop data is unavailable while disconnected.";
-      els.machineEndstopsList.appendChild(empty);
-    } else {
-      entries.forEach((entry) => {
-        const row = document.createElement("div");
-        row.className = "machine-endstop-item";
-
-        const label = document.createElement("span");
-        label.className = "machine-endstop-name";
-        label.textContent = entry.name;
-
-        const pill = document.createElement("span");
-        pill.className = `machine-endstop-pill machine-endstop-pill-${entry.state}`;
-        pill.textContent = entry.state === "triggered" ? "TRIGGERED" : entry.state === "open" ? "open" : "unknown";
-
-        row.append(label, pill);
-        els.machineEndstopsList.appendChild(row);
-      });
+  renderTargets.forEach((target) => {
+    if (target.query) {
+      target.query.disabled = !isConnected || endstopsState.queryInFlight;
+      target.query.textContent = endstopsState.queryInFlight ? "Querying..." : "Query";
     }
-  }
 
-  if (els.machineEndstopsSummary) {
-    if (!entries.length) {
-      els.machineEndstopsSummary.textContent = "Press Query to check current endstop states.";
-    } else {
-      const triggeredCount = entries.filter((entry) => entry.state === "triggered").length;
-      const openCount = entries.filter((entry) => entry.state === "open").length;
-      const unknownCount = entries.length - triggeredCount - openCount;
+    if (target.list) {
+      target.list.innerHTML = "";
 
-      const parts = [
-        `${triggeredCount} triggered`,
-        `${openCount} open`,
-      ];
-      if (unknownCount > 0) {
-        parts.push(`${unknownCount} unknown`);
+      if (!entries.length) {
+        const empty = document.createElement("p");
+        empty.className = "muted";
+        empty.textContent = isConnected
+          ? "No endstop data available yet."
+          : "Endstop data is unavailable while disconnected.";
+        target.list.appendChild(empty);
+      } else {
+        entries.forEach((entry) => {
+          const row = document.createElement("div");
+          row.className = "machine-endstop-item";
+
+          const label = document.createElement("span");
+          label.className = "machine-endstop-name";
+          label.textContent = entry.name;
+
+          const pill = document.createElement("span");
+          pill.className = `machine-endstop-pill machine-endstop-pill-${entry.state}`;
+          pill.textContent = entry.state === "triggered" ? "TRIGGERED" : entry.state === "open" ? "open" : "unknown";
+
+          row.append(label, pill);
+          target.list.appendChild(row);
+        });
       }
-
-      const lastLabel = endstopsState.lastUpdatedMs
-        ? ` | Last query: ${new Date(endstopsState.lastUpdatedMs).toLocaleTimeString()}`
-        : "";
-
-      els.machineEndstopsSummary.textContent = `${parts.join(" | ")}${lastLabel}`;
     }
-  }
+
+    if (target.summary) {
+      if (!entries.length) {
+        target.summary.textContent = "Press Query to check current endstop states.";
+      } else {
+        const triggeredCount = entries.filter((entry) => entry.state === "triggered").length;
+        const openCount = entries.filter((entry) => entry.state === "open").length;
+        const unknownCount = entries.length - triggeredCount - openCount;
+
+        const parts = [
+          `${triggeredCount} triggered`,
+          `${openCount} open`,
+        ];
+        if (unknownCount > 0) {
+          parts.push(`${unknownCount} unknown`);
+        }
+
+        const lastLabel = endstopsState.lastUpdatedMs
+          ? ` | Last query: ${new Date(endstopsState.lastUpdatedMs).toLocaleTimeString()}`
+          : "";
+
+        target.summary.textContent = `${parts.join(" | ")}${lastLabel}`;
+      }
+    }
+  });
 
   if (!state.client) {
     setEndstopsStatusMessage("Connect to Moonraker to query endstops.", "warn");
@@ -5464,7 +5988,12 @@ async function connectMoonraker() {
       const virtualSd = mergeVirtualSdSnapshot(status?.virtual_sdcard || null);
       renderStatusProgress(virtualSd);
 
-      updateStatusFileInfo(printStats, status?.gcode_move || null, status?.motion_report || null);
+      updateStatusFileInfo(
+        printStats,
+        status?.gcode_move || null,
+        status?.motion_report || null,
+        status?.toolhead || null
+      );
 
       updateTemperatureSnapshotFromStatus(status);
 
@@ -5500,16 +6029,17 @@ async function connectMoonraker() {
   state.client.connectWebSocket();
 
   try {
-    const statusResponse = await state.client.call("/printer/objects/query?print_stats&gcode_move&virtual_sdcard&motion_report");
+    const statusResponse = await state.client.call("/printer/objects/query?print_stats&gcode_move&virtual_sdcard&motion_report&toolhead");
     const statusSnapshot = statusResponse?.result?.status || {};
     const printStats = statusSnapshot.print_stats || {};
     const gcodeMove = statusSnapshot.gcode_move || null;
     const motionReport = statusSnapshot.motion_report || null;
+    const toolhead = statusSnapshot.toolhead || null;
     const virtualSd = mergeVirtualSdSnapshot(statusSnapshot.virtual_sdcard || null);
     renderStatusProgress(virtualSd);
     const printerState = printStats.state || printStats.status || "ready";
     setPrinterState(printerState);
-    updateStatusFileInfo(printStats, gcodeMove, motionReport);
+    updateStatusFileInfo(printStats, gcodeMove, motionReport, toolhead);
     log.debug("Initial printer state loaded.", { printerState });
   } catch (error) {
     const message = error?.message || String(error);
@@ -5539,6 +6069,7 @@ async function connectMoonraker() {
   try {
     const macroResponse = await state.client.getMacros();
     const settings = macroResponse?.result?.status?.configfile?.settings || {};
+    updateControlsToolsFromConfig(settings);
     const macros = Object.keys(settings).filter((k) => k.startsWith("gcode_macro "));
     renderMacros(macros);
     log.info("Macros loaded.", { count: macros.length });
@@ -5589,8 +6120,11 @@ function renderMacroButtons(container, macroKeys) {
 }
 
 function renderMacros(macroKeys) {
-  renderMacroButtons(els.macroList, macroKeys);
-  renderMacroButtons(els.dashboardMacroList, macroKeys);
+  const normalized = Array.isArray(macroKeys) ? macroKeys : [];
+
+  renderMacroButtons(els.macroList, normalized);
+  renderMacroButtons(els.dashboardMacroList, normalized);
+  renderControlsPanel();
 }
 
 function normalizeGcodePath(path) {
@@ -10226,6 +10760,10 @@ function wireEvents() {
     await requestEndstopsStatus({ source: "user" });
   });
 
+  els.controlsEndstopsQuery?.addEventListener("click", async () => {
+    await requestEndstopsStatus({ source: "user" });
+  });
+
   els.machineLogFilesRefresh?.addEventListener("click", async () => {
     await loadMachineLogFiles({ source: "user" });
   });
@@ -10856,21 +11394,127 @@ function wireEvents() {
     });
   });
 
-  els.jog.forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      const direction = btn.dataset.jog;
-      if (!direction) return;
-      const script = inferAxisCommand(direction);
-      await executeGcodeAction(script, {
-        actionLabel: `Jog ${direction}`,
-      });
+  els.controlsDistanceButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const distance = button.dataset.jogDistance;
+      if (!distance) return;
+      setControlDistance(distance, { persist: true });
     });
   });
 
-  els.home.addEventListener("click", async () => {
-    await executeGcodeAction("G28", {
-      actionLabel: "Home axes",
+  els.controlsJogButtons.forEach((button) => {
+    button.addEventListener("click", async () => {
+      const axis = button.dataset.controlJogAxis;
+      const direction = Number(button.dataset.controlJogDir);
+      if (!axis || !Number.isFinite(direction)) return;
+      await sendControlJogCommand(axis, direction);
     });
+  });
+
+  els.controlsHomeButtons.forEach((button) => {
+    button.addEventListener("click", async () => {
+      const target = button.dataset.controlHome;
+      await sendControlHomeCommand(target || "all");
+    });
+  });
+
+  els.controlsFeedrateSet?.addEventListener("click", async () => {
+    await sendFeedRateCommand();
+  });
+
+  els.controlsFlowrateSet?.addEventListener("click", async () => {
+    await sendFlowRateCommand();
+  });
+
+  els.controlsFeedrateInput?.addEventListener("focus", () => {
+    clearControlsResetTimer("feedRateResetter");
+  });
+
+  els.controlsFeedrateInput?.addEventListener("blur", () => {
+    scheduleControlsInputReset("feedRateResetter", els.controlsFeedrateInput);
+  });
+
+  els.controlsFlowrateInput?.addEventListener("focus", () => {
+    clearControlsResetTimer("flowRateResetter");
+  });
+
+  els.controlsFlowrateInput?.addEventListener("blur", () => {
+    scheduleControlsInputReset("flowRateResetter", els.controlsFlowrateInput);
+  });
+
+  els.controlsFeedrateInput?.addEventListener("keydown", async (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    await sendFeedRateCommand();
+  });
+
+  els.controlsFlowrateInput?.addEventListener("keydown", async (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    await sendFlowRateCommand();
+  });
+
+  els.controlsExtrusionAmount?.addEventListener("change", () => {
+    syncExtrusionAmountFromInput();
+    renderControlsPanel();
+  });
+
+  els.controlsExtrusionAmount?.addEventListener("blur", () => {
+    syncExtrusionAmountFromInput();
+    renderControlsPanel();
+  });
+
+  els.controlsExtrude?.addEventListener("click", async () => {
+    await sendExtrusionCommand(1);
+  });
+
+  els.controlsRetract?.addEventListener("click", async () => {
+    await sendExtrusionCommand(-1);
+  });
+
+  els.controlsToolSet?.addEventListener("click", async () => {
+    await sendToolSelectionCommand();
+  });
+
+  els.controlsFanOn?.addEventListener("click", async () => {
+    await sendControlsFanSpeed(100, { successMessage: "Fan speed set to 100%." });
+  });
+
+  els.controlsFanOff?.addEventListener("click", async () => {
+    await sendControlsFanSpeed(0, { successMessage: "Fan speed set to 0%." });
+  });
+
+  els.controlsFanSpeed?.addEventListener("input", () => {
+    state.controls.fanSpeed = normalizeFanSpeedPercent(els.controlsFanSpeed?.value);
+    renderControlsPanel();
+  });
+
+  els.controlsFanSpeed?.addEventListener("change", async () => {
+    const value = normalizeFanSpeedPercent(els.controlsFanSpeed?.value);
+    await sendControlsFanSpeed(value);
+  });
+
+  els.controlsKeyboardSurface?.addEventListener("focus", () => {
+    setControlsKeyboardActive(true);
+  });
+
+  els.controlsKeyboardSurface?.addEventListener("blur", () => {
+    setControlsKeyboardActive(false);
+  });
+
+  els.controlsCard?.addEventListener("mouseenter", () => {
+    if (els.controlsKeyboardSurface) {
+      els.controlsKeyboardSurface.focus();
+    }
+    setControlsKeyboardActive(true);
+  });
+
+  els.controlsCard?.addEventListener("mouseleave", () => {
+    setControlsKeyboardActive(false);
+  });
+
+  els.controlsKeyboardSurface?.addEventListener("keydown", (event) => {
+    handleControlsKeyboardEvent(event);
   });
 
   els.mainCameraFullscreen.addEventListener("click", () => openCameraFullscreen(state.camera, "Main Camera"));
@@ -10978,6 +11622,9 @@ async function init() {
   applyInterfaceSettings();
   applyDashboardSettings();
   renderCameraCards();
+  setControlDistance(state.controls.distance, { persist: false });
+  state.controls.fanSpeed = normalizeFanSpeedPercent(state.controls.fanSpeed);
+  renderControlsPanel();
   wireEvents();
 
   connectMoonraker().catch((error) => {
@@ -10994,4 +11641,9 @@ init().catch((error) => {
   setConnectionUi("error");
   appendConsole(`Init failed: ${message}`, "error");
 });
+
+
+
+
+
 
