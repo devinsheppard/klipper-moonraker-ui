@@ -11,6 +11,10 @@ const CAMERA_MODES = {
 const INTERFACE_THEMES = ["ocean", "ember", "graphite"];
 const INTERFACE_DENSITIES = ["comfortable", "compact"];
 const CONTROL_DISTANCE_VALUES = [0.1, 1, 10, 100];
+const CONTROL_Z_OFFSET_STEPS = Object.freeze([0.005, 0.01, 0.025, 0.05]);
+const CONTROL_Z_OFFSET_SAVE_OPTION_STORAGE_KEY = "controls_z_offset_save_option";
+const CONTROL_Z_OFFSET_SAVE_OPTION_VALUES = ["Z_OFFSET_APPLY_ENDSTOP", "Z_OFFSET_APPLY_PROBE"];
+const MANUAL_PROBE_STEPS = Object.freeze([0.005, 0.01, 0.05, 0.1, 1]);
 const CARD_COLLAPSE_KEY_PREFIX = "card_collapsed_";
 const KLIPPERVIEW_CARD_ID = "card-klipperview";
 const DASHBOARD_CARD_IDS = [
@@ -59,6 +63,7 @@ const VIEW_TITLES = {
   console: "Console",
   configuration: "Machine",
   files: "GCode Files",
+  history: "Print History",
   "pretty-gcode": "KlipperView",
   settings: "Settings",
 };
@@ -102,6 +107,68 @@ const JOBS_COLUMN_DEFINITIONS = [
 ];
 const JOBS_COLUMN_KEYS = JOBS_COLUMN_DEFINITIONS.map((entry) => entry.key);
 const JOBS_DEFAULT_VISIBLE_COLUMNS = ["size", "modified", "eta", "total_layers"];
+const PRINT_HISTORY_SEARCH_STORAGE_KEY = "print_history_search";
+const PRINT_HISTORY_STATUS_STORAGE_KEY = "print_history_status";
+const PRINT_HISTORY_SORT_STORAGE_KEY = "print_history_sort";
+const PRINT_HISTORY_PAGE_SIZE_STORAGE_KEY = "print_history_page_size";
+const PRINT_HISTORY_COLUMNS_STORAGE_KEY = "print_history_visible_columns";
+const PRINT_HISTORY_TIME_DAYS_STORAGE_KEY = "print_history_time_in_days";
+const PRINT_HISTORY_LENGTH_KM_STORAGE_KEY = "print_history_length_km";
+const PRINT_HISTORY_LOAD_LIMIT_STORAGE_KEY = "print_history_load_limit";
+const PRINT_HISTORY_STATUS_VIEW_STORAGE_KEY = "print_history_status_view";
+const PRINT_HISTORY_STATUS_VALUE_STORAGE_KEY = "print_history_status_value";
+const PRINT_HISTORY_TREND_MODE_STORAGE_KEY = "print_history_trend_mode";
+const PRINT_HISTORY_LOAD_LIMIT_VALUES = [50, 100, 250, 500, 0];
+const PRINT_HISTORY_PAGE_SIZE_VALUES = [10, 15, 25, 50];
+const PRINT_HISTORY_STATUS_VIEW_VALUES = ["chart", "table"];
+const PRINT_HISTORY_STATUS_VALUE_VALUES = ["jobs", "filament", "time"];
+const PRINT_HISTORY_TREND_MODE_VALUES = ["filament_usage", "printtime_avg"];
+const PRINT_HISTORY_SORT_VALUES = [
+  "start_desc",
+  "start_asc",
+  "end_desc",
+  "end_asc",
+  "total_desc",
+  "print_desc",
+  "filament_desc",
+  "name_asc",
+  "name_desc",
+  "status_asc",
+];
+const PRINT_HISTORY_STATUS_FILTER_VALUES = [
+  "all",
+  "completed",
+  "cancelled",
+  "error",
+  "interrupted",
+  "server_exit",
+  "klippy_shutdown",
+  "klippy_disconnect",
+  "printing",
+  "in_progress",
+];
+const PRINT_HISTORY_COLUMN_DEFINITIONS = [
+  { key: "status", label: "Status" },
+  { key: "start_time", label: "Start" },
+  { key: "end_time", label: "End" },
+  { key: "print_duration", label: "Print Time" },
+  { key: "total_duration", label: "Total Time" },
+  { key: "filament_used", label: "Filament" },
+  { key: "user", label: "User" },
+  { key: "exists", label: "File Exists" },
+  { key: "estimated_time", label: "ETA" },
+  { key: "object_height", label: "Object H" },
+  { key: "layer_height", label: "Layer H" },
+  { key: "first_layer_height", label: "First Layer H" },
+  { key: "filament_type", label: "Filament Type" },
+  { key: "filament_name", label: "Filament Name" },
+  { key: "nozzle_diameter", label: "Nozzle" },
+  { key: "size", label: "Size" },
+  { key: "modified", label: "Modified" },
+  { key: "auxiliary_data", label: "Aux Data" },
+];
+const PRINT_HISTORY_COLUMN_KEYS = PRINT_HISTORY_COLUMN_DEFINITIONS.map((entry) => entry.key);
+const PRINT_HISTORY_DEFAULT_VISIBLE_COLUMNS = ["status", "start_time", "end_time", "total_duration", "filament_used", "user", "exists"];
 
 const CONSOLE_LOG_LEVELS = new Set(["debug", "info", "warn", "error"]);
 const CONSOLE_MAX_LINES = 1200;
@@ -343,6 +410,7 @@ const els = {
   jobsUploadBtn: document.getElementById("jobs-upload-btn"),
   jobsUploadFolderBtn: document.getElementById("jobs-upload-folder-btn"),
   jobsUploadPrintBtn: document.getElementById("jobs-upload-print-btn"),
+  headerUploadPrintBtn: document.getElementById("header-upload-print-btn"),
   jobsAddFileBtn: document.getElementById("jobs-add-file-btn"),
   jobsUploadInput: document.getElementById("jobs-upload-input"),
   jobsUploadFolderInput: document.getElementById("jobs-upload-folder-input"),
@@ -371,6 +439,47 @@ const els = {
   jobsCancel: document.getElementById("jobs-cancel"),
   jobsBreadcrumbs: document.getElementById("jobs-breadcrumbs"),
   jobsStatus: document.getElementById("jobs-status"),
+  historyCard: document.getElementById("history-card"),
+  historyFeaturePanel: document.getElementById("history-feature-panel"),
+  historySummary: document.getElementById("history-summary"),
+  historyStatus: document.getElementById("history-status"),
+  historySearch: document.getElementById("history-search"),
+  historyStatusFilter: document.getElementById("history-status-filter"),
+  historySort: document.getElementById("history-sort"),
+  historyPageSize: document.getElementById("history-page-size"),
+  historyLoadLimit: document.getElementById("history-load-limit"),
+  historyColumnsToggle: document.getElementById("history-columns-toggle"),
+  historyColumnsMenu: document.getElementById("history-columns-menu"),
+  historyColumnsList: document.getElementById("history-columns-list"),
+  historyRefresh: document.getElementById("history-refresh"),
+  historyLoadAll: document.getElementById("history-load-all"),
+  historyExportCsv: document.getElementById("history-export-csv"),
+  historyRemoveSelected: document.getElementById("history-remove-selected"),
+  historyRemoveAll: document.getElementById("history-remove-all"),
+  historyTableWrap: document.getElementById("history-table-wrap"),
+  historyTableHead: document.getElementById("history-table-head"),
+  historyTableBody: document.getElementById("history-table-body"),
+  historyPagePrev: document.getElementById("history-page-prev"),
+  historyPageNext: document.getElementById("history-page-next"),
+  historyPageLabel: document.getElementById("history-page-label"),
+  historyResetStats: document.getElementById("history-reset-stats"),
+  historyTimeDays: document.getElementById("history-time-days"),
+  historyLengthKm: document.getElementById("history-length-km"),
+  historyStatsTableBody: document.getElementById("history-stats-table-body"),
+  historyStatusChartWrap: document.getElementById("history-status-chart-wrap"),
+  historyStatusTableWrap: document.getElementById("history-status-table-wrap"),
+  historyStatusTableBody: document.getElementById("history-status-table-body"),
+  historyStatusViewChart: document.getElementById("history-status-view-chart"),
+  historyStatusViewTable: document.getElementById("history-status-view-table"),
+  historyStatsLoadAll: document.getElementById("history-stats-load-all"),
+  historyStatusValueJobs: document.getElementById("history-status-value-jobs"),
+  historyStatusValueFilament: document.getElementById("history-status-value-filament"),
+  historyStatusValueTime: document.getElementById("history-status-value-time"),
+  historyChartStatusCanvas: document.getElementById("history-chart-status-canvas"),
+  historyChartTrendCanvas: document.getElementById("history-chart-trend-canvas"),
+  historyChartTrendMeta: document.getElementById("history-chart-trend-meta"),
+  historyTrendModeFilament: document.getElementById("history-trend-mode-filament"),
+  historyTrendModePrinttime: document.getElementById("history-trend-mode-printtime"),
   prettyGcodeView: document.getElementById("view-pretty-gcode"),
   prettyGcodeCard: document.getElementById(KLIPPERVIEW_CARD_ID),
   prettyGcodeCanvas: document.getElementById("pretty-gcode-canvas"),
@@ -518,6 +627,27 @@ const els = {
   controlsFanOff: document.getElementById("controls-fan-off"),
   controlsFanSpeed: document.getElementById("controls-fan-speed"),
   controlsFanSpeedValue: document.getElementById("controls-fan-speed-value"),
+  controlsZOffsetSection: document.getElementById("controls-zoffset-section"),
+  controlsZOffsetValue: document.getElementById("controls-zoffset-value"),
+  controlsZOffsetUpGroup: document.getElementById("controls-zoffset-up-group"),
+  controlsZOffsetDownGroup: document.getElementById("controls-zoffset-down-group"),
+  controlsZOffsetClear: document.getElementById("controls-zoffset-clear"),
+  controlsZOffsetSave: document.getElementById("controls-zoffset-save"),
+  controlsZOffsetSaveDialog: document.getElementById("controls-zoffset-save-dialog"),
+  controlsZOffsetSaveDialogDescription: document.getElementById("controls-zoffset-save-dialog-description"),
+  controlsZOffsetSaveDialogSaveConfig: document.getElementById("controls-zoffset-save-dialog-save-config"),
+  controlsZOffsetSaveDialogLater: document.getElementById("controls-zoffset-save-dialog-later"),
+  controlsZOffsetSaveDialogOk: document.getElementById("controls-zoffset-save-dialog-ok"),
+  manualProbeDialog: document.getElementById("manual-probe-dialog"),
+  manualProbeClose: document.getElementById("manual-probe-close"),
+  manualProbeZLower: document.getElementById("manual-probe-z-lower"),
+  manualProbeZCurrent: document.getElementById("manual-probe-z-current"),
+  manualProbeZUpper: document.getElementById("manual-probe-z-upper"),
+  manualProbeQuickButtons: [...document.querySelectorAll("[data-manual-probe-testz]")],
+  manualProbeAdvancedUp: document.getElementById("manual-probe-advanced-up"),
+  manualProbeAdvancedDown: document.getElementById("manual-probe-advanced-down"),
+  manualProbeAbort: document.getElementById("manual-probe-abort"),
+  manualProbeAccept: document.getElementById("manual-probe-accept"),
   quickGcode: [...document.querySelectorAll("[data-gcode]")],
 };
 
@@ -531,6 +661,7 @@ let temperatureHistorySessionId = null;
 let temperatureHistoryDbPromise = null;
 let statusCountdownTimer = null;
 let jobsColumnsDragKey = null;
+let printHistoryRefreshTimer = null;
 let prettyGcodeSimulationTimer = null;
 let prettyGcodeThreeState = {
   renderer: null,
@@ -567,6 +698,10 @@ function loadStoredChoice(key, fallback, allowedValues) {
   const raw = localStorage.getItem(key);
   if (!raw) return fallback;
   return allowedValues.includes(raw) ? raw : fallback;
+}
+function normalizeZOffsetSaveOption(value) {
+  const normalized = String(value || "").trim().toUpperCase();
+  return CONTROL_Z_OFFSET_SAVE_OPTION_VALUES.includes(normalized) ? normalized : null;
 }
 
 function loadStoredPositiveNumber(key, fallback, { min = 0.1, max = Infinity } = {}) {
@@ -679,6 +814,115 @@ function normalizeJobsVisibleColumns(value) {
 
 function loadStoredJobsVisibleColumns() {
   return normalizeJobsVisibleColumns(localStorage.getItem(JOBS_COLUMNS_STORAGE_KEY));
+}
+
+function normalizePrintHistorySort(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return PRINT_HISTORY_SORT_VALUES.includes(normalized) ? normalized : "start_desc";
+}
+
+function normalizePrintHistoryStatusFilter(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return PRINT_HISTORY_STATUS_FILTER_VALUES.includes(normalized) ? normalized : "all";
+}
+
+function normalizePrintHistoryPageSize(value) {
+  const numeric = Number(value);
+  if (Number.isFinite(numeric) && PRINT_HISTORY_PAGE_SIZE_VALUES.includes(numeric)) {
+    return numeric;
+  }
+  return 15;
+}
+
+function normalizePrintHistoryLoadLimit(value) {
+  const numeric = Number(value);
+  if (Number.isFinite(numeric) && PRINT_HISTORY_LOAD_LIMIT_VALUES.includes(numeric)) {
+    return numeric;
+  }
+  return 50;
+}
+
+function normalizePrintHistoryStatusView(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return PRINT_HISTORY_STATUS_VIEW_VALUES.includes(normalized) ? normalized : "chart";
+}
+
+function normalizePrintHistoryStatusValue(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return PRINT_HISTORY_STATUS_VALUE_VALUES.includes(normalized) ? normalized : "jobs";
+}
+
+function normalizePrintHistoryTrendMode(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return PRINT_HISTORY_TREND_MODE_VALUES.includes(normalized) ? normalized : "filament_usage";
+}
+
+function normalizePrintHistoryVisibleColumns(value) {
+  let candidate = [];
+
+  if (Array.isArray(value)) {
+    candidate = value;
+  } else if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) {
+        candidate = parsed;
+      }
+    } catch {
+      candidate = [];
+    }
+  }
+
+  const normalized = candidate
+    .map((entry) => String(entry || "").trim().toLowerCase())
+    .filter((entry) => PRINT_HISTORY_COLUMN_KEYS.includes(entry));
+
+  const unique = [...new Set(normalized)];
+  return unique.length ? unique : [...PRINT_HISTORY_DEFAULT_VISIBLE_COLUMNS];
+}
+
+function loadStoredPrintHistorySearch() {
+  return String(localStorage.getItem(PRINT_HISTORY_SEARCH_STORAGE_KEY) || "").trim();
+}
+
+function loadStoredPrintHistoryStatusFilter() {
+  return normalizePrintHistoryStatusFilter(localStorage.getItem(PRINT_HISTORY_STATUS_STORAGE_KEY));
+}
+
+function loadStoredPrintHistorySort() {
+  return normalizePrintHistorySort(localStorage.getItem(PRINT_HISTORY_SORT_STORAGE_KEY));
+}
+
+function loadStoredPrintHistoryPageSize() {
+  return normalizePrintHistoryPageSize(localStorage.getItem(PRINT_HISTORY_PAGE_SIZE_STORAGE_KEY));
+}
+
+function loadStoredPrintHistoryVisibleColumns() {
+  return normalizePrintHistoryVisibleColumns(localStorage.getItem(PRINT_HISTORY_COLUMNS_STORAGE_KEY));
+}
+
+function loadStoredPrintHistoryTimeInDays() {
+  return loadStoredBool(PRINT_HISTORY_TIME_DAYS_STORAGE_KEY, false);
+}
+
+function loadStoredPrintHistoryLengthInKilometers() {
+  return loadStoredBool(PRINT_HISTORY_LENGTH_KM_STORAGE_KEY, false);
+}
+
+function loadStoredPrintHistoryLoadLimit() {
+  return normalizePrintHistoryLoadLimit(localStorage.getItem(PRINT_HISTORY_LOAD_LIMIT_STORAGE_KEY));
+}
+
+function loadStoredPrintHistoryStatusView() {
+  return normalizePrintHistoryStatusView(localStorage.getItem(PRINT_HISTORY_STATUS_VIEW_STORAGE_KEY));
+}
+
+function loadStoredPrintHistoryStatusValue() {
+  return normalizePrintHistoryStatusValue(localStorage.getItem(PRINT_HISTORY_STATUS_VALUE_STORAGE_KEY));
+}
+
+function loadStoredPrintHistoryTrendMode() {
+  return normalizePrintHistoryTrendMode(localStorage.getItem(PRINT_HISTORY_TREND_MODE_STORAGE_KEY));
 }
 
 function persistConfigViewState() {
@@ -984,6 +1228,43 @@ function createDefaultJobsState() {
   };
 }
 
+function createDefaultPrintHistoryState() {
+  return {
+    jobs: [],
+    totalCount: 0,
+    totals: {
+      total_jobs: 0,
+      total_time: 0,
+      total_print_time: 0,
+      total_filament_used: 0,
+      longest_job: 0,
+      longest_print: 0,
+    },
+    isLoading: false,
+    isTotalsLoading: false,
+    actionInFlight: false,
+    actionLabel: "",
+    activeJobId: "",
+    lastError: "",
+    lastUpdatedMs: null,
+    totalsUpdatedMs: null,
+    searchQuery: loadStoredPrintHistorySearch(),
+    statusFilter: loadStoredPrintHistoryStatusFilter(),
+    sortMode: loadStoredPrintHistorySort(),
+    pageSize: loadStoredPrintHistoryPageSize(),
+    page: 1,
+    visibleColumns: loadStoredPrintHistoryVisibleColumns(),
+    timeInDays: loadStoredPrintHistoryTimeInDays(),
+    lengthInKilometers: loadStoredPrintHistoryLengthInKilometers(),
+    loadedLimit: loadStoredPrintHistoryLoadLimit(),
+    statusViewMode: loadStoredPrintHistoryStatusView(),
+    statusValueMode: loadStoredPrintHistoryStatusValue(),
+    trendMode: loadStoredPrintHistoryTrendMode(),
+    columnsMenuOpen: false,
+    selectedJobIds: new Set(),
+  };
+}
+
 function createDefaultPrettyGcodeState() {
   return {
     isLoading: false,
@@ -1019,6 +1300,17 @@ function createDefaultPrettyGcodeState() {
     layerSelectionPinned: false,
   };
 }
+function createDefaultManualProbeState() {
+  return {
+    isActive: false,
+    zPosition: 0,
+    zPositionLower: null,
+    zPositionUpper: null,
+    actionInFlight: null,
+    snapshot: {},
+  };
+}
+
 const state = {
   client: null,
   connectionStatus: "disconnected",
@@ -1067,6 +1359,9 @@ const state = {
     distance: Number(loadStoredChoice("controls_jog_distance", "10", CONTROL_DISTANCE_VALUES.map(String))),
     extrusionAmount: loadStoredPositiveNumber("controls_extrusion_amount", 10, { min: 0.1, max: 1000 }),
     fanSpeed: loadStoredPositiveNumber("controls_fan_speed", 100, { min: 0, max: 100 }),
+    zOffsetSteps: [...CONTROL_Z_OFFSET_STEPS],
+    zOffsetSaveOption: normalizeZOffsetSaveOption(localStorage.getItem(CONTROL_Z_OFFSET_SAVE_OPTION_STORAGE_KEY)),
+    configSettings: {},
     tools: [{ label: "Hotend", command: "T0" }],
     keyboardActive: false,
     feedRateResetter: null,
@@ -1107,7 +1402,9 @@ const state = {
   endstops: createDefaultEndstopsState(),
   logFiles: createDefaultMachineLogFilesState(),
   jobs: createDefaultJobsState(),
+  printHistory: createDefaultPrintHistoryState(),
   prettyGcode: createDefaultPrettyGcodeState(),
+  manualProbe: createDefaultManualProbeState(),
   console: {
     seenStoreEntryKeys: new Set(),
     pendingCommandCounts: new Map(),
@@ -1739,6 +2036,7 @@ async function loadConsoleHelperEntries() {
   } finally {
     state.console.helperLoading = false;
     renderConsoleHelperEntries();
+    renderControlsPanel();
   }
 }
 
@@ -3139,6 +3437,343 @@ function renderControlToolOptions() {
   els.controlsToolRow.hidden = tools.length <= 1;
 }
 
+function getControlsZOffsetStepButtons() {
+  return [
+    ...document.querySelectorAll('[data-control-zoffset-adjust]'),
+  ];
+}
+function getControlsZOffsetSteps() {
+  const rawSteps = Array.isArray(state.controls.zOffsetSteps)
+    ? state.controls.zOffsetSteps
+    : CONTROL_Z_OFFSET_STEPS;
+  const unique = [...new Set(rawSteps
+    .map((step) => Number(step))
+    .filter((step) => Number.isFinite(step) && step > 0)
+    .map((step) => Number(step.toFixed(4))))]
+    .sort((a, b) => a - b);
+  return unique.length ? unique : [...CONTROL_Z_OFFSET_STEPS];
+}
+function formatControlsZOffsetStep(step) {
+  const numeric = Number(step);
+  if (!Number.isFinite(numeric) || numeric <= 0) return "0.01";
+  return String(Number(numeric.toFixed(4)));
+}
+function renderControlsZOffsetStepButtons() {
+  if (!els.controlsZOffsetUpGroup || !els.controlsZOffsetDownGroup) return;
+  const steps = getControlsZOffsetSteps();
+  if (els.controlsZOffsetUpGroup.childElementCount !== steps.length) {
+    els.controlsZOffsetUpGroup.innerHTML = "";
+    steps.forEach((step) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "controls-zoffset-step";
+      button.dataset.controlZoffsetAdjust = "up";
+      button.dataset.controlZoffsetStep = formatControlsZOffsetStep(step);
+      button.textContent = `+${formatControlsZOffsetStep(step)}`;
+      els.controlsZOffsetUpGroup.appendChild(button);
+    });
+  }
+  if (els.controlsZOffsetDownGroup.childElementCount !== steps.length) {
+    els.controlsZOffsetDownGroup.innerHTML = "";
+    steps.forEach((step) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "controls-zoffset-step";
+      button.dataset.controlZoffsetAdjust = "down";
+      button.dataset.controlZoffsetStep = formatControlsZOffsetStep(step);
+      button.textContent = `-${formatControlsZOffsetStep(step)}`;
+      els.controlsZOffsetDownGroup.appendChild(button);
+    });
+  }
+}
+function getControlsCurrentZOffset() {
+  const homingOrigin = state.printStatus.lastGcodeMove?.homing_origin;
+  const value = Array.isArray(homingOrigin) ? Number(homingOrigin[2]) : Number.NaN;
+  if (!Number.isFinite(value)) return 0;
+  return Math.round(value * 1000) / 1000;
+}
+function getControlsHomedAxesRaw() {
+  return String(state.printStatus.lastToolhead?.homed_axes || "").trim().toLowerCase();
+}
+function controlsShouldUseMoveFlag() {
+  return getControlsHomedAxesRaw() === "xyz";
+}
+function getControlsAvailableGcodeCommands() {
+  const commands = new Set();
+  const helperEntries = Array.isArray(state.console.helperEntries) ? state.console.helperEntries : [];
+  helperEntries.forEach((entry) => {
+    const command = String(entry?.command || "").trim().toUpperCase();
+    if (!command) return;
+    commands.add(command);
+  });
+  return commands;
+}
+function hasControlsGcodeCommand(command) {
+  const normalized = String(command || "").trim().toUpperCase();
+  if (!normalized) return false;
+  return getControlsAvailableGcodeCommands().has(normalized);
+}
+function getControlsZOffsetConfigSettings() {
+  const settings = state.controls.configSettings;
+  return settings && typeof settings === "object" ? settings : {};
+}
+function getControlsZOffsetStepperName(settings) {
+  const kinematics = String(settings?.printer?.kinematics || "cartesian").trim().toLowerCase();
+  return kinematics === "delta" ? "stepper_a" : "stepper_z";
+}
+function getControlsZOffsetEndstopPin(settings) {
+  const stepperName = getControlsZOffsetStepperName(settings);
+  return String(settings?.[stepperName]?.endstop_pin || "").trim();
+}
+function getControlsIsEndstopProbe() {
+  const endstopPin = getControlsZOffsetEndstopPin(getControlsZOffsetConfigSettings());
+  if (!endstopPin) return false;
+  return endstopPin.replace(/\s+/g, "").includes("probe:z_virtual_endstop");
+}
+function getControlsAutoZOffsetSaveCommand() {
+  if (getControlsIsEndstopProbe() && hasControlsGcodeCommand("Z_OFFSET_APPLY_PROBE")) {
+    return "Z_OFFSET_APPLY_PROBE";
+  }
+  return "Z_OFFSET_APPLY_ENDSTOP";
+}
+function getControlsShowZOffsetSaveButton(zOffsetValue) {
+  if (Math.abs(Number(zOffsetValue) || 0) < 0.000001) return false;
+  const isEndstopProbe = getControlsIsEndstopProbe();
+  if (isEndstopProbe && hasControlsGcodeCommand("Z_OFFSET_APPLY_PROBE")) return true;
+  return !isEndstopProbe && hasControlsGcodeCommand("Z_OFFSET_APPLY_ENDSTOP");
+}
+function closeControlsZOffsetSaveDialog() {
+  if (!(els.controlsZOffsetSaveDialog instanceof HTMLDialogElement)) return;
+  if (!els.controlsZOffsetSaveDialog.open) return;
+  els.controlsZOffsetSaveDialog.close();
+}
+function renderControlsZOffsetSaveDialog() {
+  const printing = getControlsAvailability().printing;
+  if (els.controlsZOffsetSaveDialogDescription) {
+    els.controlsZOffsetSaveDialogDescription.textContent = printing
+      ? "Z-offset was applied for the active print. Save Config is disabled while printing."
+      : "Z-offset was applied. Save Config to make this value persistent after restart.";
+  }
+  if (els.controlsZOffsetSaveDialogSaveConfig) {
+    els.controlsZOffsetSaveDialogSaveConfig.hidden = printing;
+  }
+  if (els.controlsZOffsetSaveDialogLater) {
+    els.controlsZOffsetSaveDialogLater.hidden = printing;
+  }
+  if (els.controlsZOffsetSaveDialogOk) {
+    els.controlsZOffsetSaveDialogOk.hidden = !printing;
+  }
+}
+function openControlsZOffsetSaveDialog() {
+  if (!(els.controlsZOffsetSaveDialog instanceof HTMLDialogElement)) return;
+  renderControlsZOffsetSaveDialog();
+  if (els.controlsZOffsetSaveDialog.open) return;
+  els.controlsZOffsetSaveDialog.showModal();
+}
+function resetManualProbeState({ render = true } = {}) {
+  state.manualProbe = createDefaultManualProbeState();
+  if (render) {
+    renderManualProbeDialog();
+  }
+}
+
+function formatManualProbeZValue(value, { allowUnknown = false } = {}) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return allowUnknown ? "??????" : "0.000";
+  }
+  return numeric.toFixed(3);
+}
+
+function formatManualProbeStep(step) {
+  const numeric = Number(step);
+  if (!Number.isFinite(numeric) || numeric <= 0) return "0.01";
+  return String(Number(numeric.toFixed(3)));
+}
+
+function getManualProbeSteps() {
+  const normalized = [...new Set(MANUAL_PROBE_STEPS
+    .map((step) => Number(step))
+    .filter((step) => Number.isFinite(step) && step > 0)
+    .map((step) => Number(step.toFixed(3))))]
+    .sort((a, b) => a - b);
+
+  return normalized.length ? normalized : [0.005, 0.01, 0.05, 0.1, 1];
+}
+
+function renderManualProbeStepButtons() {
+  const renderGroup = (container, direction) => {
+    if (!(container instanceof HTMLElement)) return;
+
+    const steps = getManualProbeSteps();
+    if (container.childElementCount === steps.length) return;
+
+    container.innerHTML = "";
+
+    steps.forEach((step, index) => {
+      const label = formatManualProbeStep(step);
+      const signed = direction === "up" ? `+${label}` : `-${label}`;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "manual-probe-step-btn";
+      button.dataset.manualProbeTestz = signed;
+      button.textContent = `${index === 0 ? (direction === "up" ? "\u2191 " : "\u2193 ") : ""}${signed}`;
+      container.appendChild(button);
+    });
+  };
+
+  renderGroup(els.manualProbeAdvancedUp, "up");
+  renderGroup(els.manualProbeAdvancedDown, "down");
+}
+
+function closeManualProbeDialog() {
+  if (!(els.manualProbeDialog instanceof HTMLDialogElement)) return;
+  if (!els.manualProbeDialog.open) return;
+  els.manualProbeDialog.close();
+}
+
+function renderManualProbeDialog() {
+  if (!(els.manualProbeDialog instanceof HTMLDialogElement)) return;
+
+  renderManualProbeStepButtons();
+
+  if (els.manualProbeZLower) {
+    els.manualProbeZLower.textContent = formatManualProbeZValue(state.manualProbe.zPositionLower, { allowUnknown: true });
+  }
+  if (els.manualProbeZCurrent) {
+    els.manualProbeZCurrent.textContent = formatManualProbeZValue(state.manualProbe.zPosition);
+  }
+  if (els.manualProbeZUpper) {
+    els.manualProbeZUpper.textContent = formatManualProbeZValue(state.manualProbe.zPositionUpper, { allowUnknown: true });
+  }
+
+  const active = !!state.manualProbe.isActive;
+  const connected = state.connectionStatus === "connected";
+  const actionInFlight = String(state.manualProbe.actionInFlight || "").trim().toLowerCase();
+  const busy = !!actionInFlight;
+  const controlsDisabled = !active || !connected || busy;
+
+  els.manualProbeQuickButtons.forEach((button) => {
+    if (button instanceof HTMLButtonElement) {
+      button.disabled = controlsDisabled;
+    }
+  });
+
+  const advancedButtons = [
+    ...(els.manualProbeAdvancedUp?.querySelectorAll("button[data-manual-probe-testz]") || []),
+    ...(els.manualProbeAdvancedDown?.querySelectorAll("button[data-manual-probe-testz]") || []),
+  ];
+  advancedButtons.forEach((button) => {
+    if (button instanceof HTMLButtonElement) {
+      button.disabled = controlsDisabled;
+    }
+  });
+
+  if (els.manualProbeClose) {
+    els.manualProbeClose.disabled = !active || !connected || busy;
+  }
+
+  if (els.manualProbeAbort) {
+    els.manualProbeAbort.disabled = !active || !connected || busy;
+    els.manualProbeAbort.textContent = busy && actionInFlight === "abort" ? "Aborting..." : "Abort";
+  }
+
+  if (els.manualProbeAccept) {
+    els.manualProbeAccept.disabled = !active || !connected || busy;
+    els.manualProbeAccept.textContent = busy && actionInFlight === "accept" ? "Accepting..." : "Accept";
+  }
+
+  if (active) {
+    if (!els.manualProbeDialog.open) {
+      els.manualProbeDialog.showModal();
+    }
+    return;
+  }
+
+  closeManualProbeDialog();
+}
+
+function mergeManualProbeStatusSnapshot(snapshot) {
+  if (!snapshot || typeof snapshot !== "object") return;
+
+  const previous = state.manualProbe.snapshot && typeof state.manualProbe.snapshot === "object"
+    ? state.manualProbe.snapshot
+    : {};
+
+  const merged = {
+    ...previous,
+    ...snapshot,
+  };
+
+  const isActive = !!merged.is_active;
+  state.manualProbe.isActive = isActive;
+
+  if (!isActive) {
+    state.manualProbe.snapshot = {};
+    state.manualProbe.zPosition = 0;
+    state.manualProbe.zPositionLower = null;
+    state.manualProbe.zPositionUpper = null;
+    state.manualProbe.actionInFlight = null;
+    renderManualProbeDialog();
+    return;
+  }
+
+  state.manualProbe.snapshot = merged;
+  state.manualProbe.zPosition = asFiniteNumber(merged.z_position, state.manualProbe.zPosition);
+  state.manualProbe.zPositionLower = asFiniteNumber(merged.z_position_lower, state.manualProbe.zPositionLower);
+  state.manualProbe.zPositionUpper = asFiniteNumber(merged.z_position_upper, state.manualProbe.zPositionUpper);
+
+  renderManualProbeDialog();
+}
+
+async function executeManualProbeAction(script, { actionKey = "testz", actionLabel = "Manual probe", closeAfterSuccess = false } = {}) {
+  if (!state.manualProbe.isActive || !state.client || state.connectionStatus !== "connected") {
+    renderManualProbeDialog();
+    return false;
+  }
+
+  state.manualProbe.actionInFlight = String(actionKey || "testz").trim().toLowerCase() || "testz";
+  renderManualProbeDialog();
+
+  const succeeded = await executeGcodeAction(script, { actionLabel });
+
+  if (succeeded && closeAfterSuccess) {
+    resetManualProbeState({ render: true });
+    return true;
+  }
+
+  state.manualProbe.actionInFlight = null;
+  renderManualProbeDialog();
+  return succeeded;
+}
+
+async function requestManualProbeTestz(stepCommand) {
+  const normalized = String(stepCommand || "").trim();
+  if (!normalized) return false;
+  if (!/^(?:--|-|\+|\+\+|[+-](?:\d+|\d*\.\d+))$/.test(normalized)) return false;
+
+  return executeManualProbeAction(`TESTZ Z=${normalized}`, {
+    actionKey: "testz",
+    actionLabel: `Manual probe TESTZ ${normalized}`,
+  });
+}
+
+async function requestManualProbeAbort() {
+  return executeManualProbeAction("ABORT", {
+    actionKey: "abort",
+    actionLabel: "Manual probe ABORT",
+    closeAfterSuccess: true,
+  });
+}
+
+async function requestManualProbeAccept() {
+  return executeManualProbeAction("ACCEPT", {
+    actionKey: "accept",
+    actionLabel: "Manual probe ACCEPT",
+    closeAfterSuccess: true,
+  });
+}
+
 function renderControlsPanel() {
   if (!els.controlsCard) return;
 
@@ -3154,6 +3789,7 @@ function renderControlsPanel() {
 
   renderControlDistanceButtons();
   renderControlToolOptions();
+  renderControlsZOffsetStepButtons();
 
   if (els.controlsExtrusionAmount) {
     if (document.activeElement !== els.controlsExtrusionAmount) {
@@ -3196,6 +3832,31 @@ function renderControlsPanel() {
   if (els.controlsFanSpeedValue) {
     els.controlsFanSpeedValue.textContent = `${normalizeFanSpeedPercent(state.controls.fanSpeed)}%`;
   }
+
+  const currentZOffset = getControlsCurrentZOffset();
+  const showZOffsetSaveButton = getControlsShowZOffsetSaveButton(currentZOffset);
+  const zOffsetButtons = getControlsZOffsetStepButtons();
+
+  if (els.controlsZOffsetValue) {
+    els.controlsZOffsetValue.textContent = Number(currentZOffset).toFixed(3);
+  }
+
+  zOffsetButtons.forEach((button) => {
+    button.disabled = commandDisabled;
+  });
+
+  if (els.controlsZOffsetClear) {
+    const canClear = Math.abs(currentZOffset) >= 0.000001;
+    els.controlsZOffsetClear.hidden = !canClear;
+    els.controlsZOffsetClear.disabled = commandDisabled || !canClear;
+  }
+
+  if (els.controlsZOffsetSave) {
+    els.controlsZOffsetSave.hidden = !showZOffsetSaveButton;
+    els.controlsZOffsetSave.disabled = commandDisabled || !showZOffsetSaveButton;
+  }
+
+  renderControlsZOffsetSaveDialog();
 
   els.controlsJogButtons.forEach((button) => {
     button.disabled = motionDisabled;
@@ -3332,6 +3993,62 @@ async function sendToolSelectionCommand() {
   await executeGcodeAction(command, {
     actionLabel: `Switch tool (${command})`,
   });
+}
+
+function buildControlsZOffsetAdjustCommand(direction, step) {
+  const normalizedStep = formatControlsZOffsetStep(step);
+  const moveSuffix = controlsShouldUseMoveFlag() ? ' MOVE=1' : '';
+  const sign = direction === 'down' ? '-' : '+';
+  return `SET_GCODE_OFFSET Z_ADJUST=${sign}${normalizedStep}${moveSuffix}`;
+}
+
+async function sendControlsZOffsetAdjust(direction, step) {
+  const normalizedDirection = String(direction || '').trim().toLowerCase();
+  if (!['up', 'down'].includes(normalizedDirection)) return;
+
+  const script = buildControlsZOffsetAdjustCommand(normalizedDirection, step);
+  const labelSign = normalizedDirection === 'down' ? '-' : '+';
+
+  await executeGcodeAction(script, {
+    actionLabel: `Z-offset ${labelSign}${formatControlsZOffsetStep(step)}`,
+  });
+}
+
+async function clearControlsZOffset() {
+  const moveSuffix = controlsShouldUseMoveFlag() ? ' MOVE=1' : '';
+  await executeGcodeAction(`SET_GCODE_OFFSET Z=0${moveSuffix}`, {
+    actionLabel: 'Clear Z-offset',
+  });
+}
+
+function getControlsSelectedZOffsetSaveCommand() {
+  const selected = normalizeZOffsetSaveOption(state.controls.zOffsetSaveOption);
+  if (selected) return selected;
+  return getControlsAutoZOffsetSaveCommand();
+}
+
+async function saveControlsZOffset() {
+  const command = getControlsSelectedZOffsetSaveCommand();
+  if (!command) {
+    appendConsole('No supported Z-offset apply command available.', 'warn');
+    return;
+  }
+
+  const sent = await executeGcodeAction(command, {
+    actionLabel: 'Apply Z-offset',
+  });
+
+  if (!sent) return;
+  openControlsZOffsetSaveDialog();
+}
+
+async function saveControlsZOffsetConfig() {
+  const saved = await executeGcodeAction('SAVE_CONFIG', {
+    actionLabel: 'Save Config',
+  });
+
+  if (!saved) return;
+  closeControlsZOffsetSaveDialog();
 }
 
 async function sendControlsFanSpeed(percent, { persist = true, successMessage = null } = {}) {
@@ -3534,7 +4251,7 @@ function startTemperaturePolling() {
     inFlight = true;
 
     try {
-      const statusResponse = await state.client.call("/printer/objects/query?extruder&heater_bed&print_stats&virtual_sdcard&gcode_move&motion_report&toolhead");
+      const statusResponse = await state.client.call("/printer/objects/query?extruder&heater_bed&print_stats&virtual_sdcard&gcode_move&motion_report&toolhead&manual_probe");
       const statusSnapshot = statusResponse?.result?.status || {};
 
       updateTemperatureSnapshotFromStatus(statusSnapshot);
@@ -3547,6 +4264,7 @@ function startTemperaturePolling() {
         statusSnapshot?.motion_report || null,
         statusSnapshot?.toolhead || null
       );
+      mergeManualProbeStatusSnapshot(statusSnapshot?.manual_probe || null);
     } catch (error) {
       const message = error?.message || String(error);
       log.debug("Status poll skipped.", { error: message });
@@ -6018,6 +6736,14 @@ async function connectMoonraker() {
   resetUpdateManagerState();
   resetEndstopsState();
   resetMachineLogFilesState();
+  resetManualProbeState({ render: true });
+
+  if (printHistoryRefreshTimer) {
+    clearTimeout(printHistoryRefreshTimer);
+    printHistoryRefreshTimer = null;
+  }
+
+  resetPrintHistoryState({ preserveViewState: true });
 
   if (state.client?.ws && state.client.ws.readyState <= 1) {
     try {
@@ -6047,7 +6773,12 @@ async function connectMoonraker() {
       void refreshMachineLoadsSnapshot({ fetchStatic: true });
       void refreshUpdateManagerStatus({ forceRefresh: false, source: "connect" });
       void requestEndstopsStatus({ source: "connect", silent: true });
-      void loadMachineLogFiles({ source: "connect", silent: true });      log.info("Moonraker websocket connected.");
+      void loadMachineLogFiles({ source: "connect", silent: true });
+      void loadPrintHistoryTotals({ silent: true });
+      if (state.activeView === "history") {
+        void loadPrintHistory({ source: "connect", silent: true });
+      }
+      log.info("Moonraker websocket connected.");
       return;
     }
 
@@ -6065,11 +6796,18 @@ async function connectMoonraker() {
       state.logFiles.actionInFlight = false;
       state.jobs.isLoading = false;
       state.jobs.actionInFlight = false;
+      state.printHistory.isLoading = false;
+      state.printHistory.isTotalsLoading = false;
+      state.printHistory.actionInFlight = false;
+      state.printHistory.actionLabel = "";
+      state.printHistory.activeJobId = "";
+      resetManualProbeState({ render: true });
       renderMachineLoadsCard();
       renderUpdateManagerCard();
       renderEndstopsCard();
       renderMachineLogFilesCard();
       renderJobsCard();
+      renderPrintHistoryCard();
       log.warn("Moonraker websocket disconnected.");
       return;
     }
@@ -6088,11 +6826,18 @@ async function connectMoonraker() {
       state.logFiles.actionInFlight = false;
       state.jobs.isLoading = false;
       state.jobs.actionInFlight = false;
+      state.printHistory.isLoading = false;
+      state.printHistory.isTotalsLoading = false;
+      state.printHistory.actionInFlight = false;
+      state.printHistory.actionLabel = "";
+      state.printHistory.activeJobId = "";
+      resetManualProbeState({ render: true });
       renderMachineLoadsCard();
       renderUpdateManagerCard();
       renderEndstopsCard();
       renderMachineLogFilesCard();
       renderJobsCard();
+      renderPrintHistoryCard();
       log.error("Moonraker websocket error.");
       return;
     }
@@ -6145,6 +6890,7 @@ async function connectMoonraker() {
         status?.motion_report || null,
         status?.toolhead || null
       );
+      mergeManualProbeStatusSnapshot(status?.manual_probe || null);
 
       updateTemperatureSnapshotFromStatus(status);
 
@@ -6167,6 +6913,10 @@ async function connectMoonraker() {
       return;
     }
 
+    if (payload.method === "notify_history_changed") {
+      schedulePrintHistoryRefresh(280);
+      return;
+    }
     if (payload.method === "notify_update_response") {
       handleUpdateManagerResponseNotification(payload);
       return;
@@ -6180,7 +6930,7 @@ async function connectMoonraker() {
   state.client.connectWebSocket();
 
   try {
-    const statusResponse = await state.client.call("/printer/objects/query?print_stats&gcode_move&virtual_sdcard&motion_report&toolhead");
+    const statusResponse = await state.client.call("/printer/objects/query?print_stats&gcode_move&virtual_sdcard&motion_report&toolhead&manual_probe");
     const statusSnapshot = statusResponse?.result?.status || {};
     const printStats = statusSnapshot.print_stats || {};
     const gcodeMove = statusSnapshot.gcode_move || null;
@@ -6191,6 +6941,7 @@ async function connectMoonraker() {
     const printerState = printStats.state || printStats.status || "ready";
     setPrinterState(printerState);
     updateStatusFileInfo(printStats, gcodeMove, motionReport, toolhead);
+    mergeManualProbeStatusSnapshot(statusSnapshot.manual_probe || null);
     log.debug("Initial printer state loaded.", { printerState });
   } catch (error) {
     const message = error?.message || String(error);
@@ -6220,6 +6971,7 @@ async function connectMoonraker() {
   try {
     const macroResponse = await state.client.getMacros();
     const settings = macroResponse?.result?.status?.configfile?.settings || {};
+    state.controls.configSettings = settings && typeof settings === "object" ? settings : {};
     updateControlsToolsFromConfig(settings);
 
     let macros = mergeMacroKeys(
@@ -6285,6 +7037,15 @@ async function connectMoonraker() {
     const message = error?.message || String(error);
     appendConsole(`Print files load failed: ${message}`, "error");
     log.error("Print files load failed.", { error: message });
+  }
+
+  try {
+    const historyJobs = await loadPrintHistory({ source: "connect", silent: true });
+    log.info("Print history loaded.", { count: historyJobs.length });
+  } catch (error) {
+    const message = error?.message || String(error);
+    appendConsole(`Print history load failed: ${message}`, "error");
+    log.error("Print history load failed.", { error: message });
   }
 
   await loadConfigFiles({ preserveSelection: true });
@@ -8332,6 +9093,20 @@ function persistJobsViewState() {
   localStorage.setItem(JOBS_COLUMNS_STORAGE_KEY, JSON.stringify(normalizeJobsVisibleColumns(state.jobs.visibleColumns)));
 }
 
+function persistPrintHistoryViewState() {
+  localStorage.setItem(PRINT_HISTORY_SEARCH_STORAGE_KEY, String(state.printHistory.searchQuery || "").trim());
+  localStorage.setItem(PRINT_HISTORY_STATUS_STORAGE_KEY, normalizePrintHistoryStatusFilter(state.printHistory.statusFilter));
+  localStorage.setItem(PRINT_HISTORY_SORT_STORAGE_KEY, normalizePrintHistorySort(state.printHistory.sortMode));
+  localStorage.setItem(PRINT_HISTORY_PAGE_SIZE_STORAGE_KEY, String(normalizePrintHistoryPageSize(state.printHistory.pageSize)));
+  localStorage.setItem(PRINT_HISTORY_COLUMNS_STORAGE_KEY, JSON.stringify(normalizePrintHistoryVisibleColumns(state.printHistory.visibleColumns)));
+  localStorage.setItem(PRINT_HISTORY_TIME_DAYS_STORAGE_KEY, String(!!state.printHistory.timeInDays));
+  localStorage.setItem(PRINT_HISTORY_LENGTH_KM_STORAGE_KEY, String(!!state.printHistory.lengthInKilometers));
+  localStorage.setItem(PRINT_HISTORY_LOAD_LIMIT_STORAGE_KEY, String(normalizePrintHistoryLoadLimit(state.printHistory.loadedLimit)));
+  localStorage.setItem(PRINT_HISTORY_STATUS_VIEW_STORAGE_KEY, normalizePrintHistoryStatusView(state.printHistory.statusViewMode));
+  localStorage.setItem(PRINT_HISTORY_STATUS_VALUE_STORAGE_KEY, normalizePrintHistoryStatusValue(state.printHistory.statusValueMode));
+  localStorage.setItem(PRINT_HISTORY_TREND_MODE_STORAGE_KEY, normalizePrintHistoryTrendMode(state.printHistory.trendMode));
+}
+
 function doesJobsDirectoryExist(directory) {
   const normalizedDirectory = normalizeJobsDirectory(directory);
   if (!normalizedDirectory) return true;
@@ -9184,6 +9959,34 @@ function renderJobsCard() {
     els.jobsTypeFilter.value = normalizeJobsTypeFilter(state.jobs.typeFilter);
   }
 
+  if (els.historySearch) {
+    els.historySearch.value = String(state.printHistory.searchQuery || "");
+  }
+
+  if (els.historyStatusFilter) {
+    els.historyStatusFilter.value = normalizePrintHistoryStatusFilter(state.printHistory.statusFilter);
+  }
+
+  if (els.historySort) {
+    els.historySort.value = normalizePrintHistorySort(state.printHistory.sortMode);
+  }
+
+  if (els.historyPageSize) {
+    els.historyPageSize.value = String(normalizePrintHistoryPageSize(state.printHistory.pageSize));
+  }
+
+  if (els.historyLoadLimit) {
+    els.historyLoadLimit.value = String(normalizePrintHistoryLoadLimit(state.printHistory.loadedLimit));
+  }
+
+  if (els.historyTimeDays) {
+    els.historyTimeDays.checked = !!state.printHistory.timeInDays;
+  }
+
+  if (els.historyLengthKm) {
+    els.historyLengthKm.checked = !!state.printHistory.lengthInKilometers;
+  }
+
   const isConnected = state.connectionStatus === "connected";
   const busy = state.jobs.isLoading || state.jobs.actionInFlight;
 
@@ -9883,6 +10686,1337 @@ function resetJobsState() {
   renderJobsCard();
 }
 
+const PRINT_HISTORY_STATUS_META = {
+  completed: { label: "Completed", className: "status-completed" },
+  cancelled: { label: "Cancelled", className: "status-cancelled" },
+  error: { label: "Error", className: "status-error" },
+  interrupted: { label: "Interrupted", className: "status-interrupted" },
+  klippy_shutdown: { label: "Klippy Shutdown", className: "status-interrupted" },
+  klippy_disconnect: { label: "Klippy Disconnect", className: "status-interrupted" },
+  server_exit: { label: "Server Exit", className: "status-interrupted" },
+  printing: { label: "Printing", className: "status-printing" },
+  in_progress: { label: "In Progress", className: "status-printing" },
+  unknown: { label: "Unknown", className: "status-unknown" },
+};
+
+function normalizePrintHistoryStatus(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) return "unknown";
+  if (["complete", "completed", "success", "finished"].includes(normalized)) return "completed";
+  if (["cancel", "cancelled", "canceled"].includes(normalized)) return "cancelled";
+  if (["error", "failed", "failure"].includes(normalized)) return "error";
+  if (["printing", "in_progress", "in progress", "running"].includes(normalized)) return "in_progress";
+  if (PRINT_HISTORY_STATUS_FILTER_VALUES.includes(normalized)) return normalized;
+  return "unknown";
+}
+
+function getPrintHistoryStatusInfo(status) {
+  return PRINT_HISTORY_STATUS_META[normalizePrintHistoryStatus(status)] || PRINT_HISTORY_STATUS_META.unknown;
+}
+
+function toPrintHistoryTimestampMs(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return null;
+  return numeric > 1_000_000_000_000 ? numeric : numeric * 1000;
+}
+
+function toPrintHistoryNonNegative(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric < 0) return null;
+  return numeric;
+}
+
+function normalizePrintHistoryExists(value) {
+  if (typeof value === "boolean") return value;
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) return null;
+  if (["1", "true", "yes", "y", "exists", "available"].includes(normalized)) return true;
+  if (["0", "false", "no", "n", "missing", "deleted"].includes(normalized)) return false;
+  return null;
+}
+
+function parsePrintHistoryJob(entry, index = 0) {
+  if (!entry || typeof entry !== "object") return null;
+
+  const metadata =
+    (entry.metadata && typeof entry.metadata === "object" ? entry.metadata : null)
+    || (entry.job?.metadata && typeof entry.job.metadata === "object" ? entry.job.metadata : null)
+    || {};
+
+  const filename = normalizeGcodePath(
+    entry.filename || entry.file?.path || entry.path || entry.job?.filename || metadata.filename || ""
+  );
+
+  const displayName = getGcodeDisplayName(filename) || String(entry.filename || entry.path || "").trim() || `Job ${index + 1}`;
+  const startTimeMs = toPrintHistoryTimestampMs(entry.start_time ?? entry.startTime ?? entry.print_start_time);
+  let endTimeMs = toPrintHistoryTimestampMs(entry.end_time ?? entry.endTime ?? entry.print_end_time);
+  const totalDuration = toPrintHistoryNonNegative(entry.total_duration ?? entry.totalDuration ?? entry.duration);
+  const printDuration = toPrintHistoryNonNegative(entry.print_duration ?? entry.printDuration);
+
+  if (!endTimeMs && startTimeMs && Number.isFinite(totalDuration) && totalDuration > 0) {
+    endTimeMs = startTimeMs + Math.round(totalDuration * 1000);
+  }
+
+  const uid = String(entry.uid || entry.job_id || `${startTimeMs || Date.now()}-${displayName}-${index}`).trim();
+
+  return {
+    uid,
+    jobId: String(entry.job_id || "").trim(),
+    filename,
+    displayName,
+    status: normalizePrintHistoryStatus(entry.status ?? entry.state ?? entry.job_status),
+    startTimeMs,
+    endTimeMs,
+    printDuration,
+    totalDuration,
+    filamentUsed: toPrintHistoryNonNegative(entry.filament_used ?? entry.filament_total ?? metadata.filament_total ?? metadata.filament_length),
+    user: String(entry.user || entry.username || "").trim() || "--",
+    exists: normalizePrintHistoryExists(entry.exists ?? entry.file_exists ?? metadata.exists),
+    estimatedTime: toPrintHistoryNonNegative(entry.estimated_time ?? metadata.estimated_time),
+    objectHeight: toPrintHistoryNonNegative(entry.object_height ?? metadata.object_height),
+    layerHeight: toPrintHistoryNonNegative(entry.layer_height ?? metadata.layer_height),
+    firstLayerHeight: toPrintHistoryNonNegative(entry.first_layer_height ?? metadata.first_layer_height),
+    filamentType: String(entry.filament_type ?? metadata.filament_type ?? "").trim(),
+    filamentName: String(entry.filament_name ?? metadata.filament_name ?? "").trim(),
+    nozzleDiameter: toPrintHistoryNonNegative(entry.nozzle_diameter ?? metadata.nozzle_diameter),
+    size: toPrintHistoryNonNegative(entry.size ?? metadata.size),
+    modifiedMs: toPrintHistoryTimestampMs(entry.modified ?? metadata.modified ?? metadata.mtime),
+    auxiliaryData: Array.isArray(entry.auxiliary_data)
+      ? entry.auxiliary_data
+      : (entry.auxiliary_data && typeof entry.auxiliary_data === "object" ? Object.entries(entry.auxiliary_data) : []),
+  };
+}
+
+function extractPrintHistoryList(response) {
+  const result = response?.result ?? response ?? {};
+  const rawJobs = Array.isArray(result)
+    ? result
+    : Array.isArray(result.jobs)
+      ? result.jobs
+      : Array.isArray(result.history)
+        ? result.history
+        : [];
+
+  const jobs = rawJobs.map((entry, index) => parsePrintHistoryJob(entry, index)).filter(Boolean);
+  const countCandidate = Number(result.count ?? result.total ?? result.total_count ?? result.job_count);
+  const totalCount = Number.isFinite(countCandidate) && countCandidate >= 0 ? Math.round(countCandidate) : jobs.length;
+  return { jobs, totalCount };
+}
+
+function extractPrintHistoryTotals(response) {
+  const result = response?.result ?? response ?? {};
+  const source = result.job_totals && typeof result.job_totals === "object" ? result.job_totals : result;
+
+  const read = (key, fallback = 0) => {
+    const value = Number(source[key]);
+    return Number.isFinite(value) && value >= 0 ? value : fallback;
+  };
+
+  return {
+    total_jobs: Math.round(read("total_jobs", read("job_count", 0))),
+    total_time: read("total_time", 0),
+    total_print_time: read("total_print_time", read("total_print", 0)),
+    total_filament_used: read("total_filament_used", read("filament_used", 0)),
+    longest_job: read("longest_job", 0),
+    longest_print: read("longest_print", 0),
+  };
+}
+
+function getPrintHistorySelectionSet() {
+  if (!(state.printHistory.selectedJobIds instanceof Set)) {
+    state.printHistory.selectedJobIds = new Set(Array.isArray(state.printHistory.selectedJobIds) ? state.printHistory.selectedJobIds : []);
+  }
+  return state.printHistory.selectedJobIds;
+}
+
+function closePrintHistoryColumnsMenu() {
+  state.printHistory.columnsMenuOpen = false;
+  if (els.historyColumnsMenu) els.historyColumnsMenu.hidden = true;
+  if (els.historyColumnsToggle) {
+    els.historyColumnsToggle.setAttribute("aria-expanded", "false");
+    els.historyColumnsToggle.classList.remove("is-active");
+  }
+}
+
+function setPrintHistoryColumnsMenuOpen(isOpen) {
+  state.printHistory.columnsMenuOpen = !!isOpen;
+  if (els.historyColumnsMenu) els.historyColumnsMenu.hidden = !state.printHistory.columnsMenuOpen;
+  if (els.historyColumnsToggle) {
+    els.historyColumnsToggle.setAttribute("aria-expanded", state.printHistory.columnsMenuOpen ? "true" : "false");
+    els.historyColumnsToggle.classList.toggle("is-active", state.printHistory.columnsMenuOpen);
+  }
+}
+
+function getPrintHistoryVisibleColumns() {
+  return normalizePrintHistoryVisibleColumns(state.printHistory.visibleColumns);
+}
+
+function togglePrintHistoryVisibleColumn(columnKey, enabled) {
+  const normalizedKey = String(columnKey || "").trim().toLowerCase();
+  if (!PRINT_HISTORY_COLUMN_KEYS.includes(normalizedKey)) return;
+
+  const current = getPrintHistoryVisibleColumns();
+  if (enabled) {
+    if (current.includes(normalizedKey)) return;
+    state.printHistory.visibleColumns = [...current, normalizedKey];
+  } else {
+    if (!current.includes(normalizedKey)) return;
+    if (current.length <= 1) {
+      setPrintHistoryStatusMessage("At least one history column must stay visible.", "warn");
+      return;
+    }
+    state.printHistory.visibleColumns = current.filter((entry) => entry !== normalizedKey);
+  }
+
+  persistPrintHistoryViewState();
+  renderPrintHistoryCard();
+}
+
+function renderPrintHistoryColumnsMenu() {
+  if (!els.historyColumnsList) return;
+
+  const active = getPrintHistoryVisibleColumns();
+  els.historyColumnsList.innerHTML = "";
+
+  PRINT_HISTORY_COLUMN_DEFINITIONS.forEach((definition) => {
+    const row = document.createElement("label");
+    row.className = "history-columns-row";
+
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.checked = active.includes(definition.key);
+    input.addEventListener("change", () => {
+      togglePrintHistoryVisibleColumn(definition.key, input.checked);
+    });
+
+    const text = document.createElement("span");
+    text.textContent = definition.label;
+    row.append(input, text);
+    els.historyColumnsList.appendChild(row);
+  });
+}
+
+function formatPrintHistoryDuration(seconds) {
+  const numeric = Number(seconds);
+  if (!Number.isFinite(numeric) || numeric < 0) return "--";
+  if (state.printHistory.timeInDays) return `${(numeric / 86400).toFixed(2)} d`;
+  return formatStatusDuration(numeric);
+}
+
+function formatPrintHistoryFilament(mm) {
+  const numeric = Number(mm);
+  if (!Number.isFinite(numeric) || numeric < 0) return "--";
+  if (state.printHistory.lengthInKilometers) return `${(numeric / 1_000_000).toFixed(3)} km`;
+  if (numeric >= 1000) return `${(numeric / 1000).toFixed(2)} m`;
+  return `${Math.round(numeric)} mm`;
+}
+
+function formatPrintHistoryTimestamp(ms) {
+  const numeric = Number(ms);
+  if (!Number.isFinite(numeric) || numeric <= 0) return "--";
+  return new Date(numeric).toLocaleString();
+}
+
+function formatPrintHistoryExists(exists) {
+  if (exists === true) return "Yes";
+  if (exists === false) return "No";
+  return "--";
+}
+
+function formatPrintHistoryCell(job, columnKey) {
+  if (columnKey === "status") return getPrintHistoryStatusInfo(job.status).label;
+  if (columnKey === "start_time") return formatPrintHistoryTimestamp(job.startTimeMs);
+  if (columnKey === "end_time") return formatPrintHistoryTimestamp(job.endTimeMs);
+  if (columnKey === "print_duration") return formatPrintHistoryDuration(job.printDuration);
+  if (columnKey === "total_duration") return formatPrintHistoryDuration(job.totalDuration);
+  if (columnKey === "filament_used") return formatPrintHistoryFilament(job.filamentUsed);
+  if (columnKey === "user") return job.user || "--";
+  if (columnKey === "exists") return formatPrintHistoryExists(job.exists);
+  if (columnKey === "estimated_time") return formatPrintHistoryDuration(job.estimatedTime);
+  if (columnKey === "object_height") return formatJobsLength(job.objectHeight);
+  if (columnKey === "layer_height") return formatJobsLength(job.layerHeight);
+  if (columnKey === "first_layer_height") return formatJobsLength(job.firstLayerHeight);
+  if (columnKey === "filament_type") return job.filamentType || "--";
+  if (columnKey === "filament_name") return job.filamentName || "--";
+  if (columnKey === "nozzle_diameter") return Number.isFinite(job.nozzleDiameter) ? `${job.nozzleDiameter.toFixed(2)} mm` : "--";
+  if (columnKey === "size") return formatFileSize(job.size) || "--";
+  if (columnKey === "modified") return formatJobsTimestamp(job.modifiedMs);
+  if (columnKey === "auxiliary_data") {
+    const count = Array.isArray(job.auxiliaryData) ? job.auxiliaryData.length : 0;
+    return count > 0 ? `${count} entr${count === 1 ? "y" : "ies"}` : "--";
+  }
+  return "--";
+}
+
+function buildPrintHistorySearchIndex(job) {
+  return [
+    job.displayName,
+    job.filename,
+    job.uid,
+    job.jobId,
+    job.user,
+    getPrintHistoryStatusInfo(job.status).label,
+    job.filamentType,
+    job.filamentName,
+  ]
+    .map((value) => String(value || "").trim().toLowerCase())
+    .filter(Boolean)
+    .join(" ");
+}
+
+function doesPrintHistoryStatusMatch(status, filterMode) {
+  const statusValue = normalizePrintHistoryStatus(status);
+  const filter = normalizePrintHistoryStatusFilter(filterMode);
+  if (filter === "all") return true;
+  if (filter === "in_progress") return statusValue === "in_progress" || statusValue === "printing";
+  return statusValue === filter;
+}
+
+function sortPrintHistoryJobs(entries) {
+  const sortMode = normalizePrintHistorySort(state.printHistory.sortMode);
+  const items = [...entries];
+
+  items.sort((a, b) => {
+    if (sortMode === "start_asc") return (Number(a.startTimeMs) || 0) - (Number(b.startTimeMs) || 0);
+    if (sortMode === "end_desc") return (Number(b.endTimeMs) || 0) - (Number(a.endTimeMs) || 0);
+    if (sortMode === "end_asc") return (Number(a.endTimeMs) || 0) - (Number(b.endTimeMs) || 0);
+    if (sortMode === "total_desc") return (Number(b.totalDuration) || 0) - (Number(a.totalDuration) || 0);
+    if (sortMode === "print_desc") return (Number(b.printDuration) || 0) - (Number(a.printDuration) || 0);
+    if (sortMode === "filament_desc") return (Number(b.filamentUsed) || 0) - (Number(a.filamentUsed) || 0);
+    if (sortMode === "name_asc") return a.displayName.localeCompare(b.displayName) || a.uid.localeCompare(b.uid);
+    if (sortMode === "name_desc") return b.displayName.localeCompare(a.displayName) || a.uid.localeCompare(b.uid);
+    if (sortMode === "status_asc") {
+      const delta = getPrintHistoryStatusInfo(a.status).label.localeCompare(getPrintHistoryStatusInfo(b.status).label);
+      return delta || ((Number(b.startTimeMs) || 0) - (Number(a.startTimeMs) || 0));
+    }
+    return (Number(b.startTimeMs) || 0) - (Number(a.startTimeMs) || 0);
+  });
+
+  return items;
+}
+
+function getFilteredPrintHistoryJobs() {
+  const query = String(state.printHistory.searchQuery || "").trim().toLowerCase();
+  const statusFilter = normalizePrintHistoryStatusFilter(state.printHistory.statusFilter);
+
+  const filtered = (state.printHistory.jobs || []).filter((job) => {
+    if (!doesPrintHistoryStatusMatch(job.status, statusFilter)) return false;
+    if (!query) return true;
+    return buildPrintHistorySearchIndex(job).includes(query);
+  });
+
+  return sortPrintHistoryJobs(filtered);
+}
+
+function getPaginatedPrintHistory(filtered) {
+  const pageSize = normalizePrintHistoryPageSize(state.printHistory.pageSize);
+  const total = filtered.length;
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const page = Math.max(1, Math.min(pageCount, Number(state.printHistory.page) || 1));
+
+  state.printHistory.page = page;
+  state.printHistory.pageSize = pageSize;
+
+  const startIndex = (page - 1) * pageSize;
+  return {
+    total,
+    page,
+    pageSize,
+    pageCount,
+    pageItems: filtered.slice(startIndex, startIndex + pageSize),
+  };
+}
+
+function setPrintHistoryStatusMessage(message, level = "info") {
+  if (!els.historyStatus) return;
+  els.historyStatus.textContent = String(message || "").trim();
+  els.historyStatus.dataset.level = level;
+}
+
+function getPrintHistoryTotalsForDisplay() {
+  const raw = state.printHistory.totals || {};
+  const jobs = state.printHistory.jobs || [];
+
+  const fallback = jobs.reduce((acc, job) => {
+    acc.total_jobs += 1;
+    acc.total_time += Number(job.totalDuration) || 0;
+    acc.total_print_time += Number(job.printDuration) || 0;
+    acc.total_filament_used += Number(job.filamentUsed) || 0;
+    acc.longest_job = Math.max(acc.longest_job, Number(job.totalDuration) || 0);
+    acc.longest_print = Math.max(acc.longest_print, Number(job.printDuration) || 0);
+    return acc;
+  }, {
+    total_jobs: 0,
+    total_time: 0,
+    total_print_time: 0,
+    total_filament_used: 0,
+    longest_job: 0,
+    longest_print: 0,
+  });
+
+  return {
+    total_jobs: Number(raw.total_jobs) > 0 ? Math.round(Number(raw.total_jobs)) : Math.max(Number(state.printHistory.totalCount) || 0, fallback.total_jobs),
+    total_time: Number(raw.total_time) > 0 ? Number(raw.total_time) : fallback.total_time,
+    total_print_time: Number(raw.total_print_time) > 0 ? Number(raw.total_print_time) : fallback.total_print_time,
+    total_filament_used: Number(raw.total_filament_used) >= 0 ? Number(raw.total_filament_used) : fallback.total_filament_used,
+    longest_job: Number(raw.longest_job) > 0 ? Number(raw.longest_job) : fallback.longest_job,
+    longest_print: Number(raw.longest_print) > 0 ? Number(raw.longest_print) : fallback.longest_print,
+  };
+}
+
+function getPrintHistorySelectedJobs() {
+  const selected = getPrintHistorySelectionSet();
+  if (!selected.size) return [];
+  return (state.printHistory.jobs || []).filter((job) => selected.has(job.uid));
+}
+
+function getPrintHistoryStatsContext() {
+  const selectedJobs = getPrintHistorySelectedJobs();
+  const useSelected = selectedJobs.length > 0;
+  return {
+    jobs: useSelected ? selectedJobs : (state.printHistory.jobs || []),
+    useSelected,
+    selectedCount: selectedJobs.length,
+  };
+}
+
+function isPrintHistoryAllLoaded() {
+  const loaded = (state.printHistory.jobs || []).length;
+  const total = Math.max(Number(state.printHistory.totalCount) || 0, loaded);
+  if (!state.printHistory.lastUpdatedMs && !state.printHistory.isLoading) return false;
+  if (normalizePrintHistoryLoadLimit(state.printHistory.loadedLimit) === 0) return true;
+  if (total <= 0) return true;
+  return loaded >= total;
+}
+
+function formatPrintHistoryFilamentMeters(mm) {
+  const numeric = Number(mm);
+  if (!Number.isFinite(numeric) || numeric < 0) return "0.0 m";
+  return `${Math.round((numeric / 1000) * 10) / 10} m`;
+}
+
+function formatPrintHistoryStatusMetricValue(value, valueMode) {
+  const numeric = Number(value) || 0;
+  if (valueMode === "filament") {
+    if (numeric > 1000) return `${(Math.round((numeric / 1000) * 100) / 100).toFixed(2)} m`;
+    return `${Math.round(numeric)} mm`;
+  }
+  if (valueMode === "time") {
+    return formatStatusDuration(numeric);
+  }
+  return Math.round(numeric).toString();
+}
+
+function setHistorySegmentedButtonState(button, isActive) {
+  if (!button) return;
+  button.classList.toggle("is-active", !!isActive);
+  button.setAttribute("aria-pressed", isActive ? "true" : "false");
+}
+
+function renderPrintHistoryStats() {
+  if (!els.historyStatsTableBody) return;
+
+  const totals = getPrintHistoryTotalsForDisplay();
+  const context = getPrintHistoryStatsContext();
+  const jobs = context.jobs;
+
+  let rows;
+  if (context.useSelected) {
+    const selectedPrintTime = jobs.reduce((sum, job) => sum + (Number(job.printDuration) || 0), 0);
+    const selectedLongestPrint = jobs.reduce((max, job) => Math.max(max, Number(job.printDuration) || 0), 0);
+    const selectedAvgPrint = jobs.length > 0 ? Math.round(selectedPrintTime / jobs.length) : 0;
+    const selectedFilament = jobs.reduce((sum, job) => sum + (Number(job.filamentUsed) || 0), 0);
+
+    rows = [
+      { title: "Selected Printtime", value: formatStatusDuration(selectedPrintTime) },
+      { title: "Longest Printtime", value: formatStatusDuration(selectedLongestPrint) },
+      { title: "Avg Printtime", value: formatStatusDuration(selectedAvgPrint) },
+      { title: "Selected Filament Used", value: formatPrintHistoryFilamentMeters(selectedFilament) },
+      { title: "Selected Jobs", value: context.selectedCount.toLocaleString() },
+    ];
+  } else {
+    const avgPrint = totals.total_jobs > 0 ? Math.round(totals.total_print_time / totals.total_jobs) : 0;
+    rows = [
+      { title: "Total Printtime", value: formatStatusDuration(totals.total_print_time) },
+      { title: "Longest Printtime", value: formatStatusDuration(totals.longest_print || totals.longest_job) },
+      { title: "Avg Printtime", value: formatStatusDuration(avgPrint) },
+      { title: "Total Filament Used", value: formatPrintHistoryFilamentMeters(totals.total_filament_used) },
+      { title: "Total Jobs", value: totals.total_jobs.toLocaleString() },
+    ];
+  }
+
+  els.historyStatsTableBody.innerHTML = "";
+  rows.forEach((entry) => {
+    const row = document.createElement("tr");
+
+    const titleCell = document.createElement("td");
+    titleCell.textContent = entry.title;
+
+    const valueCell = document.createElement("td");
+    valueCell.className = "history-stats-value-cell";
+    valueCell.textContent = entry.value;
+
+    row.append(titleCell, valueCell);
+    els.historyStatsTableBody.appendChild(row);
+  });
+}
+
+function setPrintHistoryChartMeta(element, message) {
+  if (!element) return;
+  element.textContent = String(message || "").trim();
+}
+
+function getPrintHistoryChartContext(canvas, { minHeight = 170 } = {}) {
+  if (!(canvas instanceof HTMLCanvasElement)) return null;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+
+  const rect = canvas.getBoundingClientRect();
+  const cssWidth = Math.max(260, Math.round(rect.width || canvas.clientWidth || 260));
+  const cssHeight = Math.max(minHeight, Math.round(rect.height || canvas.clientHeight || minHeight));
+  const dpr = window.devicePixelRatio || 1;
+  const pixelWidth = Math.max(1, Math.round(cssWidth * dpr));
+  const pixelHeight = Math.max(1, Math.round(cssHeight * dpr));
+
+  if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
+    canvas.width = pixelWidth;
+    canvas.height = pixelHeight;
+  }
+
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cssWidth, cssHeight);
+
+  return {
+    ctx,
+    width: cssWidth,
+    height: cssHeight,
+  };
+}
+
+function getPrintHistoryStatusChartColor(status) {
+  const normalized = normalizePrintHistoryStatus(status);
+  const map = {
+    completed: "#bdbdbd",
+    in_progress: "#eeeeee",
+    printing: "#eeeeee",
+    cancelled: "#616161",
+    other: "#616161",
+  };
+  return map[normalized] || "#424242";
+}
+
+function buildPrintHistoryStatusEntries(jobs, valueMode = "jobs") {
+  const entries = new Map();
+
+  (jobs || []).forEach((job) => {
+    const status = normalizePrintHistoryStatus(job.status);
+    const current = entries.get(status) || {
+      status,
+      label: getPrintHistoryStatusInfo(status).label,
+      value: 0,
+    };
+
+    if (valueMode === "filament") {
+      current.value += Number(job.filamentUsed) || 0;
+    } else if (valueMode === "time") {
+      current.value += Number(job.totalDuration) || 0;
+    } else {
+      current.value += 1;
+    }
+
+    entries.set(status, current);
+  });
+
+  return [...entries.values()]
+    .filter((entry) => Number(entry.value) > 0)
+    .sort((a, b) => Number(b.value) - Number(a.value));
+}
+
+function groupSmallPrintHistoryStatusEntries(entries, threshold = 0.05) {
+  const source = Array.isArray(entries) ? [...entries] : [];
+  if (source.length < 3) return source;
+
+  const total = source.reduce((sum, entry) => sum + (Number(entry.value) || 0), 0);
+  if (total <= 0) return source;
+
+  const limit = total * threshold;
+  const small = source.filter((entry) => Number(entry.value) < limit);
+  if (small.length < 2) return source;
+
+  const remaining = source.filter((entry) => Number(entry.value) >= limit);
+  remaining.push({
+    status: "other",
+    label: `Others (${small.length})`,
+    value: small.reduce((sum, entry) => sum + (Number(entry.value) || 0), 0),
+  });
+
+  return remaining.sort((a, b) => Number(b.value) - Number(a.value));
+}
+
+function drawPrintHistoryStatusDonutChart(canvas, entries, { valueMode = "jobs" } = {}) {
+  const context = getPrintHistoryChartContext(canvas, { minHeight: 200 });
+  if (!context) return;
+
+  const { ctx, width, height } = context;
+  const totalValue = (entries || []).reduce((sum, entry) => sum + (Number(entry.value) || 0), 0);
+
+  if (!entries || !entries.length || totalValue <= 0) {
+    ctx.fillStyle = "rgba(148, 163, 184, 0.82)";
+    ctx.font = "12px JetBrains Mono";
+    ctx.textAlign = "center";
+    ctx.fillText("No status distribution available", width / 2, height / 2);
+    return;
+  }
+
+  const cx = Math.round(width / 2);
+  const cy = Math.round(height / 2);
+  const outerRadius = Math.max(44, Math.floor(Math.min(width, height) * 0.32));
+  const innerRadius = Math.max(24, Math.floor(outerRadius * 0.58));
+  const midRadius = (outerRadius + innerRadius) / 2;
+  const ringWidth = outerRadius - innerRadius;
+
+  let startAngle = -Math.PI / 2;
+  entries.forEach((entry) => {
+    const value = Number(entry.value) || 0;
+    if (value <= 0) return;
+    const angle = (value / totalValue) * Math.PI * 2;
+    const endAngle = startAngle + angle;
+
+    ctx.beginPath();
+    ctx.strokeStyle = getPrintHistoryStatusChartColor(entry.status);
+    ctx.lineWidth = ringWidth;
+    ctx.lineCap = "butt";
+    ctx.arc(cx, cy, midRadius, startAngle, endAngle);
+    ctx.stroke();
+
+    startAngle = endAngle;
+  });
+
+  ctx.beginPath();
+  ctx.fillStyle = "rgba(8, 13, 24, 0.78)";
+  ctx.arc(cx, cy, innerRadius - 1, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = "rgba(226, 232, 240, 0.9)";
+  ctx.font = "600 11px JetBrains Mono";
+  ctx.textAlign = "center";
+  ctx.fillText(valueMode === "jobs" ? "Total Jobs" : valueMode === "filament" ? "Total Filament" : "Total Time", cx, cy - 7);
+  ctx.font = "600 12px JetBrains Mono";
+  ctx.fillText(formatPrintHistoryStatusMetricValue(totalValue, valueMode), cx, cy + 11);
+}
+
+function renderPrintHistoryStatusTable(entries, valueMode = "jobs") {
+  if (!els.historyStatusTableBody) return;
+  els.historyStatusTableBody.innerHTML = "";
+
+  if (!entries.length) {
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = 2;
+    cell.className = "history-status-table-empty";
+    cell.textContent = "No status distribution available";
+    row.appendChild(cell);
+    els.historyStatusTableBody.appendChild(row);
+    return;
+  }
+
+  entries.forEach((entry) => {
+    const row = document.createElement("tr");
+
+    const nameCell = document.createElement("td");
+    nameCell.textContent = entry.label;
+
+    const valueCell = document.createElement("td");
+    valueCell.className = "history-status-table-value";
+    valueCell.textContent = formatPrintHistoryStatusMetricValue(entry.value, valueMode);
+
+    row.append(nameCell, valueCell);
+    els.historyStatusTableBody.appendChild(row);
+  });
+}
+
+function drawPrintHistorySimpleBarChart(canvas, {
+  labels = [],
+  values = [],
+  color = "#bdbdbd",
+  emptyMessage = "No chart data.",
+}) {
+  const context = getPrintHistoryChartContext(canvas, { minHeight: 175 });
+  if (!context) return;
+
+  const { ctx, width, height } = context;
+  const numericValues = Array.isArray(values) ? values.map((value) => Number(value) || 0) : [];
+  const hasData = numericValues.some((value) => value > 0);
+
+  if (!labels.length || !numericValues.length || !hasData) {
+    ctx.fillStyle = "rgba(148, 163, 184, 0.82)";
+    ctx.font = "12px JetBrains Mono";
+    ctx.textAlign = "center";
+    ctx.fillText(emptyMessage, width / 2, height / 2);
+    return;
+  }
+
+  const plot = { left: 36, right: 12, top: 14, bottom: 30 };
+  const plotWidth = Math.max(1, width - plot.left - plot.right);
+  const plotHeight = Math.max(1, height - plot.top - plot.bottom);
+
+  const maxValue = Math.max(...numericValues, 1);
+  const step = maxValue <= 5 ? 1 : Math.ceil(maxValue / 5);
+  const axisMax = Math.max(step, Math.ceil(maxValue / step) * step);
+
+  ctx.strokeStyle = "rgba(148, 163, 184, 0.24)";
+  ctx.lineWidth = 1;
+
+  for (let i = 0; i <= 4; i += 1) {
+    const y = plot.top + (plotHeight * i / 4);
+    ctx.beginPath();
+    ctx.moveTo(plot.left, y);
+    ctx.lineTo(plot.left + plotWidth, y);
+    ctx.stroke();
+
+    const axisValue = Math.round(axisMax * (1 - (i / 4)));
+    ctx.fillStyle = "rgba(226, 232, 240, 0.74)";
+    ctx.font = "10px JetBrains Mono";
+    ctx.textAlign = "right";
+    ctx.fillText(String(axisValue), plot.left - 4, y + 3);
+  }
+
+  const slotWidth = plotWidth / numericValues.length;
+  const barWidth = Math.max(4, Math.min(24, slotWidth * 0.64));
+
+  numericValues.forEach((value, index) => {
+    const normalized = axisMax > 0 ? value / axisMax : 0;
+    const barHeight = Math.max(0, normalized * plotHeight);
+    const x = plot.left + (slotWidth * index) + ((slotWidth - barWidth) / 2);
+    const y = plot.top + plotHeight - barHeight;
+
+    ctx.fillStyle = `${color}cc`;
+    ctx.fillRect(x, y, barWidth, barHeight);
+
+    const shouldDrawLabel = labels.length <= 8 || index % 2 === 0 || index === labels.length - 1;
+    if (shouldDrawLabel) {
+      ctx.fillStyle = "rgba(226, 232, 240, 0.78)";
+      ctx.font = "10px JetBrains Mono";
+      ctx.textAlign = "center";
+      ctx.fillText(labels[index], x + (barWidth / 2), height - 8);
+    }
+  });
+}
+
+function getPrintHistoryFilamentUsageSeries(jobs) {
+  const dayMs = 24 * 60 * 60 * 1000;
+  const start = new Date();
+  start.setDate(start.getDate() - 14);
+  start.setHours(0, 0, 0, 0);
+  const startMs = start.getTime();
+
+  const labels = [];
+  const values = [];
+
+  for (let i = 0; i <= 14; i += 1) {
+    const stamp = startMs + (i * dayMs);
+    const day = new Date(stamp);
+    labels.push(`${day.getMonth() + 1}/${day.getDate()}`);
+    values.push(0);
+  }
+
+  (jobs || []).forEach((job) => {
+    const startTime = Number(job.startTimeMs);
+    const filamentUsed = Number(job.filamentUsed) || 0;
+    if (!Number.isFinite(startTime) || startTime < startMs || filamentUsed <= 0) return;
+
+    const jobDay = new Date(startTime);
+    jobDay.setHours(0, 0, 0, 0);
+    const index = Math.round((jobDay.getTime() - startMs) / dayMs);
+    if (index < 0 || index >= values.length) return;
+
+    values[index] += Math.round(filamentUsed) / 1000;
+  });
+
+  return { labels, values };
+}
+
+function getPrintHistoryPrinttimeAverageSeries(jobs) {
+  const labels = ["0-2h", "2-6h", "6-12h", "12-24h", ">24h"];
+  const values = [0, 0, 0, 0, 0];
+
+  const start = new Date();
+  start.setDate(start.getDate() - 14);
+  start.setHours(0, 0, 0, 0);
+  const startMs = start.getTime();
+
+  (jobs || []).forEach((job) => {
+    const status = normalizePrintHistoryStatus(job.status);
+    const startTime = Number(job.startTimeMs);
+    const durationHours = (Number(job.printDuration) || 0) / 3600;
+
+    if (status !== "completed") return;
+    if (!Number.isFinite(startTime) || startTime < startMs || durationHours <= 0) return;
+
+    if (durationHours <= 2) values[0] += 1;
+    else if (durationHours <= 6) values[1] += 1;
+    else if (durationHours <= 12) values[2] += 1;
+    else if (durationHours <= 24) values[3] += 1;
+    else values[4] += 1;
+  });
+
+  return { labels, values };
+}
+
+function renderPrintHistoryStatsVisuals() {
+  const context = getPrintHistoryStatsContext();
+  const jobs = context.jobs;
+
+  const statusViewMode = normalizePrintHistoryStatusView(state.printHistory.statusViewMode);
+  const statusValueMode = normalizePrintHistoryStatusValue(state.printHistory.statusValueMode);
+  const trendMode = normalizePrintHistoryTrendMode(state.printHistory.trendMode);
+
+  setHistorySegmentedButtonState(els.historyStatusViewChart, statusViewMode === "chart");
+  setHistorySegmentedButtonState(els.historyStatusViewTable, statusViewMode === "table");
+  setHistorySegmentedButtonState(els.historyStatusValueJobs, statusValueMode === "jobs");
+  setHistorySegmentedButtonState(els.historyStatusValueFilament, statusValueMode === "filament");
+  setHistorySegmentedButtonState(els.historyStatusValueTime, statusValueMode === "time");
+  setHistorySegmentedButtonState(els.historyTrendModeFilament, trendMode === "filament_usage");
+  setHistorySegmentedButtonState(els.historyTrendModePrinttime, trendMode === "printtime_avg");
+
+  if (els.historyStatusChartWrap) els.historyStatusChartWrap.hidden = statusViewMode !== "chart";
+  if (els.historyStatusTableWrap) els.historyStatusTableWrap.hidden = statusViewMode !== "table";
+
+  const statusEntriesRaw = buildPrintHistoryStatusEntries(jobs, statusValueMode);
+  const statusEntries = groupSmallPrintHistoryStatusEntries(statusEntriesRaw, 0.05);
+
+  if (statusViewMode === "table") {
+    renderPrintHistoryStatusTable(statusEntries, statusValueMode);
+  } else {
+    drawPrintHistoryStatusDonutChart(els.historyChartStatusCanvas, statusEntries, { valueMode: statusValueMode });
+  }
+
+  if (trendMode === "printtime_avg") {
+    const series = getPrintHistoryPrinttimeAverageSeries(jobs);
+    drawPrintHistorySimpleBarChart(els.historyChartTrendCanvas, {
+      labels: series.labels,
+      values: series.values,
+      color: "#bdbdbd",
+      emptyMessage: "No completed jobs in last 14 days.",
+    });
+
+    const total = series.values.reduce((sum, value) => sum + (Number(value) || 0), 0);
+    const maxValue = Math.max(...series.values, 0);
+    const peakIndex = maxValue > 0 ? series.values.findIndex((value) => value === maxValue) : -1;
+    const peakLabel = peakIndex >= 0 ? series.labels[peakIndex] : "--";
+
+    setPrintHistoryChartMeta(
+      els.historyChartTrendMeta,
+      `Last 14 days | ${total.toLocaleString()} completed jobs | Peak bucket ${peakLabel} (${maxValue})`
+    );
+  } else {
+    const series = getPrintHistoryFilamentUsageSeries(jobs);
+    drawPrintHistorySimpleBarChart(els.historyChartTrendCanvas, {
+      labels: series.labels,
+      values: series.values,
+      color: "#bdbdbd",
+      emptyMessage: "No filament usage in last 14 days.",
+    });
+
+    const total = series.values.reduce((sum, value) => sum + (Number(value) || 0), 0);
+    const maxValue = Math.max(...series.values, 0);
+    setPrintHistoryChartMeta(
+      els.historyChartTrendMeta,
+      `Last 14 days | Total ${total.toFixed(1)} m | Peak day ${maxValue.toFixed(1)} m`
+    );
+  }
+}
+function renderPrintHistoryTable() {
+  if (!els.historyTableHead || !els.historyTableBody) return;
+
+  const visibleColumns = getPrintHistoryVisibleColumns();
+  const filtered = getFilteredPrintHistoryJobs();
+  const pagination = getPaginatedPrintHistory(filtered);
+  const selected = getPrintHistorySelectionSet();
+
+  if (els.historySummary) {
+    const loaded = (state.printHistory.jobs || []).length;
+    const total = Math.max(Number(state.printHistory.totalCount) || 0, loaded);
+    els.historySummary.textContent = `${loaded.toLocaleString()} loaded | ${pagination.total.toLocaleString()} filtered | ${total.toLocaleString()} total | ${selected.size.toLocaleString()} selected`;
+  }
+
+  els.historyTableHead.innerHTML = "";
+  els.historyTableBody.innerHTML = "";
+
+  const headRow = document.createElement("tr");
+  const selectTh = document.createElement("th");
+  selectTh.className = "history-select-col";
+
+  const selectAll = document.createElement("input");
+  selectAll.type = "checkbox";
+  selectAll.checked = pagination.pageItems.length > 0 && pagination.pageItems.every((entry) => selected.has(entry.uid));
+  selectAll.indeterminate = !selectAll.checked && pagination.pageItems.some((entry) => selected.has(entry.uid));
+  selectAll.addEventListener("change", () => {
+    pagination.pageItems.forEach((entry) => {
+      if (selectAll.checked) selected.add(entry.uid);
+      else selected.delete(entry.uid);
+    });
+    renderPrintHistoryCard();
+  });
+
+  selectTh.appendChild(selectAll);
+  headRow.appendChild(selectTh);
+
+  visibleColumns.forEach((columnKey) => {
+    const th = document.createElement("th");
+    th.textContent = PRINT_HISTORY_COLUMN_DEFINITIONS.find((entry) => entry.key === columnKey)?.label || columnKey;
+    headRow.appendChild(th);
+  });
+
+  const actionsTh = document.createElement("th");
+  actionsTh.textContent = "Actions";
+  actionsTh.className = "history-actions-col";
+  headRow.appendChild(actionsTh);
+  els.historyTableHead.appendChild(headRow);
+
+  if (!pagination.pageItems.length) {
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = visibleColumns.length + 2;
+    cell.className = "history-empty-cell";
+    cell.textContent = state.printHistory.isLoading ? "Loading print history..." : "No print history entries match the current filters.";
+    row.appendChild(cell);
+    els.historyTableBody.appendChild(row);
+  } else {
+    pagination.pageItems.forEach((job) => {
+      const row = document.createElement("tr");
+      row.className = `history-row ${getPrintHistoryStatusInfo(job.status).className}`;
+
+      const checkCell = document.createElement("td");
+      checkCell.className = "history-select-col";
+
+      const check = document.createElement("input");
+      check.type = "checkbox";
+      check.checked = selected.has(job.uid);
+      check.addEventListener("change", () => {
+        if (check.checked) selected.add(job.uid);
+        else selected.delete(job.uid);
+        renderPrintHistoryCard();
+      });
+
+      checkCell.appendChild(check);
+      row.appendChild(checkCell);
+
+      visibleColumns.forEach((columnKey) => {
+        const cell = document.createElement("td");
+        if (columnKey === "status") {
+          const badge = document.createElement("span");
+          badge.className = `history-status-pill ${getPrintHistoryStatusInfo(job.status).className}`;
+          badge.textContent = formatPrintHistoryCell(job, columnKey);
+          cell.appendChild(badge);
+        } else {
+          cell.textContent = formatPrintHistoryCell(job, columnKey);
+        }
+        row.appendChild(cell);
+      });
+
+      const actionCell = document.createElement("td");
+      actionCell.className = "history-actions-col";
+
+      const fileLabel = document.createElement("p");
+      fileLabel.className = "history-row-name";
+      fileLabel.textContent = job.filename || job.displayName || "--";
+
+      const removeBtn = document.createElement("button");
+      removeBtn.type = "button";
+      removeBtn.className = "history-row-action danger";
+      removeBtn.textContent = state.printHistory.actionInFlight && state.printHistory.activeJobId === job.uid ? "Removing..." : "Remove";
+      removeBtn.disabled = state.printHistory.isLoading || state.printHistory.actionInFlight || state.connectionStatus !== "connected";
+      removeBtn.addEventListener("click", async () => {
+        const confirmed = window.confirm(`Remove history entry for "${job.filename || job.displayName}"? This cannot be undone.`);
+        if (!confirmed) return;
+        await requestPrintHistoryDeleteJob(job.uid);
+      });
+
+      actionCell.append(fileLabel, removeBtn);
+      row.appendChild(actionCell);
+      els.historyTableBody.appendChild(row);
+    });
+  }
+
+  if (els.historyPageLabel) els.historyPageLabel.textContent = `Page ${pagination.page} of ${pagination.pageCount}`;
+  if (els.historyPagePrev) els.historyPagePrev.disabled = pagination.page <= 1 || state.printHistory.isLoading;
+  if (els.historyPageNext) els.historyPageNext.disabled = pagination.page >= pagination.pageCount || state.printHistory.isLoading;
+}
+
+function renderPrintHistoryStatus() {
+  if (!state.client) return setPrintHistoryStatusMessage("Connect to Moonraker to manage print history.", "warn");
+  if (state.connectionStatus !== "connected") return setPrintHistoryStatusMessage("Moonraker disconnected. Reconnect to manage print history.", "warn");
+  if (state.printHistory.isLoading) return setPrintHistoryStatusMessage("Loading print history...", "info");
+  if (state.printHistory.isTotalsLoading) return setPrintHistoryStatusMessage("Refreshing print history totals...", "info");
+  if (state.printHistory.actionInFlight) return setPrintHistoryStatusMessage(`Running ${state.printHistory.actionLabel || "history action"}...`, "warn");
+  if (state.printHistory.lastError) return setPrintHistoryStatusMessage(`Print history action failed: ${state.printHistory.lastError}`, "error");
+  if (state.printHistory.lastUpdatedMs) return setPrintHistoryStatusMessage(`Last refreshed: ${new Date(state.printHistory.lastUpdatedMs).toLocaleTimeString()}`, "info");
+  return setPrintHistoryStatusMessage("Press Refresh to load print history.", "info");
+}
+
+function renderPrintHistoryCard() {
+  if (els.historySearch && els.historySearch.value !== String(state.printHistory.searchQuery || "")) {
+    els.historySearch.value = String(state.printHistory.searchQuery || "");
+  }
+  if (els.historyStatusFilter) els.historyStatusFilter.value = normalizePrintHistoryStatusFilter(state.printHistory.statusFilter);
+  if (els.historySort) els.historySort.value = normalizePrintHistorySort(state.printHistory.sortMode);
+  if (els.historyPageSize) els.historyPageSize.value = String(normalizePrintHistoryPageSize(state.printHistory.pageSize));
+  if (els.historyLoadLimit) els.historyLoadLimit.value = String(normalizePrintHistoryLoadLimit(state.printHistory.loadedLimit));
+  state.printHistory.statusViewMode = normalizePrintHistoryStatusView(state.printHistory.statusViewMode);
+  state.printHistory.statusValueMode = normalizePrintHistoryStatusValue(state.printHistory.statusValueMode);
+  state.printHistory.trendMode = normalizePrintHistoryTrendMode(state.printHistory.trendMode);
+  if (els.historyTimeDays) els.historyTimeDays.checked = !!state.printHistory.timeInDays;
+  if (els.historyLengthKm) els.historyLengthKm.checked = !!state.printHistory.lengthInKilometers;
+
+  const connected = state.connectionStatus === "connected";
+  const busy = state.printHistory.isLoading || state.printHistory.actionInFlight;
+  const hasRows = (state.printHistory.jobs || []).length > 0;
+  const allLoaded = isPrintHistoryAllLoaded();
+  const selectedCount = getPrintHistorySelectionSet().size;
+  const statsControlsDisabled = busy || !hasRows;
+
+  if (els.historyRefresh) {
+    els.historyRefresh.disabled = !connected || busy;
+    els.historyRefresh.classList.toggle("is-loading", state.printHistory.isLoading);
+  }
+  if (els.historyLoadAll) els.historyLoadAll.disabled = !connected || busy;
+  if (els.historyExportCsv) els.historyExportCsv.disabled = !hasRows || state.printHistory.isLoading;
+  if (els.historyRemoveSelected) els.historyRemoveSelected.disabled = !connected || busy || selectedCount === 0;
+  if (els.historyRemoveAll) els.historyRemoveAll.disabled = !connected || busy || !hasRows;
+  if (els.historyResetStats) els.historyResetStats.disabled = !connected || busy || state.printHistory.isTotalsLoading;
+  if (els.historyColumnsToggle) els.historyColumnsToggle.disabled = busy;
+  if (els.historySearch) els.historySearch.disabled = busy;
+  if (els.historyStatusFilter) els.historyStatusFilter.disabled = busy;
+  if (els.historySort) els.historySort.disabled = busy;
+  if (els.historyPageSize) els.historyPageSize.disabled = busy;
+  if (els.historyLoadLimit) els.historyLoadLimit.disabled = busy;
+  if (els.historyStatsLoadAll) {
+    els.historyStatsLoadAll.disabled = !connected || busy || allLoaded;
+    els.historyStatsLoadAll.hidden = allLoaded;
+  }
+
+  [
+    els.historyStatusViewChart,
+    els.historyStatusViewTable,
+    els.historyStatusValueJobs,
+    els.historyStatusValueFilament,
+    els.historyStatusValueTime,
+    els.historyTrendModeFilament,
+    els.historyTrendModePrinttime,
+  ].forEach((button) => {
+    if (!button) return;
+    button.disabled = statsControlsDisabled;
+  });
+
+  if (!connected || busy) closePrintHistoryColumnsMenu();
+
+  renderPrintHistoryColumnsMenu();
+  renderPrintHistoryStats();
+  renderPrintHistoryStatsVisuals();
+  renderPrintHistoryTable();
+  renderPrintHistoryStatus();
+}
+
+async function loadPrintHistoryTotals({ silent = true } = {}) {
+  if (!state.client || state.connectionStatus !== "connected") {
+    renderPrintHistoryCard();
+    return state.printHistory.totals;
+  }
+
+  if (state.printHistory.isTotalsLoading) return state.printHistory.totals;
+
+  state.printHistory.isTotalsLoading = true;
+  renderPrintHistoryCard();
+
+  try {
+    const response = await state.client.getHistoryTotals();
+    state.printHistory.totals = extractPrintHistoryTotals(response);
+    state.printHistory.totalsUpdatedMs = Date.now();
+    state.printHistory.lastError = "";
+    renderPrintHistoryCard();
+    return state.printHistory.totals;
+  } catch (error) {
+    const message = error?.message || String(error);
+    state.printHistory.lastError = message;
+    if (!silent) appendConsole(`Print history totals load failed: ${message}`, "error");
+    renderPrintHistoryCard();
+    return state.printHistory.totals;
+  } finally {
+    state.printHistory.isTotalsLoading = false;
+    renderPrintHistoryCard();
+  }
+}
+
+async function loadPrintHistory({ source = "user", silent = false, forceLimit = null } = {}) {
+  if (!state.client || state.connectionStatus !== "connected") {
+    renderPrintHistoryCard();
+    return [];
+  }
+
+  if (state.printHistory.isLoading) return state.printHistory.jobs || [];
+
+  state.printHistory.isLoading = true;
+  state.printHistory.lastError = "";
+  renderPrintHistoryCard();
+
+  const limit = forceLimit == null
+    ? normalizePrintHistoryLoadLimit(state.printHistory.loadedLimit)
+    : normalizePrintHistoryLoadLimit(forceLimit);
+
+  try {
+    const [listResponse] = await Promise.all([
+      state.client.getHistoryList(limit > 0 ? { limit } : {}),
+      loadPrintHistoryTotals({ silent: true }),
+    ]);
+
+    const { jobs, totalCount } = extractPrintHistoryList(listResponse);
+    state.printHistory.jobs = jobs;
+    state.printHistory.totalCount = Math.max(totalCount, jobs.length);
+    state.printHistory.loadedLimit = limit;
+    state.printHistory.page = 1;
+    state.printHistory.lastError = "";
+    state.printHistory.lastUpdatedMs = Date.now();
+
+    const selected = getPrintHistorySelectionSet();
+    const known = new Set(jobs.map((job) => job.uid));
+    [...selected].forEach((uid) => {
+      if (!known.has(uid)) selected.delete(uid);
+    });
+
+    persistPrintHistoryViewState();
+
+    if (source === "user") {
+      appendConsole(`Loaded ${jobs.length.toLocaleString()} print history entr${jobs.length === 1 ? "y" : "ies"}.`, "info");
+    }
+
+    renderPrintHistoryCard();
+    return jobs;
+  } catch (error) {
+    const message = error?.message || String(error);
+    state.printHistory.lastError = message;
+    if (!silent) appendConsole(`Print history load failed: ${message}`, "error");
+    renderPrintHistoryCard();
+    return [];
+  } finally {
+    state.printHistory.isLoading = false;
+    renderPrintHistoryCard();
+  }
+}
+
+async function requestPrintHistoryDeleteJob(uid) {
+  const normalizedUid = String(uid || "").trim();
+  if (!normalizedUid || !state.client || state.connectionStatus !== "connected") return false;
+
+  state.printHistory.actionInFlight = true;
+  state.printHistory.actionLabel = normalizedUid === "all" ? "remove all history" : "remove history entry";
+  state.printHistory.activeJobId = normalizedUid;
+  renderPrintHistoryCard();
+
+  try {
+    await state.client.deleteHistoryJob(normalizedUid);
+    if (normalizedUid === "all") getPrintHistorySelectionSet().clear();
+    else getPrintHistorySelectionSet().delete(normalizedUid);
+
+    state.printHistory.lastError = "";
+    appendConsole(
+      normalizedUid === "all" ? "All print history entries removed." : `Removed print history entry ${normalizedUid}.`,
+      "warn"
+    );
+
+    await loadPrintHistory({ source: "delete", silent: true });
+    await loadPrintHistoryTotals({ silent: true });
+    return true;
+  } catch (error) {
+    const message = error?.message || String(error);
+    state.printHistory.lastError = message;
+    appendConsole(`Print history delete failed: ${message}`, "error");
+    renderPrintHistoryCard();
+    return false;
+  } finally {
+    state.printHistory.actionInFlight = false;
+    state.printHistory.actionLabel = "";
+    state.printHistory.activeJobId = "";
+    renderPrintHistoryCard();
+  }
+}
+
+async function requestPrintHistoryDeleteSelected() {
+  const selected = [...getPrintHistorySelectionSet()];
+  if (!selected.length || !state.client || state.connectionStatus !== "connected") return false;
+
+  const confirmed = window.confirm(`Remove ${selected.length} selected history entr${selected.length === 1 ? "y" : "ies"}? This cannot be undone.`);
+  if (!confirmed) return false;
+
+  state.printHistory.actionInFlight = true;
+  state.printHistory.actionLabel = "remove selected history";
+  renderPrintHistoryCard();
+
+  try {
+    let removed = 0;
+    for (const uid of selected) {
+      try {
+        await state.client.deleteHistoryJob(uid);
+        getPrintHistorySelectionSet().delete(uid);
+        removed += 1;
+      } catch (error) {
+        log.warn("Failed to remove history entry", { uid, error: error?.message || String(error) });
+      }
+    }
+
+    if (removed > 0) {
+      appendConsole(`Removed ${removed} selected history entr${removed === 1 ? "y" : "ies"}.`, "warn");
+      state.printHistory.lastError = "";
+      await loadPrintHistory({ source: "delete", silent: true });
+      await loadPrintHistoryTotals({ silent: true });
+      return true;
+    }
+
+    state.printHistory.lastError = "No selected history entries could be removed.";
+    appendConsole(state.printHistory.lastError, "error");
+    renderPrintHistoryCard();
+    return false;
+  } finally {
+    state.printHistory.actionInFlight = false;
+    state.printHistory.actionLabel = "";
+    state.printHistory.activeJobId = "";
+    renderPrintHistoryCard();
+  }
+}
+
+async function requestPrintHistoryDeleteAll() {
+  if (!state.client || state.connectionStatus !== "connected") return false;
+  const count = (state.printHistory.jobs || []).length;
+  if (!count) return false;
+
+  const confirmed = window.confirm("Remove all print history entries? This cannot be undone.");
+  if (!confirmed) return false;
+
+  return requestPrintHistoryDeleteJob("all");
+}
+
+async function requestPrintHistoryResetTotals() {
+  if (!state.client || state.connectionStatus !== "connected") return false;
+
+  const confirmed = window.confirm("Reset print history totals? Existing job entries stay intact.");
+  if (!confirmed) return false;
+
+  state.printHistory.actionInFlight = true;
+  state.printHistory.actionLabel = "reset history totals";
+  renderPrintHistoryCard();
+
+  try {
+    await state.client.resetHistoryTotals();
+    state.printHistory.lastError = "";
+    appendConsole("Print history totals reset.", "warn");
+    await loadPrintHistoryTotals({ silent: true });
+    return true;
+  } catch (error) {
+    const message = error?.message || String(error);
+    state.printHistory.lastError = message;
+    appendConsole(`Print history totals reset failed: ${message}`, "error");
+    renderPrintHistoryCard();
+    return false;
+  } finally {
+    state.printHistory.actionInFlight = false;
+    state.printHistory.actionLabel = "";
+    renderPrintHistoryCard();
+  }
+}
+
+function requestPrintHistoryExportCsv() {
+  const selected = getPrintHistorySelectionSet();
+  const base = getFilteredPrintHistoryJobs();
+  const entries = selected.size ? base.filter((entry) => selected.has(entry.uid)) : base;
+
+  if (!entries.length) {
+    setPrintHistoryStatusMessage("No history rows available for CSV export.", "warn");
+    return false;
+  }
+
+  const columns = getPrintHistoryVisibleColumns();
+  const headers = ["uid", "file", ...columns, "job_id"];
+
+  const escapeValue = (value) => {
+    const text = String(value ?? "");
+    if (text.includes('"') || text.includes(",") || text.includes("\n")) {
+      return `"${text.replace(/"/g, '""')}"`;
+    }
+    return text;
+  };
+
+  const lines = [headers, ...entries.map((job) => [
+    job.uid,
+    job.filename || job.displayName,
+    ...columns.map((columnKey) => formatPrintHistoryCell(job, columnKey)),
+    job.jobId || "",
+  ])]
+    .map((row) => row.map((value) => escapeValue(value)).join(","))
+    .join("\n");
+
+  const blob = new Blob([lines], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `print-history-${new Date().toISOString().replace(/[:.]/g, "-")}.csv`;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+
+  appendConsole(`Exported ${entries.length} print history entr${entries.length === 1 ? "y" : "ies"} to CSV.`, "info");
+  return true;
+}
+
+function schedulePrintHistoryRefresh(delayMs = 320) {
+  if (printHistoryRefreshTimer) clearTimeout(printHistoryRefreshTimer);
+
+  printHistoryRefreshTimer = setTimeout(() => {
+    printHistoryRefreshTimer = null;
+    if (!state.client || state.connectionStatus !== "connected") return;
+    void loadPrintHistory({ source: "notify", silent: true });
+    void loadPrintHistoryTotals({ silent: true });
+  }, Math.max(80, Number(delayMs) || 320));
+}
+
+function resetPrintHistoryState({ preserveViewState = true } = {}) {
+  const preserved = preserveViewState
+    ? {
+      searchQuery: state.printHistory.searchQuery,
+      statusFilter: state.printHistory.statusFilter,
+      sortMode: state.printHistory.sortMode,
+      pageSize: state.printHistory.pageSize,
+      visibleColumns: getPrintHistoryVisibleColumns(),
+      timeInDays: !!state.printHistory.timeInDays,
+      lengthInKilometers: !!state.printHistory.lengthInKilometers,
+      loadedLimit: state.printHistory.loadedLimit,
+      statusViewMode: state.printHistory.statusViewMode,
+      statusValueMode: state.printHistory.statusValueMode,
+      trendMode: state.printHistory.trendMode,
+    }
+    : null;
+
+  state.printHistory = createDefaultPrintHistoryState();
+
+  if (preserved) {
+    state.printHistory.searchQuery = String(preserved.searchQuery || "").trim();
+    state.printHistory.statusFilter = normalizePrintHistoryStatusFilter(preserved.statusFilter);
+    state.printHistory.sortMode = normalizePrintHistorySort(preserved.sortMode);
+    state.printHistory.pageSize = normalizePrintHistoryPageSize(preserved.pageSize);
+    state.printHistory.visibleColumns = normalizePrintHistoryVisibleColumns(preserved.visibleColumns);
+    state.printHistory.timeInDays = !!preserved.timeInDays;
+    state.printHistory.lengthInKilometers = !!preserved.lengthInKilometers;
+    state.printHistory.loadedLimit = normalizePrintHistoryLoadLimit(preserved.loadedLimit);
+    state.printHistory.statusViewMode = normalizePrintHistoryStatusView(preserved.statusViewMode);
+    state.printHistory.statusValueMode = normalizePrintHistoryStatusValue(preserved.statusValueMode);
+    state.printHistory.trendMode = normalizePrintHistoryTrendMode(preserved.trendMode);
+  }
+
+  renderPrintHistoryCard();
+}
 function normalizeConfigPath(path) {
   return String(path || "")
     .trim()
@@ -10309,7 +12443,7 @@ function renderConfigFileList() {
 
     if (!state.config.files.length) {
       empty.textContent = "No supported files found (.conf, .cfg, .config, .log, .bak, .bkp, .doc, .md, .txt).";
-    } else if (searchQuery) {
+        } else if (searchQuery) {
       if (selectedType === CONFIG_FILE_TYPES.ALL) {
         empty.textContent = `No files match "${searchQuery}".`;
       } else {
@@ -10618,8 +12752,7 @@ async function saveConfigAndRestartFirmware() {
     } else {
       setConfigStatus(`Saved ${selectedPath} and requested firmware restart.`);
     }
-
-    await loadConfigFiles({ preserveSelection: true });
+  await loadConfigFiles({ preserveSelection: true });
     return true;
   } catch (error) {
     const message = error?.message || String(error);
@@ -10688,6 +12821,20 @@ async function requestViewChange(viewName) {
     return;
   }
 
+  if (viewName === "history") {
+    if (!state.client || state.connectionStatus !== "connected") {
+      renderPrintHistoryCard();
+      return;
+    }
+
+    if (!(state.printHistory.jobs || []).length && !state.printHistory.isLoading) {
+      await loadPrintHistory({ source: "view", silent: true });
+    } else {
+      renderPrintHistoryCard();
+    }
+
+    return;
+  }
   if (viewName === "pretty-gcode") {
     updatePrettyGcodeToolhead({ skipRender: true });
 
@@ -10722,8 +12869,7 @@ async function requestViewChange(viewName) {
     return;
   }
 
-  if (!state.config.files.length) {
-    await loadConfigFiles({ preserveSelection: true });
+  if (!state.config.files.length) {  await loadConfigFiles({ preserveSelection: true });
   } else {
     applyConfigFilter();
     syncConfigSelectionUi();
@@ -10768,8 +12914,7 @@ async function handleConfigUpload(file) {
   try {
     await state.client.uploadFile("config", file, directory, file.name);
 
-    appendConsole(`Config uploaded: ${file.name}`, "info");
-    await loadConfigFiles({ preserveSelection: true });
+    appendConsole(`Config uploaded: ${file.name}`, "info");  await loadConfigFiles({ preserveSelection: true });
 
     const uploadedPath = normalizeConfigPath(directory ? `${directory}/${file.name}` : file.name);
     if (uploadedPath) {
@@ -10838,9 +12983,7 @@ async function createNewConfigFile() {
 
   try {
     await state.client.saveConfigFileText(normalizedPath, "");
-    appendConsole(`Config file created: ${normalizedPath}`, "info");
-
-    await loadConfigFiles({ preserveSelection: true });
+    appendConsole(`Config file created: ${normalizedPath}`, "info");  await loadConfigFiles({ preserveSelection: true });
     await requestConfigFileOpen(targetEntryPath);
 
     setConfigStatus(`Created ${normalizedPath}.`);
@@ -11022,6 +13165,155 @@ function wireEvents() {
     await loadJobsFiles({ source: "user" });
   });
 
+  const loadCompleteHistory = async () => {
+    state.printHistory.loadedLimit = 0;
+    persistPrintHistoryViewState();
+    await loadPrintHistory({ source: "user", forceLimit: 0 });
+  };
+
+  els.historyRefresh?.addEventListener("click", async () => {
+    await loadPrintHistory({ source: "user" });
+  });
+
+  els.historyLoadAll?.addEventListener("click", async () => {
+    await loadCompleteHistory();
+  });
+
+  els.historyStatsLoadAll?.addEventListener("click", async () => {
+    await loadCompleteHistory();
+  });
+
+  els.historyStatusViewChart?.addEventListener("click", () => {
+    state.printHistory.statusViewMode = "chart";
+    persistPrintHistoryViewState();
+    renderPrintHistoryCard();
+  });
+
+  els.historyStatusViewTable?.addEventListener("click", () => {
+    state.printHistory.statusViewMode = "table";
+    persistPrintHistoryViewState();
+    renderPrintHistoryCard();
+  });
+
+  els.historyStatusValueJobs?.addEventListener("click", () => {
+    state.printHistory.statusValueMode = "jobs";
+    persistPrintHistoryViewState();
+    renderPrintHistoryCard();
+  });
+
+  els.historyStatusValueFilament?.addEventListener("click", () => {
+    state.printHistory.statusValueMode = "filament";
+    persistPrintHistoryViewState();
+    renderPrintHistoryCard();
+  });
+
+  els.historyStatusValueTime?.addEventListener("click", () => {
+    state.printHistory.statusValueMode = "time";
+    persistPrintHistoryViewState();
+    renderPrintHistoryCard();
+  });
+
+  els.historyTrendModeFilament?.addEventListener("click", () => {
+    state.printHistory.trendMode = "filament_usage";
+    persistPrintHistoryViewState();
+    renderPrintHistoryCard();
+  });
+
+  els.historyTrendModePrinttime?.addEventListener("click", () => {
+    state.printHistory.trendMode = "printtime_avg";
+    persistPrintHistoryViewState();
+    renderPrintHistoryCard();
+  });
+
+  els.historyExportCsv?.addEventListener("click", () => {
+    requestPrintHistoryExportCsv();
+  });
+
+  els.historyRemoveSelected?.addEventListener("click", async () => {
+    await requestPrintHistoryDeleteSelected();
+  });
+
+  els.historyRemoveAll?.addEventListener("click", async () => {
+    await requestPrintHistoryDeleteAll();
+  });
+
+  els.historyResetStats?.addEventListener("click", async () => {
+    await requestPrintHistoryResetTotals();
+  });
+
+  els.historyTimeDays?.addEventListener("change", () => {
+    state.printHistory.timeInDays = !!els.historyTimeDays?.checked;
+    persistPrintHistoryViewState();
+    renderPrintHistoryCard();
+  });
+
+  els.historyLengthKm?.addEventListener("change", () => {
+    state.printHistory.lengthInKilometers = !!els.historyLengthKm?.checked;
+    persistPrintHistoryViewState();
+    renderPrintHistoryCard();
+  });
+
+  els.historySearch?.addEventListener("input", () => {
+    state.printHistory.searchQuery = String(els.historySearch?.value || "").trim();
+    state.printHistory.page = 1;
+    persistPrintHistoryViewState();
+    renderPrintHistoryCard();
+  });
+
+  els.historySearch?.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    state.printHistory.searchQuery = "";
+    state.printHistory.page = 1;
+    if (els.historySearch) {
+      els.historySearch.value = "";
+      els.historySearch.blur();
+    }
+    persistPrintHistoryViewState();
+    renderPrintHistoryCard();
+  });
+
+  els.historyStatusFilter?.addEventListener("change", () => {
+    state.printHistory.statusFilter = normalizePrintHistoryStatusFilter(els.historyStatusFilter?.value);
+    state.printHistory.page = 1;
+    persistPrintHistoryViewState();
+    renderPrintHistoryCard();
+  });
+
+  els.historySort?.addEventListener("change", () => {
+    state.printHistory.sortMode = normalizePrintHistorySort(els.historySort?.value);
+    state.printHistory.page = 1;
+    persistPrintHistoryViewState();
+    renderPrintHistoryCard();
+  });
+
+  els.historyPageSize?.addEventListener("change", () => {
+    state.printHistory.pageSize = normalizePrintHistoryPageSize(els.historyPageSize?.value);
+    state.printHistory.page = 1;
+    persistPrintHistoryViewState();
+    renderPrintHistoryCard();
+  });
+
+  els.historyLoadLimit?.addEventListener("change", async () => {
+    state.printHistory.loadedLimit = normalizePrintHistoryLoadLimit(els.historyLoadLimit?.value);
+    state.printHistory.page = 1;
+    persistPrintHistoryViewState();
+    await loadPrintHistory({ source: "user", forceLimit: state.printHistory.loadedLimit });
+  });
+
+  els.historyColumnsToggle?.addEventListener("click", (event) => {
+    event.preventDefault();
+    setPrintHistoryColumnsMenuOpen(!state.printHistory.columnsMenuOpen);
+  });
+
+  els.historyPagePrev?.addEventListener("click", () => {
+    state.printHistory.page = Math.max(1, Number(state.printHistory.page || 1) - 1);
+    renderPrintHistoryCard();
+  });
+
+  els.historyPageNext?.addEventListener("click", () => {
+    state.printHistory.page = Math.max(1, Number(state.printHistory.page || 1) + 1);
+    renderPrintHistoryCard();
+  });
   els.prettyGcodeFollow?.addEventListener("change", () => {
     state.prettyGcode.followToolhead = !!els.prettyGcodeFollow?.checked;
     renderPrettyGcodeView();
@@ -11134,6 +13426,10 @@ function wireEvents() {
     if (isPrettyGcodeViewerVisible()) {
       renderPrettyGcodeView();
     }
+
+    if (state.activeView === "history") {
+      renderPrintHistoryStatsVisuals();
+    }
   });
 
   els.jobsSortToggle?.addEventListener("click", (event) => {
@@ -11177,6 +13473,10 @@ function wireEvents() {
 
   els.jobsUploadPrintBtn?.addEventListener("click", () => {
     closeJobsToolbarMenus();
+    openFileInputPicker(els.jobsUploadPrintInput);
+  });
+
+  els.headerUploadPrintBtn?.addEventListener("click", () => {
     openFileInputPicker(els.jobsUploadPrintInput);
   });
 
@@ -11622,11 +13922,24 @@ function wireEvents() {
     if (!clickedJobsToolbar) {
       closeJobsToolbarMenus();
     }
+
+    const clickedHistoryToolbar = target instanceof Element && !!target.closest("#history-feature-panel");
+    const clickedHistoryHead = target instanceof Element && !!target.closest(".history-head-actions");
+    if (!clickedHistoryToolbar && !clickedHistoryHead) {
+      closePrintHistoryColumnsMenu();
+    }
   });
 
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
       closeJobsToolbarMenus();
+      closePrintHistoryColumnsMenu();
+      closeControlsZOffsetSaveDialog();
+
+      if (els.manualProbeDialog?.open && state.manualProbe.isActive) {
+        event.preventDefault();
+        void requestManualProbeAbort();
+      }
     }
   });
   els.quickGcode.forEach((btn) => {
@@ -11719,6 +14032,92 @@ function wireEvents() {
 
   els.controlsToolSet?.addEventListener("click", async () => {
     await sendToolSelectionCommand();
+  });
+
+  const handleControlsZOffsetStepClick = async (event) => {
+    const target = event.target instanceof Element
+      ? event.target.closest("button[data-control-zoffset-adjust][data-control-zoffset-step]")
+      : null;
+    if (!(target instanceof HTMLButtonElement) || target.disabled) return;
+
+    const direction = String(target.dataset.controlZoffsetAdjust || "").trim().toLowerCase();
+    const step = Number(target.dataset.controlZoffsetStep);
+    if (!Number.isFinite(step) || step <= 0) return;
+
+    await sendControlsZOffsetAdjust(direction, step);
+  };
+
+  els.controlsZOffsetUpGroup?.addEventListener("click", async (event) => {
+    await handleControlsZOffsetStepClick(event);
+  });
+
+  els.controlsZOffsetDownGroup?.addEventListener("click", async (event) => {
+    await handleControlsZOffsetStepClick(event);
+  });
+
+  els.controlsZOffsetClear?.addEventListener("click", async () => {
+    await clearControlsZOffset();
+  });
+
+  els.controlsZOffsetSave?.addEventListener("click", async () => {
+    await saveControlsZOffset();
+  });
+
+  els.controlsZOffsetSaveDialogSaveConfig?.addEventListener("click", async () => {
+    await saveControlsZOffsetConfig();
+  });
+
+  els.controlsZOffsetSaveDialogLater?.addEventListener("click", () => {
+    closeControlsZOffsetSaveDialog();
+  });
+
+  els.controlsZOffsetSaveDialogOk?.addEventListener("click", () => {
+    closeControlsZOffsetSaveDialog();
+  });
+
+  els.controlsZOffsetSaveDialog?.addEventListener("click", (event) => {
+    if (event.target === els.controlsZOffsetSaveDialog) {
+      closeControlsZOffsetSaveDialog();
+    }
+  });
+
+  const handleManualProbeButtonClick = async (event) => {
+    const target = event.target instanceof Element
+      ? event.target.closest("button[data-manual-probe-testz]")
+      : null;
+    if (!(target instanceof HTMLButtonElement) || target.disabled) return;
+
+    const stepCommand = String(target.dataset.manualProbeTestz || "").trim();
+    if (!stepCommand) return;
+
+    await requestManualProbeTestz(stepCommand);
+  };
+
+  els.manualProbeDialog?.addEventListener("click", async (event) => {
+    await handleManualProbeButtonClick(event);
+  });
+
+  els.manualProbeClose?.addEventListener("click", async () => {
+    await requestManualProbeAbort();
+  });
+
+  els.manualProbeAbort?.addEventListener("click", async () => {
+    await requestManualProbeAbort();
+  });
+
+  els.manualProbeAccept?.addEventListener("click", async () => {
+    await requestManualProbeAccept();
+  });
+
+  els.manualProbeDialog?.addEventListener("click", async (event) => {
+    if (event.target === els.manualProbeDialog) {
+      await requestManualProbeAbort();
+    }
+  });
+
+  els.manualProbeDialog?.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    void requestManualProbeAbort();
   });
 
   els.controlsFanOn?.addEventListener("click", async () => {
@@ -11816,6 +14215,34 @@ async function init() {
     els.jobsTypeFilter.value = normalizeJobsTypeFilter(state.jobs.typeFilter);
   }
 
+  if (els.historySearch) {
+    els.historySearch.value = String(state.printHistory.searchQuery || "");
+  }
+
+  if (els.historyStatusFilter) {
+    els.historyStatusFilter.value = normalizePrintHistoryStatusFilter(state.printHistory.statusFilter);
+  }
+
+  if (els.historySort) {
+    els.historySort.value = normalizePrintHistorySort(state.printHistory.sortMode);
+  }
+
+  if (els.historyPageSize) {
+    els.historyPageSize.value = String(normalizePrintHistoryPageSize(state.printHistory.pageSize));
+  }
+
+  if (els.historyLoadLimit) {
+    els.historyLoadLimit.value = String(normalizePrintHistoryLoadLimit(state.printHistory.loadedLimit));
+  }
+
+  if (els.historyTimeDays) {
+    els.historyTimeDays.checked = !!state.printHistory.timeInDays;
+  }
+
+  if (els.historyLengthKm) {
+    els.historyLengthKm.checked = !!state.printHistory.lengthInKilometers;
+  }
+
   getConsoleInstances().forEach((instance) => {
     if (instance.autoscrollInput) {
       instance.autoscrollInput.checked = state.console.autoscroll;
@@ -11855,6 +14282,7 @@ async function init() {
   renderEndstopsCard();
   renderMachineLogFilesCard();
   renderJobsCard();
+  renderPrintHistoryCard();
   renderPrettyGcodeView();
 
   try {
@@ -11870,6 +14298,7 @@ async function init() {
   setControlDistance(state.controls.distance, { persist: false });
   state.controls.fanSpeed = normalizeFanSpeedPercent(state.controls.fanSpeed);
   renderControlsPanel();
+  renderManualProbeDialog();
   wireEvents();
 
   connectMoonraker().catch((error) => {
@@ -11886,6 +14315,35 @@ init().catch((error) => {
   setConnectionUi("error");
   appendConsole(`Init failed: ${message}`, "error");
 });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

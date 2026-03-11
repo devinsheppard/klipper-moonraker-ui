@@ -94,7 +94,7 @@ export class MoonrakerClient {
 
     this.ws.addEventListener("open", () => {
       this.setConnectionState("connected");
-      this.send({ method: "printer.objects.subscribe", params: { objects: { print_stats: null, virtual_sdcard: null, gcode_move: null, motion_report: null, extruder: null, heater_bed: null, toolhead: null } } });
+      this.send({ method: "printer.objects.subscribe", params: { objects: { print_stats: null, virtual_sdcard: null, gcode_move: null, motion_report: null, extruder: null, heater_bed: null, toolhead: null, manual_probe: null } } });
     });
 
     this.ws.addEventListener("close", () => this.setConnectionState("disconnected"));
@@ -249,6 +249,87 @@ export class MoonrakerClient {
       return true;
     }
   }
+  async getHistoryList(params = {}) {
+    const payload = params && typeof params === "object" ? params : {};
+    const query = new URLSearchParams();
+
+    ["start", "limit", "before", "since", "order"].forEach((key) => {
+      if (!Object.prototype.hasOwnProperty.call(payload, key)) return;
+      const value = payload[key];
+      if (value == null || value === "") return;
+      query.set(key, String(value));
+    });
+
+    const queryString = query.toString();
+    const path = queryString ? `/server/history/list?${queryString}` : "/server/history/list";
+
+    try {
+      return await this.call(path);
+    } catch (error) {
+      const status = Number(error?.status);
+      if (!Number.isFinite(status) || ![404, 405, 501].includes(status)) {
+        throw error;
+      }
+
+      return this.call("/server/history/list", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    }
+  }
+
+  async getHistoryTotals() {
+    try {
+      return await this.call("/server/history/totals");
+    } catch (error) {
+      const status = Number(error?.status);
+      if (!Number.isFinite(status) || ![404, 405, 501].includes(status)) {
+        throw error;
+      }
+
+      return this.call("/server/history/totals", { method: "POST" });
+    }
+  }
+
+  async deleteHistoryJob(uid) {
+    const normalized = String(uid || "").trim();
+    if (!normalized) {
+      throw new Error("A history job id is required.");
+    }
+
+    const payload = normalized === "all" ? { all: true } : { uid: normalized };
+
+    try {
+      return await this.call("/server/history/delete_job", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    } catch (error) {
+      const status = Number(error?.status);
+      if (!Number.isFinite(status) || ![404, 405, 501].includes(status)) {
+        throw error;
+      }
+
+      const query = normalized === "all" ? "all=true" : `uid=${encodeURIComponent(normalized)}`;
+      return this.call(`/server/history/delete_job?${query}`, { method: "POST" });
+    }
+  }
+
+  async resetHistoryTotals() {
+    try {
+      return await this.call("/server/history/reset_totals", { method: "POST" });
+    } catch (error) {
+      const status = Number(error?.status);
+      if (!Number.isFinite(status) || ![404, 405, 501].includes(status)) {
+        throw error;
+      }
+
+      return this.call("/server/history/reset_totals");
+    }
+  }
+
   async getServerInfo() {
     return this.call("/server/info");
   }
@@ -690,5 +771,6 @@ export class MoonrakerClient {
     return this.deleteFile("logs", path);
   }
 }
+
 
 
