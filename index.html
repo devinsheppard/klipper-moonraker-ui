@@ -114,7 +114,15 @@
           <article class="card" id="card-print-progress">
             <div class="card-head status-card-head">
               <h3>Status</h3>
-              <span id="status-layer" class="status-layer">Layer: --/--</span>
+              <div class="status-head-meta">
+                <span id="status-layer" class="status-layer">Layer: --/--</span>
+                <div id="status-print-actions" class="status-print-actions" hidden>
+                  <button type="button" id="status-print-cancel" class="status-job-action danger">Cancel</button>
+                  <button type="button" id="status-print-pause" class="status-job-action">Pause</button>
+                  <button type="button" id="status-print-resume" class="status-job-action">Resume</button>
+                </div>
+                <button type="button" id="status-clear-file" class="status-clear-file-btn" hidden>Clear File</button>
+              </div>
             </div>
             <div class="progress-wrap">
               <div class="progress-bar" id="progress-bar"></div>
@@ -1151,6 +1159,7 @@
   <script type="module" src="./src/app.js"></script>
 </body>
 </html>
+
 
 
 

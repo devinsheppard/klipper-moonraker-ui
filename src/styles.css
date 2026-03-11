@@ -1,10 +1,10 @@
 :root {
   --bg: #080d18;
   --bg-soft: #121d33;
-  --card: rgba(9, 15, 28, 0.9);
-  --line: rgba(203, 213, 225, 0.36);
+  --card: rgba(6, 11, 22, 0.96);
+  --line: rgba(226, 232, 240, 0.54);
   --text: #f8fafc;
-  --muted: #cbd5e1;
+  --muted: #e2e8f0;
   --accent: #22d3ee;
   --accent-2: #34d399;
   --danger: #f97316;
@@ -17,10 +17,10 @@
 :root[data-theme="ocean"] {
   --bg: #080d18;
   --bg-soft: #121d33;
-  --card: rgba(9, 15, 28, 0.9);
-  --line: rgba(203, 213, 225, 0.36);
+  --card: rgba(6, 11, 22, 0.96);
+  --line: rgba(226, 232, 240, 0.54);
   --text: #f8fafc;
-  --muted: #cbd5e1;
+  --muted: #e2e8f0;
   --accent: #22d3ee;
   --accent-2: #34d399;
   --danger: #f97316;
@@ -31,9 +31,9 @@
   --bg: #140f0b;
   --bg-soft: #24160f;
   --card: rgba(36, 22, 16, 0.9);
-  --line: rgba(251, 146, 60, 0.4);
+  --line: rgba(251, 146, 60, 0.58);
   --text: #fff7ed;
-  --muted: #f1d1b2;
+  --muted: #ffe4c7;
   --accent: #fb923c;
   --accent-2: #f97316;
   --danger: #ef4444;
@@ -44,9 +44,9 @@
   --bg: #0c0f14;
   --bg-soft: #171d25;
   --card: rgba(18, 23, 31, 0.9);
-  --line: rgba(203, 213, 225, 0.34);
+  --line: rgba(226, 232, 240, 0.5);
   --text: #f8fafc;
-  --muted: #d1d9e6;
+  --muted: #e5ebf5;
   --accent: #7cb6ff;
   --accent-2: #2dd4bf;
   --danger: #f87171;
@@ -607,8 +607,8 @@ p {
 }
 
 .controls-jog-btn.controls-homing-pending {
-  border-color: color-mix(in srgb, #f87171 72%, #000000 28%);
-  background: #fecaca;
+  border-color: color-mix(in srgb, #ef4444 74%, #000000 26%);
+  background: #fca5a5;
   color: #020617;
 }
 
@@ -626,8 +626,8 @@ p {
 }
 
 #controls-motors-off.controls-homing-pending {
-  border-color: color-mix(in srgb, #f87171 72%, #000000 28%);
-  background: #fecaca;
+  border-color: color-mix(in srgb, #ef4444 74%, #000000 26%);
+  background: #fca5a5;
   color: #020617;
 }
 
@@ -1048,6 +1048,42 @@ select {
   font-size: 0.82rem;
   color: var(--muted);
   white-space: nowrap;
+}
+
+.status-head-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.status-print-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.status-job-action {
+  min-height: 30px;
+  min-width: 70px;
+  padding: 0 9px;
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.status-job-action.danger {
+  border-color: color-mix(in srgb, var(--danger) 66%, var(--line) 34%);
+  color: color-mix(in srgb, var(--danger) 84%, #ffffff 16%);
+}
+
+.status-clear-file-btn {
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
 
 .console-card-head {
@@ -3922,6 +3958,8 @@ select {
   opacity: 0;
   pointer-events: none;
 }
+
+
 
 
 

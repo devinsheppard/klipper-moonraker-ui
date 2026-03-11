@@ -273,6 +273,11 @@ const els = {
   statusFlowrate: document.getElementById("status-flowrate"),
   statusFilament: document.getElementById("status-filament"),
   statusLayer: document.getElementById("status-layer"),
+  statusClearFile: document.getElementById("status-clear-file"),
+  statusPrintActions: document.getElementById("status-print-actions"),
+  statusPrintPause: document.getElementById("status-print-pause"),
+  statusPrintResume: document.getElementById("status-print-resume"),
+  statusPrintCancel: document.getElementById("status-print-cancel"),
   tempHotend: document.getElementById("temp-hotend"),
   tempBed: document.getElementById("temp-bed"),
   tempHotendState: document.getElementById("temp-hotend-state"),
@@ -1133,6 +1138,7 @@ const state = {
     lastMotionReport: {},
     lastToolhead: {},
     countdownTargetMs: null,
+    fileClearedAfterComplete: false,
   },
 };
 
@@ -2390,6 +2396,7 @@ function setPrinterState(value) {
   els.printerDot.style.background = meta.color;
   renderJobsJobControls();
   renderControlsPanel();
+  renderStatusClearFileButton(state.printStatus.lastPrintStats);
 }
 
 function setStatusFilename(filename) {
@@ -2402,6 +2409,76 @@ function setStatusFilename(filename) {
   els.statusFileName.title = label;
 }
 
+function shouldShowStatusClearFileButton(printStats = null) {
+  const stats = printStats && typeof printStats === "object" ? printStats : state.printStatus.lastPrintStats || {};
+  const finishedState = normalizePrinterState(stats?.state || stats?.status);
+  const uiState = normalizePrinterState(els.printerState?.dataset?.state || "");
+  const rawFilename = String(stats?.filename || state.printStatus.filename || "").trim();
+  const printActive = uiState === "printing" || uiState === "paused" || finishedState === "printing" || finishedState === "paused";
+  const printCompleted = finishedState === "complete";
+
+  return state.connectionStatus === "connected"
+    && !printActive
+    && printCompleted
+    && !!rawFilename
+    && !state.printStatus.fileClearedAfterComplete;
+}
+function renderStatusClearFileButton(printStats = null) {
+  if (!els.statusClearFile) return;
+
+  const show = shouldShowStatusClearFileButton(printStats);
+  els.statusClearFile.hidden = !show;
+  els.statusClearFile.disabled = !show;
+}
+
+function clearStatusCardValues() {
+  setStatusFilename("");
+  setStatusThumbnail("");
+
+  if (els.progressBar) {
+    els.progressBar.style.width = "0%";
+  }
+
+  if (els.progressText) {
+    els.progressText.textContent = "0%";
+  }
+
+  if (els.statusEtp) {
+    els.statusEtp.textContent = "--:--:--";
+  }
+
+  if (els.statusFinish) {
+    els.statusFinish.textContent = "--:--";
+  }
+
+  updateStatusCountdown(null);
+
+  if (els.statusSpeed) {
+    els.statusSpeed.textContent = "-- mm/s";
+  }
+
+  if (els.statusFlowrate) {
+    els.statusFlowrate.textContent = "--%";
+  }
+
+  if (els.statusFilament) {
+    els.statusFilament.textContent = "--";
+  }
+
+  if (els.statusLayer) {
+    els.statusLayer.textContent = "Layer: --/--";
+  }
+}
+
+function clearStatusFileFromCard() {
+  const stats = state.printStatus.lastPrintStats || {};
+  const finishedState = normalizePrinterState(stats?.state || stats?.status);
+  if (finishedState !== "complete") return;
+
+  state.printStatus.fileClearedAfterComplete = true;
+  clearStatusCardValues();
+  renderStatusClearFileButton(stats);
+}
 function encodePathForUrl(path) {
   return String(path || "")
     .split("/")
@@ -2826,9 +2903,35 @@ async function syncStatusFileMetadata(filename) {
 
 function updateStatusFileInfo(printStats, gcodeMove = null, motionReport = null, toolhead = null) {
   const stats = mergePrintStatsSnapshot(printStats);
-  const filename = typeof stats.filename === "string" ? stats.filename : "";
+  const rawFilename = typeof stats.filename === "string" ? stats.filename : "";
+  const normalizedRaw = rawFilename.trim();
+  const finishedState = normalizePrinterState(stats?.state || stats?.status);
+
+  if (finishedState !== "complete") {
+    state.printStatus.fileClearedAfterComplete = false;
+  }
+
+  const filename = (finishedState === "complete" && state.printStatus.fileClearedAfterComplete) ? "" : rawFilename;
   const normalized = filename.trim();
+  const statusCardCleared = finishedState === "complete" && state.printStatus.fileClearedAfterComplete;
   const simulationMode = isPrettySimulationMode();
+
+  if (statusCardCleared) {
+    clearStatusCardValues();
+    renderControlsPanel();
+    renderJobsJobControls();
+    renderStatusClearFileButton(stats);
+
+    if (!simulationMode) {
+      updatePrettyGcodeToolhead({ skipRender: !isPrettyGcodeViewerVisible() });
+    }
+
+    if (state.activeView === "files") {
+      renderJobsList();
+    }
+
+    return;
+  }
 
   setStatusFilename(filename);
   updateStatusTiming(stats);
@@ -2836,6 +2939,7 @@ function updateStatusFileInfo(printStats, gcodeMove = null, motionReport = null,
   renderStatusLayer(stats);
   renderControlsPanel();
   renderJobsJobControls();
+  renderStatusClearFileButton(stats);
 
   if (!simulationMode) {
     updatePrettyGcodeToolhead({ skipRender: !isPrettyGcodeViewerVisible() });
@@ -2847,11 +2951,15 @@ function updateStatusFileInfo(printStats, gcodeMove = null, motionReport = null,
 
   if (!normalized) {
     setStatusThumbnail("");
-    if (!simulationMode && state.prettyGcode.activeFile) {
-      void syncPrettyGcodeForActiveFile("");
-    } else if (isPrettyGcodeViewerVisible()) {
-      renderPrettyGcodeView();
+
+    if (!normalizedRaw) {
+      if (!simulationMode && state.prettyGcode.activeFile) {
+        void syncPrettyGcodeForActiveFile("");
+      } else if (isPrettyGcodeViewerVisible()) {
+        renderPrettyGcodeView();
+      }
     }
+
     return;
   }
 
@@ -2865,7 +2973,6 @@ function updateStatusFileInfo(printStats, gcodeMove = null, motionReport = null,
     void syncPrettyGcodeForActiveFile(normalized);
   }
 }
-
 function switchView(viewName) {
   if (!isKnownView(viewName)) return;
   els.navItems.forEach((btn) => btn.classList.toggle("active", btn.dataset.view === viewName));
@@ -5855,6 +5962,50 @@ function setupCollapsibleCards() {
   });
 }
 
+function mergeMacroKeys(...lists) {
+  const merged = [];
+  const seen = new Set();
+
+  lists.forEach((list) => {
+    const source = Array.isArray(list) ? list : [];
+
+    source.forEach((entry) => {
+      let key = String(entry || "").trim();
+      if (!key) return;
+
+      if (!key.toLowerCase().startsWith("gcode_macro ")) {
+        key = `gcode_macro ${key}`;
+      }
+
+      const normalized = key.replace(/^gcode_macro\s+/i, "gcode_macro ").trim();
+      if (!normalized) return;
+
+      const lowered = normalized.toLowerCase();
+      if (seen.has(lowered)) return;
+
+      seen.add(lowered);
+      merged.push(normalized);
+    });
+  });
+
+  return merged;
+}
+
+function extractMacroKeysFromConfigText(configText) {
+  const source = String(configText || "");
+  if (!source.trim()) return [];
+
+  const keys = [];
+  const matches = source.matchAll(/^\s*\[\s*gcode_macro\s+([^\]\r\n]+?)\s*\]\s*$/gmi);
+
+  for (const match of matches) {
+    const name = String(match?.[1] || "").trim();
+    if (!name) continue;
+    keys.push(`gcode_macro ${name}`);
+  }
+
+  return mergeMacroKeys(keys);
+}
 async function connectMoonraker() {
   appendConsole(`Connecting to ${state.moonrakerUrl}`, "info");
   log.info("Connecting to Moonraker.", { baseUrl: state.moonrakerUrl });
@@ -6070,7 +6221,55 @@ async function connectMoonraker() {
     const macroResponse = await state.client.getMacros();
     const settings = macroResponse?.result?.status?.configfile?.settings || {};
     updateControlsToolsFromConfig(settings);
-    const macros = Object.keys(settings).filter((k) => k.startsWith("gcode_macro "));
+
+    let macros = mergeMacroKeys(
+      Object.keys(settings).filter((key) => String(key || "").toLowerCase().startsWith("gcode_macro "))
+    );
+
+    try {
+      const printerConfigText = await state.client.getConfigFileText("printer.cfg");
+      const printerConfigMacros = extractMacroKeysFromConfigText(printerConfigText);
+      macros = mergeMacroKeys(macros, printerConfigMacros);
+    } catch (fallbackError) {
+      log.debug("printer.cfg macro parse fallback failed.", {
+        error: fallbackError?.message || String(fallbackError),
+      });
+    }
+
+    if (!macros.length) {
+      try {
+        const objectsResponse = await state.client.call("/printer/objects/list");
+        const objects = Array.isArray(objectsResponse?.result?.objects)
+          ? objectsResponse.result.objects
+          : [];
+
+        macros = mergeMacroKeys(
+          objects.filter((entry) => String(entry || "").toLowerCase().startsWith("gcode_macro "))
+        );
+      } catch (fallbackError) {
+        log.debug("Macro object list fallback failed.", {
+          error: fallbackError?.message || String(fallbackError),
+        });
+      }
+    }
+
+    if (!macros.length) {
+      try {
+        const helpResponse = await state.client.call("/printer/gcode/help");
+        const helperEntries = normalizeConsoleHelperEntries(helpResponse);
+        const helperMacroNames = helperEntries
+          .map((entry) => String(entry.command || "").trim())
+          .filter((command) => command.includes("_"))
+          .filter((command) => !/^[GMT]\d+$/i.test(command));
+
+        macros = mergeMacroKeys(helperMacroNames.map((name) => `gcode_macro ${name}`));
+      } catch (fallbackError) {
+        log.debug("Macro gcode help fallback failed.", {
+          error: fallbackError?.message || String(fallbackError),
+        });
+      }
+    }
+
     renderMacros(macros);
     log.info("Macros loaded.", { count: macros.length });
   } catch (error) {
@@ -8474,6 +8673,34 @@ function renderJobsBreadcrumbs() {
   });
 }
 
+function renderStatusPrintActions(current, { isConnected, busy } = {}) {
+  const activeState = current && typeof current === "object" ? current : getCurrentJobsPrintState();
+  const connected = typeof isConnected === "boolean" ? isConnected : state.connectionStatus === "connected";
+  const actionsBusy = typeof busy === "boolean" ? busy : state.jobs.actionInFlight;
+  const isPrinting = activeState.state === "printing";
+  const isPaused = activeState.state === "paused";
+  const activePrint = connected && (isPrinting || isPaused);
+
+  if (els.statusPrintActions) {
+    els.statusPrintActions.hidden = !activePrint;
+  }
+
+  if (els.statusPrintPause) {
+    els.statusPrintPause.hidden = !isPrinting;
+    els.statusPrintPause.disabled = !activePrint || actionsBusy || !isPrinting;
+  }
+
+  if (els.statusPrintResume) {
+    els.statusPrintResume.hidden = !isPaused;
+    els.statusPrintResume.disabled = !activePrint || actionsBusy || !isPaused;
+  }
+
+  if (els.statusPrintCancel) {
+    els.statusPrintCancel.hidden = !activePrint;
+    els.statusPrintCancel.disabled = !activePrint || actionsBusy;
+  }
+}
+
 function renderJobsJobControls() {
   const isConnected = state.connectionStatus === "connected";
   const busy = state.jobs.actionInFlight;
@@ -8498,6 +8725,8 @@ function renderJobsJobControls() {
     const cancellable = current.state === "printing" || current.state === "paused";
     els.jobsCancel.disabled = !isConnected || busy || !cancellable;
   }
+
+  renderStatusPrintActions(current, { isConnected, busy });
 }
 
 function formatJobsLength(value) {
@@ -10742,6 +10971,22 @@ function wireEvents() {
   els.sidebarToggle?.addEventListener("click", toggleSidebar);
   els.machineSideToggle?.addEventListener("click", toggleMachineSideColumn);
 
+  els.statusClearFile?.addEventListener("click", () => {
+    clearStatusFileFromCard();
+  });
+
+  els.statusPrintPause?.addEventListener("click", async () => {
+    await requestJobsPrintAction("pause");
+  });
+
+  els.statusPrintResume?.addEventListener("click", async () => {
+    await requestJobsPrintAction("resume");
+  });
+
+  els.statusPrintCancel?.addEventListener("click", async () => {
+    await requestJobsPrintAction("cancel");
+  });
+
   els.configRefresh?.addEventListener("click", async () => {
     await loadConfigFiles({ preserveSelection: true });
   });
@@ -11641,6 +11886,11 @@ init().catch((error) => {
   setConnectionUi("error");
   appendConsole(`Init failed: ${message}`, "error");
 });
+
+
+
+
+
 
 
 
