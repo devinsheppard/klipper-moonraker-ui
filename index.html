@@ -156,6 +156,27 @@
           <span class="nav-item-label">Settings</span>
         </button>
       </nav>
+      <div id="settings-subnav" class="settings-subnav" hidden>
+        <p class="settings-subnav-title">Settings</p>
+        <div class="settings-subnav-list" role="navigation" aria-label="Settings sections">
+          <button type="button" class="settings-subnav-item" data-settings-anchor="general">General</button>
+          <button type="button" class="settings-subnav-item" data-settings-anchor="warnings">Warnings</button>
+          <button type="button" class="settings-subnav-item" data-settings-anchor="theme">Theme</button>
+          <button type="button" class="settings-subnav-item" data-settings-anchor="auth">Authentication</button>
+          <button type="button" class="settings-subnav-item" data-settings-anchor="console">Console</button>
+          <button type="button" class="settings-subnav-item" data-settings-anchor="browser">File Browser</button>
+          <button type="button" class="settings-subnav-item" data-settings-anchor="editor">File Editor</button>
+          <button type="button" class="settings-subnav-item" data-settings-anchor="macros">Macros</button>
+          <button type="button" class="settings-subnav-item" data-settings-anchor="camera">Camera</button>
+          <button type="button" class="settings-subnav-item" data-settings-anchor="toolhead">Tool</button>
+          <button type="button" class="settings-subnav-item" data-settings-anchor="presets">Thermal Presets</button>
+          <button type="button" class="settings-subnav-item" data-settings-anchor="gcodePreview">GCode Preview</button>
+          <button type="button" class="settings-subnav-item" data-settings-anchor="timelapse">Timelapse</button>
+          <button type="button" class="settings-subnav-item" data-settings-anchor="mmu">MMU</button>
+          <button type="button" class="settings-subnav-item" data-settings-anchor="spoolman">Spoolman</button>
+          <button type="button" class="settings-subnav-item" data-settings-anchor="versions">Versions</button>
+        </div>
+      </div>
       <div class="status-block">
         <div class="status-pill" id="connection-pill">Disconnected</div>
         <small id="connection-text">Set Moonraker URL in Settings</small>
@@ -1286,13 +1307,13 @@
       <section id="view-settings" class="view">
         <form id="settings-form" class="settings-layout">
           <div class="grid two-col">
-            <article class="card">
+            <article class="card" data-settings-section="general">
               <h3>Connection</h3>
               <label for="moonraker-url">Moonraker URL</label>
               <input id="moonraker-url" type="url" placeholder="http://127.0.0.1:7125" />
             </article>
 
-            <article class="card">
+            <article class="card" data-settings-section="camera">
               <h3>Camera Settings</h3>
 
               <h3>Main Camera</h3>
@@ -1308,6 +1329,7 @@
                 <option value="iframe">Iframe</option>
               </select>
 
+              <div class="settings-section-anchor" data-settings-section="toolhead" aria-hidden="true"></div>
               <h3>Toolhead Cam</h3>
               <label class="checkbox-row" for="toolhead-camera-enabled">
                 <input id="toolhead-camera-enabled" type="checkbox" />
@@ -1324,14 +1346,55 @@
           </div>
 
           <div class="grid two-col">
-            <article class="card">
+            <article class="card" data-settings-section="theme">
               <h3>Interface</h3>
-              <label for="interface-theme">Theme</label>
+              <label for="interface-theme">Base Theme</label>
               <select id="interface-theme">
                 <option value="ocean">Ocean</option>
-                <option value="ember">Ember</option>
+                <option value="ember">Ember (Default)</option>
                 <option value="graphite">Graphite</option>
               </select>
+
+              <label for="theme-community-preset">Community Preset</label>
+              <div class="settings-inline-row">
+                <select id="theme-community-preset">
+                  <option value="custom">Custom</option>
+                  <option value="forge-spectrum">Forge Spectrum</option>
+                  <option value="harbor-night">Harbor Night</option>
+                  <option value="solder-sunset">Solder Sunset</option>
+                  <option value="mint-shift">Mint Shift</option>
+                  <option value="steel-dawn">Steel Dawn</option>
+
+                </select>
+                <button type="button" id="theme-community-apply">Apply Preset</button>
+              </div>
+
+              <div class="theme-color-grid" aria-label="Theme color controls">
+                <label class="theme-color-field" for="theme-color-bg"><span>Background</span><input id="theme-color-bg" type="color" /></label>
+                <label class="theme-color-field" for="theme-color-bg-soft"><span>Surface</span><input id="theme-color-bg-soft" type="color" /></label>
+                <label class="theme-color-field" for="theme-color-text"><span>Text</span><input id="theme-color-text" type="color" /></label>
+                <label class="theme-color-field" for="theme-color-muted"><span>Muted</span><input id="theme-color-muted" type="color" /></label>
+                <label class="theme-color-field" for="theme-color-accent"><span>Accent</span><input id="theme-color-accent" type="color" /></label>
+                <label class="theme-color-field" for="theme-color-accent-2"><span>Accent 2</span><input id="theme-color-accent-2" type="color" /></label>
+                <label class="theme-color-field" for="theme-color-danger"><span>Danger</span><input id="theme-color-danger" type="color" /></label>
+              </div>
+
+              <div class="actions theme-color-actions">
+                <button type="button" id="theme-palette-reset">Reset Colors</button>
+              </div>
+              <p class="muted theme-color-note">Theme colors apply instantly and stay local to this browser.</p>
+
+              <label class="checkbox-row" for="interface-bg-image-enabled">
+                <input id="interface-bg-image-enabled" type="checkbox" />
+                <span>Enable background image</span>
+              </label>
+              <label for="interface-bg-image-url">Background image URL</label>
+              <input id="interface-bg-image-url" type="url" placeholder="https://example.com/background.jpg" />
+              <div class="settings-inline-row">
+                <button type="button" id="interface-bg-image-apply">Apply Background</button>
+                <button type="button" id="interface-bg-image-clear">Clear Background</button>
+              </div>
+              <p class="muted theme-bg-image-note">Image is fixed to viewport and does not move while scrolling.</p>
 
               <label class="checkbox-row" for="interface-compact">
                 <input id="interface-compact" type="checkbox" />
@@ -1345,7 +1408,7 @@
               </select>
             </article>
 
-            <article class="card">
+            <article class="card" data-settings-section="macros">
               <h3>Dashboard Settings</h3>
               <label class="checkbox-row" for="dash-show-print-progress">
                 <input id="dash-show-print-progress" type="checkbox" />
@@ -1386,6 +1449,114 @@
               <div class="actions">
                 <button type="button" id="open-dashboard-layout">Customize Layout</button>
               </div>
+            </article>
+          </div>
+
+          <div class="grid two-col settings-placeholder-grid">
+            <article class="card settings-placeholder-card" data-settings-section="warnings">
+              <h3>Warnings</h3>
+              <p class="muted">Forge placeholder for Fluidd-compatible settings navigation.</p>
+            </article>
+
+            <article class="card settings-placeholder-card" data-settings-section="auth">
+              <h3>Authentication</h3>
+              <p class="muted">Forge placeholder for Fluidd-compatible settings navigation.</p>
+            </article>
+
+            <article class="card settings-console-card" data-settings-section="console">
+              <h3>Console</h3>
+
+              <label for="settings-console-direction">Direction</label>
+              <select id="settings-console-direction">
+                <option value="bottom">Last entry at the bottom</option>
+                <option value="top">Last entry on top</option>
+              </select>
+
+              <label for="settings-console-entry-design">Entry-Design</label>
+              <select id="settings-console-entry-design">
+                <option value="default">Default</option>
+                <option value="compact">Compact</option>
+              </select>
+
+              <label for="settings-console-height">Height</label>
+              <input id="settings-console-height" type="number" min="180" max="960" step="10" />
+              <p class="muted settings-console-note">Console panel height in pixels.</p>
+
+              <div class="settings-console-filters-head">
+                <h4>Console Filters</h4>
+              </div>
+              <label class="checkbox-row" for="settings-console-hide-temps">
+                <input id="settings-console-hide-temps" type="checkbox" />
+                <span>Hide temperatures</span>
+              </label>
+              <label class="checkbox-row" for="settings-console-hide-timelapse">
+                <input id="settings-console-hide-timelapse" type="checkbox" />
+                <span>Hide timelapse commands</span>
+              </label>
+
+              <div class="settings-console-filters-head">
+                <h4>Custom Filters</h4>
+                <button type="button" id="settings-console-filter-add" class="settings-console-filter-add">Add Filter</button>
+              </div>
+
+              <div id="settings-console-filter-editor" class="settings-console-filter-editor" hidden>
+                <label for="settings-console-filter-name">Name</label>
+                <input id="settings-console-filter-name" type="text" maxlength="40" placeholder="Filter label" />
+                <label for="settings-console-filter-regex">Regex Pattern</label>
+                <input id="settings-console-filter-regex" type="text" maxlength="120" placeholder="e.g. ^(Recv: )?T\\d:" />
+                <label class="checkbox-row" for="settings-console-filter-enabled">
+                  <input id="settings-console-filter-enabled" type="checkbox" checked />
+                  <span>Enabled</span>
+                </label>
+                <div class="settings-inline-row">
+                  <button type="button" id="settings-console-filter-save">Save Filter</button>
+                  <button type="button" id="settings-console-filter-cancel">Cancel</button>
+                </div>
+              </div>
+
+              <div id="settings-console-filter-list" class="settings-console-filter-list">
+                <p class="muted settings-console-empty">No custom filters configured.</p>
+              </div>
+            </article>
+
+            <article class="card settings-placeholder-card" data-settings-section="browser">
+              <h3>File Browser</h3>
+              <p class="muted">Forge placeholder for Fluidd-compatible settings navigation.</p>
+            </article>
+
+            <article class="card settings-placeholder-card" data-settings-section="editor">
+              <h3>File Editor</h3>
+              <p class="muted">Forge placeholder for Fluidd-compatible settings navigation.</p>
+            </article>
+
+            <article class="card settings-placeholder-card" data-settings-section="presets">
+              <h3>Thermal Presets</h3>
+              <p class="muted">Forge placeholder for Fluidd-compatible settings navigation.</p>
+            </article>
+
+            <article class="card settings-placeholder-card" data-settings-section="gcodePreview">
+              <h3>GCode Preview</h3>
+              <p class="muted">Forge placeholder for Fluidd-compatible settings navigation.</p>
+            </article>
+
+            <article class="card settings-placeholder-card" data-settings-section="timelapse">
+              <h3>Timelapse</h3>
+              <p class="muted">Forge placeholder for Fluidd-compatible settings navigation.</p>
+            </article>
+
+            <article class="card settings-placeholder-card" data-settings-section="mmu">
+              <h3>MMU</h3>
+              <p class="muted">Forge placeholder for Fluidd-compatible settings navigation.</p>
+            </article>
+
+            <article class="card settings-placeholder-card" data-settings-section="spoolman">
+              <h3>Spoolman</h3>
+              <p class="muted">Forge placeholder for Fluidd-compatible settings navigation.</p>
+            </article>
+
+            <article class="card settings-placeholder-card" data-settings-section="versions">
+              <h3>Versions</h3>
+              <p class="muted">Forge placeholder for Fluidd-compatible settings navigation.</p>
             </article>
           </div>
 
@@ -1485,6 +1656,20 @@
   <script type="module" src="./src/app.js"></script>
 </body>
 </html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

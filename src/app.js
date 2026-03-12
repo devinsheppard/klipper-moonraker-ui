@@ -9,7 +9,124 @@ const CAMERA_MODES = {
 };
 
 const INTERFACE_THEMES = ["ocean", "ember", "graphite"];
+const DEFAULT_INTERFACE_THEME = "ember";
 const INTERFACE_DENSITIES = ["comfortable", "compact"];
+const INTERFACE_THEME_PALETTE_STORAGE_KEY = "interface_theme_palette_v1";
+const INTERFACE_THEME_PRESET_STORAGE_KEY = "interface_theme_preset_v1";
+const INTERFACE_THEME_PRESET_CUSTOM = "custom";
+const INTERFACE_BACKGROUND_IMAGE_URL_STORAGE_KEY = "interface_background_image_url_v1";
+const INTERFACE_BACKGROUND_IMAGE_ENABLED_STORAGE_KEY = "interface_background_image_enabled_v1";
+const INTERFACE_THEME_COLOR_FIELDS = Object.freeze([
+  { key: "bg", cssVar: "--bg", elKey: "themeColorBg" },
+  { key: "bgSoft", cssVar: "--bg-soft", elKey: "themeColorBgSoft" },
+  { key: "text", cssVar: "--text", elKey: "themeColorText" },
+  { key: "muted", cssVar: "--muted", elKey: "themeColorMuted" },
+  { key: "accent", cssVar: "--accent", elKey: "themeColorAccent" },
+  { key: "accent2", cssVar: "--accent-2", elKey: "themeColorAccent2" },
+  { key: "danger", cssVar: "--danger", elKey: "themeColorDanger" },
+]);
+const INTERFACE_THEME_BASE_PALETTES = Object.freeze({
+  ocean: Object.freeze({
+    bg: "#080d18",
+    bgSoft: "#121d33",
+    text: "#f8fafc",
+    muted: "#e2e8f0",
+    accent: "#22d3ee",
+    accent2: "#34d399",
+    danger: "#f97316",
+  }),
+  ember: Object.freeze({
+    bg: "#140f0b",
+    bgSoft: "#24160f",
+    text: "#fff7ed",
+    muted: "#ffe4c7",
+    accent: "#fb923c",
+    accent2: "#f97316",
+    danger: "#ef4444",
+  }),
+  graphite: Object.freeze({
+    bg: "#0c0f14",
+    bgSoft: "#171d25",
+    text: "#f8fafc",
+    muted: "#e5ebf5",
+    accent: "#7cb6ff",
+    accent2: "#2dd4bf",
+    danger: "#f87171",
+  }),
+});
+const COMMUNITY_THEME_PRESETS = Object.freeze([
+  {
+    id: "forge-spectrum",
+    name: "Forge Spectrum",
+    baseTheme: "ocean",
+    palette: {
+      bg: "#0b1020",
+      bgSoft: "#182642",
+      text: "#f8fbff",
+      muted: "#d6e2f2",
+      accent: "#36d1ff",
+      accent2: "#58f1b7",
+      danger: "#ff7a59",
+    },
+  },
+  {
+    id: "harbor-night",
+    name: "Harbor Night",
+    baseTheme: "graphite",
+    palette: {
+      bg: "#0a1118",
+      bgSoft: "#162330",
+      text: "#edf4ff",
+      muted: "#bfd0e8",
+      accent: "#4db2ff",
+      accent2: "#39d5c2",
+      danger: "#ff7474",
+    },
+  },
+  {
+    id: "solder-sunset",
+    name: "Solder Sunset",
+    baseTheme: "ember",
+    palette: {
+      bg: "#1d110d",
+      bgSoft: "#301a12",
+      text: "#fff4e8",
+      muted: "#ffd9bc",
+      accent: "#ff9c53",
+      accent2: "#ff7b44",
+      danger: "#ff5f5f",
+    },
+  },
+  {
+    id: "mint-shift",
+    name: "Mint Shift",
+    baseTheme: "ocean",
+    palette: {
+      bg: "#07131a",
+      bgSoft: "#11282f",
+      text: "#efffff",
+      muted: "#b7e8e2",
+      accent: "#3ce6cf",
+      accent2: "#79f59d",
+      danger: "#ff8f66",
+    },
+  },
+  {
+    id: "steel-dawn",
+    name: "Steel Dawn",
+    baseTheme: "graphite",
+    palette: {
+      bg: "#10141f",
+      bgSoft: "#1b2436",
+      text: "#f3f6ff",
+      muted: "#cad2e8",
+      accent: "#7fa4ff",
+      accent2: "#6cd4ff",
+      danger: "#ff7f8e",
+    },
+  },
+]);
+const COMMUNITY_THEME_PRESET_IDS = COMMUNITY_THEME_PRESETS.map((preset) => preset.id);
 const CONTROL_DISTANCE_VALUES = [0.1, 1, 10, 100];
 const CONTROL_Z_OFFSET_STEPS = Object.freeze([0.005, 0.01, 0.025, 0.05]);
 const CONTROL_Z_OFFSET_SAVE_OPTION_STORAGE_KEY = "controls_z_offset_save_option";
@@ -67,6 +184,24 @@ const VIEW_TITLES = {
   "pretty-gcode": "KlipperView",
   settings: "Settings",
 };
+const SETTINGS_SUBNAV_ANCHORS = [
+  "general",
+  "warnings",
+  "theme",
+  "auth",
+  "console",
+  "browser",
+  "editor",
+  "macros",
+  "camera",
+  "toolhead",
+  "presets",
+  "gcodePreview",
+  "timelapse",
+  "mmu",
+  "spoolman",
+  "versions",
+];
 const ACTIVE_VIEW_STORAGE_KEY = "active_view";
 const CONFIG_SELECTED_PATH_STORAGE_KEY = "config_selected_path";
 const CONFIG_FILE_FILTER_STORAGE_KEY = "config_file_type_filter";
@@ -181,6 +316,16 @@ const CONSOLE_FILTER_STORAGE_KEY = "console_filter_v1";
 const CONSOLE_AUTOSCROLL_STORAGE_KEY = "console_autoscroll_v1";
 const CONSOLE_HIDE_TEMPS_STORAGE_KEY = "console_hide_temps_v1";
 const CONSOLE_RAW_OUTPUT_STORAGE_KEY = "console_raw_output_v1";
+const CONSOLE_HIDE_TIMELAPSE_STORAGE_KEY = "console_hide_timelapse_v1";
+const CONSOLE_DIRECTION_STORAGE_KEY = "console_direction_v1";
+const CONSOLE_ENTRY_DESIGN_STORAGE_KEY = "console_entry_design_v1";
+const CONSOLE_HEIGHT_STORAGE_KEY = "console_height_v1";
+const CONSOLE_CUSTOM_FILTERS_STORAGE_KEY = "console_custom_filters_v1";
+const CONSOLE_DIRECTION_VALUES = ["bottom", "top"];
+const CONSOLE_ENTRY_DESIGN_VALUES = ["default", "compact"];
+const CONSOLE_DEFAULT_HEIGHT = 340;
+const CONSOLE_MIN_HEIGHT = 180;
+const CONSOLE_MAX_HEIGHT = 960;
 const CONSOLE_HISTORY_LIMIT = 120;
 const CONSOLE_PAUSED_BUFFER_LIMIT = 1500;
 const CONSOLE_FILTER_VALUES = ["all", "command", "response", "error", "system"];
@@ -323,6 +468,9 @@ const els = {
   views: [...document.querySelectorAll(".view")],
   sidebar: document.getElementById("sidebar"),
   sidebarToggle: document.getElementById("sidebar-toggle"),
+  settingsSubnav: document.getElementById("settings-subnav"),
+  settingsSubnavItems: [...document.querySelectorAll(".settings-subnav-item")],
+  settingsSections: [...document.querySelectorAll("[data-settings-section]")],
   toolsMenuToggle: document.getElementById("tools-menu-toggle"),
   toolsMenuClose: document.getElementById("tools-menu-close"),
   toolsDrawer: document.getElementById("tools-drawer"),
@@ -570,8 +718,35 @@ const els = {
   settingsForm: document.getElementById("settings-form"),
   moonrakerUrl: document.getElementById("moonraker-url"),
   interfaceTheme: document.getElementById("interface-theme"),
+  themeCommunityPreset: document.getElementById("theme-community-preset"),
+  themeCommunityApply: document.getElementById("theme-community-apply"),
+  themePaletteReset: document.getElementById("theme-palette-reset"),
+  themeColorBg: document.getElementById("theme-color-bg"),
+  themeColorBgSoft: document.getElementById("theme-color-bg-soft"),
+  themeColorText: document.getElementById("theme-color-text"),
+  themeColorMuted: document.getElementById("theme-color-muted"),
+  themeColorAccent: document.getElementById("theme-color-accent"),
+  themeColorAccent2: document.getElementById("theme-color-accent-2"),
+  themeColorDanger: document.getElementById("theme-color-danger"),
   interfaceCompact: document.getElementById("interface-compact"),
   interfaceDensity: document.getElementById("interface-density"),
+  interfaceBgImageEnabled: document.getElementById("interface-bg-image-enabled"),
+  interfaceBgImageUrl: document.getElementById("interface-bg-image-url"),
+  interfaceBgImageApply: document.getElementById("interface-bg-image-apply"),
+  interfaceBgImageClear: document.getElementById("interface-bg-image-clear"),
+  settingsConsoleDirection: document.getElementById("settings-console-direction"),
+  settingsConsoleEntryDesign: document.getElementById("settings-console-entry-design"),
+  settingsConsoleHeight: document.getElementById("settings-console-height"),
+  settingsConsoleHideTemps: document.getElementById("settings-console-hide-temps"),
+  settingsConsoleHideTimelapse: document.getElementById("settings-console-hide-timelapse"),
+  settingsConsoleFilterAdd: document.getElementById("settings-console-filter-add"),
+  settingsConsoleFilterEditor: document.getElementById("settings-console-filter-editor"),
+  settingsConsoleFilterName: document.getElementById("settings-console-filter-name"),
+  settingsConsoleFilterRegex: document.getElementById("settings-console-filter-regex"),
+  settingsConsoleFilterEnabled: document.getElementById("settings-console-filter-enabled"),
+  settingsConsoleFilterSave: document.getElementById("settings-console-filter-save"),
+  settingsConsoleFilterCancel: document.getElementById("settings-console-filter-cancel"),
+  settingsConsoleFilterList: document.getElementById("settings-console-filter-list"),
   dashShowPrintProgress: document.getElementById("dash-show-print-progress"),
   dashShowTemperatures: document.getElementById("dash-show-temperatures"),
   dashShowMotion: document.getElementById("dash-show-motion"),
@@ -667,6 +842,7 @@ let temperatureHistoryDbPromise = null;
 let statusCountdownTimer = null;
 let jobsColumnsDragKey = null;
 let printHistoryRefreshTimer = null;
+let settingsSubnavScrollRaf = null;
 let prettyGcodeSimulationTimer = null;
 let prettyGcodeThreeState = {
   renderer: null,
@@ -704,6 +880,85 @@ function loadStoredChoice(key, fallback, allowedValues) {
   if (!raw) return fallback;
   return allowedValues.includes(raw) ? raw : fallback;
 }
+
+function normalizeThemeColorValue(value, fallback) {
+  const normalized = String(value || "").trim().toLowerCase();
+
+  if (/^#[0-9a-f]{6}$/.test(normalized)) {
+    return normalized;
+  }
+
+  if (/^#[0-9a-f]{3}$/.test(normalized)) {
+    return `#${normalized[1]}${normalized[1]}${normalized[2]}${normalized[2]}${normalized[3]}${normalized[3]}`;
+  }
+
+  return fallback;
+}
+
+function getThemeBasePalette(themeName) {
+  const normalizedTheme = INTERFACE_THEMES.includes(themeName) ? themeName : DEFAULT_INTERFACE_THEME;
+  const source = INTERFACE_THEME_BASE_PALETTES[normalizedTheme] || INTERFACE_THEME_BASE_PALETTES[DEFAULT_INTERFACE_THEME];
+  return { ...source };
+}
+
+function normalizeThemePalette(palette, themeName) {
+  const fallback = getThemeBasePalette(themeName);
+
+  if (!palette || typeof palette !== "object" || Array.isArray(palette)) {
+    return fallback;
+  }
+
+  const normalized = { ...fallback };
+  INTERFACE_THEME_COLOR_FIELDS.forEach((field) => {
+    normalized[field.key] = normalizeThemeColorValue(palette[field.key], fallback[field.key]);
+  });
+
+  return normalized;
+}
+
+function loadStoredThemePalette(themeName) {
+  const fallback = getThemeBasePalette(themeName);
+  const raw = localStorage.getItem(INTERFACE_THEME_PALETTE_STORAGE_KEY);
+  if (!raw) return fallback;
+
+  try {
+    const parsed = JSON.parse(raw);
+    return normalizeThemePalette(parsed, themeName);
+  } catch {
+    return fallback;
+  }
+}
+
+function loadStoredThemePreset() {
+  const raw = String(localStorage.getItem(INTERFACE_THEME_PRESET_STORAGE_KEY) || "").trim();
+  if (COMMUNITY_THEME_PRESET_IDS.includes(raw)) return raw;
+  return INTERFACE_THEME_PRESET_CUSTOM;
+}
+
+function normalizeInterfaceBackgroundImageUrl(value) {
+  const normalized = String(value || "").trim();
+  return normalized.length <= 8192 ? normalized : normalized.slice(0, 8192);
+}
+
+function loadStoredInterfaceBackgroundImageUrl() {
+  return normalizeInterfaceBackgroundImageUrl(localStorage.getItem(INTERFACE_BACKGROUND_IMAGE_URL_STORAGE_KEY));
+}
+
+function createInterfaceState() {
+  const theme = loadStoredChoice("interface_theme", DEFAULT_INTERFACE_THEME, INTERFACE_THEMES);
+  return {
+    theme,
+    compact: loadStoredBool("interface_compact", false),
+    density: loadStoredChoice("interface_density", "comfortable", INTERFACE_DENSITIES),
+    sidebarCollapsed: loadStoredBool("interface_sidebar_collapsed", false),
+    machineSideCollapsed: loadStoredBool(MACHINE_SIDE_COLLAPSED_STORAGE_KEY, false),
+    themePreset: loadStoredThemePreset(),
+    themePalette: loadStoredThemePalette(theme),
+    backgroundImageEnabled: loadStoredBool(INTERFACE_BACKGROUND_IMAGE_ENABLED_STORAGE_KEY, false),
+    backgroundImageUrl: loadStoredInterfaceBackgroundImageUrl(),
+  };
+}
+
 function normalizeZOffsetSaveOption(value) {
   const normalized = String(value || "").trim().toUpperCase();
   return CONTROL_Z_OFFSET_SAVE_OPTION_VALUES.includes(normalized) ? normalized : null;
@@ -1352,13 +1607,7 @@ const state = {
     activeIndex: -1,
     invalidRegex: false,
   },
-  interface: {
-    theme: loadStoredChoice("interface_theme", "ocean", INTERFACE_THEMES),
-    compact: loadStoredBool("interface_compact", false),
-    density: loadStoredChoice("interface_density", "comfortable", INTERFACE_DENSITIES),
-    sidebarCollapsed: loadStoredBool("interface_sidebar_collapsed", false),
-    machineSideCollapsed: loadStoredBool(MACHINE_SIDE_COLLAPSED_STORAGE_KEY, false),
-  },
+  interface: createInterfaceState(),
   dashboard: {
     showPrintProgress: loadStoredBool("dashboard_show_print_progress", true),
     showTemperatures: loadStoredBool("dashboard_show_temperatures", true),
@@ -1431,6 +1680,12 @@ const state = {
     searchQuery: "",
     hideTemps: loadStoredBool(CONSOLE_HIDE_TEMPS_STORAGE_KEY, false),
     rawOutput: loadStoredBool(CONSOLE_RAW_OUTPUT_STORAGE_KEY, false),
+    hideTimelapse: loadStoredBool(CONSOLE_HIDE_TIMELAPSE_STORAGE_KEY, false),
+    direction: normalizeConsoleDirection(localStorage.getItem(CONSOLE_DIRECTION_STORAGE_KEY)),
+    entryDesign: normalizeConsoleEntryDesign(localStorage.getItem(CONSOLE_ENTRY_DESIGN_STORAGE_KEY)),
+    height: normalizeConsoleHeight(localStorage.getItem(CONSOLE_HEIGHT_STORAGE_KEY)),
+    customFilters: loadStoredConsoleCustomFilters(),
+    filterDraftId: null,
     paused: false,
     pausedBuffer: [],
     history: loadStoredConsoleHistory(),
@@ -1482,6 +1737,52 @@ function loadStoredConsoleHistory() {
 function normalizeConsoleFilter(value) {
   const normalized = String(value || "all").trim().toLowerCase();
   return CONSOLE_FILTER_VALUES.includes(normalized) ? normalized : "all";
+}
+
+function normalizeConsoleDirection(value) {
+  const normalized = String(value || "bottom").trim().toLowerCase();
+  return CONSOLE_DIRECTION_VALUES.includes(normalized) ? normalized : "bottom";
+}
+
+function normalizeConsoleEntryDesign(value) {
+  const normalized = String(value || "default").trim().toLowerCase();
+  return CONSOLE_ENTRY_DESIGN_VALUES.includes(normalized) ? normalized : "default";
+}
+
+function normalizeConsoleHeight(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return CONSOLE_DEFAULT_HEIGHT;
+  return Math.min(CONSOLE_MAX_HEIGHT, Math.max(CONSOLE_MIN_HEIGHT, Math.round(numeric)));
+}
+
+function normalizeConsoleCustomFilterEntry(entry) {
+  if (!entry || typeof entry !== "object") return null;
+  const id = String(entry.id || "").trim().slice(0, 64);
+  const name = String(entry.name || "").trim().slice(0, 40);
+  const pattern = String(entry.pattern || "").trim().slice(0, 120);
+  const enabled = entry.enabled !== false;
+  if (!id || !name || !pattern) return null;
+  try {
+    void new RegExp(pattern, "i");
+  } catch {
+    return null;
+  }
+  return { id, name, pattern, enabled };
+}
+
+function loadStoredConsoleCustomFilters() {
+  try {
+    const raw = localStorage.getItem(CONSOLE_CUSTOM_FILTERS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    const normalized = parsed
+      .map((entry) => normalizeConsoleCustomFilterEntry(entry))
+      .filter((entry) => !!entry);
+    return normalized.slice(0, 24);
+  } catch {
+    return [];
+  }
 }
 
 function splitConsoleMessageLines(message) {
@@ -1582,12 +1883,15 @@ function isTemperatureConsoleMessage(message) {
 }
 
 function trimConsoleLog() {
+  const newestOnTop = state.console.direction === "top";
   getConsoleInstances().forEach((instance) => {
     const logElement = instance.log;
     if (!logElement) return;
 
     while (logElement.children.length > CONSOLE_MAX_LINES) {
-      logElement.removeChild(logElement.firstElementChild);
+      const target = newestOnTop ? logElement.lastElementChild : logElement.firstElementChild;
+      if (!target) break;
+      logElement.removeChild(target);
     }
   });
 }
@@ -1608,6 +1912,30 @@ function deriveConsoleType(level, label, preferredType = "") {
   return "system";
 }
 
+function isTimelapseConsoleMessage(message) {
+  const normalized = String(message || "").trim().toLowerCase();
+  if (!normalized) return false;
+  return normalized.includes("timelapse")
+    || normalized.includes("snapshot")
+    || normalized.includes("take_frame")
+    || normalized.includes("render");
+}
+
+function doesConsoleMatchCustomFilter(message) {
+  const sourceText = String(message || "");
+  if (!sourceText) return false;
+
+  const filters = Array.isArray(state.console.customFilters) ? state.console.customFilters : [];
+  return filters.some((entry) => {
+    if (!entry?.enabled) return false;
+    try {
+      return new RegExp(entry.pattern, "i").test(sourceText);
+    } catch {
+      return false;
+    }
+  });
+}
+
 function doesConsoleLineMatchFilter(line) {
   if (!line) return false;
 
@@ -1616,11 +1944,22 @@ function doesConsoleLineMatchFilter(line) {
     return false;
   }
 
+  const sourceText = String(line.dataset.consoleMessage || line.textContent || "");
+
   if (state.console.hideTemps && line.dataset.consoleType === "response") {
-    const sourceText = line.dataset.consoleMessage || line.textContent || "";
     if (isTemperatureConsoleMessage(sourceText)) {
       return false;
     }
+  }
+
+  if (state.console.hideTimelapse && line.dataset.consoleType === "command") {
+    if (isTimelapseConsoleMessage(sourceText)) {
+      return false;
+    }
+  }
+
+  if (doesConsoleMatchCustomFilter(sourceText)) {
+    return false;
   }
 
   const query = String(state.console.searchQuery || "").trim().toLowerCase();
@@ -1667,10 +2006,11 @@ function updateConsoleMeta() {
   });
 }
 
-function scrollConsoleToBottom() {
+function scrollConsoleToLatest() {
+  const newestOnTop = state.console.direction === "top";
   getConsoleInstances().forEach((instance) => {
     if (!instance.log) return;
-    instance.log.scrollTop = instance.log.scrollHeight;
+    instance.log.scrollTop = newestOnTop ? 0 : instance.log.scrollHeight;
   });
 }
 
@@ -1692,7 +2032,7 @@ function refreshConsoleVisibility() {
   updateConsoleMeta();
 
   if (!state.console.paused && state.console.autoscroll) {
-    scrollConsoleToBottom();
+    scrollConsoleToLatest();
   }
 }
 
@@ -1720,17 +2060,22 @@ function appendConsoleLine(line) {
 
   if (!logElements.length) return;
 
+  const newestOnTop = state.console.direction === "top";
   logElements.forEach((logElement, index) => {
     const lineToAppend = index === 0 ? line : line.cloneNode(true);
     applyConsoleLineVisibility(lineToAppend);
-    logElement.appendChild(lineToAppend);
+    if (newestOnTop) {
+      logElement.prepend(lineToAppend);
+    } else {
+      logElement.appendChild(lineToAppend);
+    }
   });
 
   trimConsoleLog();
   updateConsoleMeta();
 
   if (state.console.autoscroll && !state.console.paused) {
-    scrollConsoleToBottom();
+    scrollConsoleToLatest();
   }
 }
 
@@ -1773,7 +2118,7 @@ function setConsoleAutoscroll(enabled) {
   });
 
   if (!state.console.paused && state.console.autoscroll) {
-    scrollConsoleToBottom();
+    scrollConsoleToLatest();
   }
 
   updateConsoleMeta();
@@ -1849,6 +2194,10 @@ function setConsoleHideTemps(enabled) {
     }
   });
 
+  if (els.settingsConsoleHideTemps) {
+    els.settingsConsoleHideTemps.checked = state.console.hideTemps;
+  }
+
   refreshConsoleVisibility();
 }
 
@@ -1861,6 +2210,204 @@ function setConsoleRawOutput(enabled) {
       instance.rawOutputInput.checked = state.console.rawOutput;
     }
   });
+}
+
+function persistConsoleDisplaySettings() {
+  localStorage.setItem(CONSOLE_DIRECTION_STORAGE_KEY, state.console.direction);
+  localStorage.setItem(CONSOLE_ENTRY_DESIGN_STORAGE_KEY, state.console.entryDesign);
+  localStorage.setItem(CONSOLE_HEIGHT_STORAGE_KEY, String(state.console.height));
+}
+
+function persistConsoleCustomFilters() {
+  localStorage.setItem(CONSOLE_CUSTOM_FILTERS_STORAGE_KEY, JSON.stringify(state.console.customFilters || []));
+}
+
+function applyConsoleDisplaySettings() {
+  const direction = normalizeConsoleDirection(state.console.direction);
+  const entryDesign = normalizeConsoleEntryDesign(state.console.entryDesign);
+  const height = normalizeConsoleHeight(state.console.height);
+
+  state.console.direction = direction;
+  state.console.entryDesign = entryDesign;
+  state.console.height = height;
+
+  document.documentElement.dataset.consoleDirection = direction;
+  document.documentElement.dataset.consoleEntryDesign = entryDesign;
+  document.documentElement.style.setProperty("--console-panel-height", String(height) + "px");
+
+  getConsoleInstances().forEach((instance) => {
+    const log = instance.log;
+    if (!log) return;
+    const previousDirection = log.dataset.consoleDirection || "bottom";
+    if (previousDirection !== direction) {
+      const lines = [...log.children].reverse();
+      lines.forEach((line) => log.appendChild(line));
+      log.dataset.consoleDirection = direction;
+    }
+  });
+
+  if (!state.console.paused && state.console.autoscroll) {
+    scrollConsoleToLatest();
+  }
+}
+
+function resetConsoleFilterEditor() {
+  state.console.filterDraftId = null;
+  if (els.settingsConsoleFilterName) els.settingsConsoleFilterName.value = "";
+  if (els.settingsConsoleFilterRegex) els.settingsConsoleFilterRegex.value = "";
+  if (els.settingsConsoleFilterEnabled) els.settingsConsoleFilterEnabled.checked = true;
+  if (els.settingsConsoleFilterEditor) {
+    els.settingsConsoleFilterEditor.hidden = true;
+  }
+}
+
+function openConsoleFilterEditor(entry = null) {
+  state.console.filterDraftId = entry?.id || null;
+  if (els.settingsConsoleFilterName) els.settingsConsoleFilterName.value = entry?.name || "";
+  if (els.settingsConsoleFilterRegex) els.settingsConsoleFilterRegex.value = entry?.pattern || "";
+  if (els.settingsConsoleFilterEnabled) els.settingsConsoleFilterEnabled.checked = entry?.enabled !== false;
+  if (els.settingsConsoleFilterEditor) {
+    els.settingsConsoleFilterEditor.hidden = false;
+  }
+  els.settingsConsoleFilterName?.focus();
+}
+
+function renderConsoleCustomFilterList() {
+  const list = els.settingsConsoleFilterList;
+  if (!list) return;
+
+  const entries = Array.isArray(state.console.customFilters) ? state.console.customFilters : [];
+  list.replaceChildren();
+
+  if (!entries.length) {
+    const empty = document.createElement("p");
+    empty.className = "muted settings-console-empty";
+    empty.textContent = "No custom filters configured.";
+    list.appendChild(empty);
+    return;
+  }
+
+  entries.forEach((entry) => {
+    const row = document.createElement("div");
+    row.className = "settings-console-filter-item";
+
+    const meta = document.createElement("div");
+    meta.className = "settings-console-filter-meta";
+
+    const title = document.createElement("strong");
+    title.textContent = entry.name;
+    meta.appendChild(title);
+
+    const pattern = document.createElement("code");
+    pattern.textContent = entry.pattern;
+    meta.appendChild(pattern);
+
+    const actions = document.createElement("div");
+    actions.className = "settings-console-filter-actions";
+
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.textContent = entry.enabled ? "Disable" : "Enable";
+    toggle.addEventListener("click", () => {
+      state.console.customFilters = entries.map((item) => item.id === entry.id ? { ...item, enabled: !item.enabled } : item);
+      persistConsoleCustomFilters();
+      renderConsoleCustomFilterList();
+      refreshConsoleVisibility();
+    });
+
+    const edit = document.createElement("button");
+    edit.type = "button";
+    edit.textContent = "Edit";
+    edit.addEventListener("click", () => {
+      openConsoleFilterEditor(entry);
+    });
+
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "danger";
+    remove.textContent = "Delete";
+    remove.addEventListener("click", () => {
+      state.console.customFilters = entries.filter((item) => item.id !== entry.id);
+      if (state.console.filterDraftId === entry.id) {
+        resetConsoleFilterEditor();
+      }
+      persistConsoleCustomFilters();
+      renderConsoleCustomFilterList();
+      refreshConsoleVisibility();
+    });
+
+    actions.append(toggle, edit, remove);
+    row.append(meta, actions);
+    list.appendChild(row);
+  });
+}
+
+function syncConsoleSettingsControls() {
+  if (els.settingsConsoleDirection) {
+    els.settingsConsoleDirection.value = normalizeConsoleDirection(state.console.direction);
+  }
+
+  if (els.settingsConsoleEntryDesign) {
+    els.settingsConsoleEntryDesign.value = normalizeConsoleEntryDesign(state.console.entryDesign);
+  }
+
+  if (els.settingsConsoleHeight) {
+    els.settingsConsoleHeight.value = String(normalizeConsoleHeight(state.console.height));
+  }
+
+  if (els.settingsConsoleHideTemps) {
+    els.settingsConsoleHideTemps.checked = !!state.console.hideTemps;
+  }
+
+  if (els.settingsConsoleHideTimelapse) {
+    els.settingsConsoleHideTimelapse.checked = !!state.console.hideTimelapse;
+  }
+
+  renderConsoleCustomFilterList();
+}
+
+function setConsoleHideTimelapse(enabled) {
+  state.console.hideTimelapse = !!enabled;
+  localStorage.setItem(CONSOLE_HIDE_TIMELAPSE_STORAGE_KEY, String(state.console.hideTimelapse));
+  if (els.settingsConsoleHideTimelapse) {
+    els.settingsConsoleHideTimelapse.checked = state.console.hideTimelapse;
+  }
+  refreshConsoleVisibility();
+}
+
+function saveConsoleFilterFromEditor() {
+  const draftId = String(state.console.filterDraftId || "").trim();
+  const name = String(els.settingsConsoleFilterName?.value || "").trim();
+  const pattern = String(els.settingsConsoleFilterRegex?.value || "").trim();
+  const enabled = !!els.settingsConsoleFilterEnabled?.checked;
+
+  if (!name || !pattern) {
+    appendConsole("Custom filter requires both name and regex pattern.", "warn");
+    return;
+  }
+
+  const entry = normalizeConsoleCustomFilterEntry({
+    id: draftId || `console-filter-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    name,
+    pattern,
+    enabled,
+  });
+
+  if (!entry) {
+    appendConsole("Custom filter regex is invalid.", "warn");
+    return;
+  }
+
+  const entries = Array.isArray(state.console.customFilters) ? state.console.customFilters : [];
+  const hasExisting = entries.some((item) => item.id === entry.id);
+  state.console.customFilters = hasExisting
+    ? entries.map((item) => item.id === entry.id ? entry : item)
+    : [...entries, entry].slice(-24);
+
+  persistConsoleCustomFilters();
+  renderConsoleCustomFilterList();
+  refreshConsoleVisibility();
+  resetConsoleFilterEditor();
 }
 
 function buildDefaultConsoleHelperEntries() {
@@ -2375,6 +2922,99 @@ function updateSidebarToggleUi() {
   els.sidebarToggle.setAttribute("title", collapsed ? "Expand sidebar" : "Collapse sidebar");
 }
 
+function normalizeSettingsAnchor(value) {
+  const anchor = String(value || "").trim();
+  return SETTINGS_SUBNAV_ANCHORS.includes(anchor) ? anchor : "";
+}
+
+function setActiveSettingsSubnavAnchor(anchor) {
+  const normalized = normalizeSettingsAnchor(anchor);
+  let found = false;
+
+  els.settingsSubnavItems.forEach((item) => {
+    const itemAnchor = normalizeSettingsAnchor(item.dataset.settingsAnchor);
+    const isActive = !!normalized && itemAnchor === normalized;
+    item.classList.toggle("active", isActive);
+
+    if (isActive) {
+      item.setAttribute("aria-current", "location");
+      found = true;
+    } else {
+      item.removeAttribute("aria-current");
+    }
+  });
+
+  if (!found && els.settingsSubnavItems.length) {
+    els.settingsSubnavItems[0].classList.add("active");
+    els.settingsSubnavItems[0].setAttribute("aria-current", "location");
+  }
+}
+
+function updateSettingsSubnavVisibility() {
+  if (!els.settingsSubnav) return;
+
+  const shouldShow = state.activeView === "settings" && !state.interface.sidebarCollapsed;
+  els.settingsSubnav.hidden = !shouldShow;
+  els.settingsSubnav.setAttribute("aria-hidden", String(!shouldShow));
+
+  if (shouldShow) {
+    queueSettingsSubnavSync();
+  }
+}
+
+function scrollSettingsSectionIntoView(anchor, { behavior = "smooth" } = {}) {
+  const normalized = normalizeSettingsAnchor(anchor);
+  if (!normalized) return false;
+
+  const target = els.settingsSections.find((section) =>
+    normalizeSettingsAnchor(section.getAttribute("data-settings-section")) === normalized
+  );
+
+  if (!(target instanceof HTMLElement)) return false;
+
+  setActiveSettingsSubnavAnchor(normalized);
+  target.scrollIntoView({ behavior, block: "start", inline: "nearest" });
+  return true;
+}
+
+function syncSettingsSubnavFromViewport() {
+  if (state.activeView !== "settings") return;
+  if (!els.settingsSections.length) return;
+
+  const topOffset = 152;
+  let activeAnchor = "";
+  let bestScore = Number.POSITIVE_INFINITY;
+
+  els.settingsSections.forEach((section) => {
+    if (!(section instanceof HTMLElement)) return;
+
+    const anchor = normalizeSettingsAnchor(section.dataset.settingsSection);
+    if (!anchor) return;
+
+    const rect = section.getBoundingClientRect();
+    const delta = rect.top - topOffset;
+    const score = delta <= 0 ? Math.abs(delta) * 0.25 : delta;
+
+    if (score < bestScore) {
+      bestScore = score;
+      activeAnchor = anchor;
+    }
+  });
+
+  if (activeAnchor) {
+    setActiveSettingsSubnavAnchor(activeAnchor);
+  }
+}
+
+function queueSettingsSubnavSync() {
+  if (settingsSubnavScrollRaf !== null) return;
+
+  settingsSubnavScrollRaf = window.requestAnimationFrame(() => {
+    settingsSubnavScrollRaf = null;
+    syncSettingsSubnavFromViewport();
+  });
+}
+
 function updateMachineSideToggleUi() {
   if (!els.machineSideToggle) return;
 
@@ -2386,14 +3026,160 @@ function updateMachineSideToggleUi() {
   els.machineSideToggle.setAttribute("title", label);
 }
 
+function persistInterfaceThemeSettings() {
+  localStorage.setItem("interface_theme", state.interface.theme);
+  localStorage.setItem(INTERFACE_THEME_PRESET_STORAGE_KEY, state.interface.themePreset || INTERFACE_THEME_PRESET_CUSTOM);
+  localStorage.setItem(
+    INTERFACE_THEME_PALETTE_STORAGE_KEY,
+    JSON.stringify(normalizeThemePalette(state.interface.themePalette, state.interface.theme))
+  );
+}
+
+function persistInterfaceBackgroundImageSettings() {
+  localStorage.setItem(INTERFACE_BACKGROUND_IMAGE_ENABLED_STORAGE_KEY, String(!!state.interface.backgroundImageEnabled));
+  const url = normalizeInterfaceBackgroundImageUrl(state.interface.backgroundImageUrl);
+  state.interface.backgroundImageUrl = url;
+
+  if (url) {
+    localStorage.setItem(INTERFACE_BACKGROUND_IMAGE_URL_STORAGE_KEY, url);
+  } else {
+    localStorage.removeItem(INTERFACE_BACKGROUND_IMAGE_URL_STORAGE_KEY);
+  }
+}
+
+function getCssUrlValue(url) {
+  const normalized = normalizeInterfaceBackgroundImageUrl(url);
+  if (!normalized) return "none";
+  const escaped = normalized.replace(/["\\\n\r]/g, "\\$&");
+  return `url("${escaped}")`;
+}
+
+function applyInterfaceBackgroundImage() {
+  const enabled = !!state.interface.backgroundImageEnabled;
+  const url = normalizeInterfaceBackgroundImageUrl(state.interface.backgroundImageUrl);
+  const hasImage = enabled && !!url;
+  document.documentElement.style.setProperty("--app-bg-image", hasImage ? getCssUrlValue(url) : "none");
+}
+
+function syncInterfaceBackgroundImageControls() {
+  if (els.interfaceBgImageEnabled) {
+    els.interfaceBgImageEnabled.checked = !!state.interface.backgroundImageEnabled;
+  }
+
+  if (els.interfaceBgImageUrl) {
+    els.interfaceBgImageUrl.value = normalizeInterfaceBackgroundImageUrl(state.interface.backgroundImageUrl);
+    els.interfaceBgImageUrl.disabled = !state.interface.backgroundImageEnabled;
+  }
+
+  if (els.interfaceBgImageApply) {
+    els.interfaceBgImageApply.disabled = !state.interface.backgroundImageEnabled;
+  }
+}
+
+function applyThemePaletteOverrides() {
+  const palette = normalizeThemePalette(state.interface.themePalette, state.interface.theme);
+  state.interface.themePalette = palette;
+
+  INTERFACE_THEME_COLOR_FIELDS.forEach((field) => {
+    const value = normalizeThemeColorValue(palette[field.key], "");
+    if (!value) {
+      document.documentElement.style.removeProperty(field.cssVar);
+      return;
+    }
+
+    document.documentElement.style.setProperty(field.cssVar, value);
+  });
+}
+
+function syncThemeEditorControls() {
+  if (els.interfaceTheme) {
+    els.interfaceTheme.value = state.interface.theme;
+  }
+
+  if (els.themeCommunityPreset) {
+    const presetId = COMMUNITY_THEME_PRESET_IDS.includes(state.interface.themePreset)
+      ? state.interface.themePreset
+      : INTERFACE_THEME_PRESET_CUSTOM;
+    els.themeCommunityPreset.value = presetId;
+  }
+
+  INTERFACE_THEME_COLOR_FIELDS.forEach((field) => {
+    const input = els[field.elKey];
+    if (!input) return;
+
+    input.value = normalizeThemeColorValue(
+      state.interface.themePalette[field.key],
+      getThemeBasePalette(state.interface.theme)[field.key]
+    );
+  });
+
+  syncInterfaceBackgroundImageControls();
+}
+
+function setThemePaletteColor(colorKey, value, { persist = true } = {}) {
+  const fallback = getThemeBasePalette(state.interface.theme)[colorKey] || "#000000";
+  const nextColor = normalizeThemeColorValue(value, fallback);
+
+  state.interface.themePalette = {
+    ...state.interface.themePalette,
+    [colorKey]: nextColor,
+  };
+  state.interface.themePreset = INTERFACE_THEME_PRESET_CUSTOM;
+
+  applyInterfaceSettings();
+  syncThemeEditorControls();
+
+  if (persist) {
+    persistInterfaceThemeSettings();
+  }
+}
+
+function resetThemePaletteToBaseTheme({ persist = true } = {}) {
+  state.interface.themePalette = getThemeBasePalette(state.interface.theme);
+  state.interface.themePreset = INTERFACE_THEME_PRESET_CUSTOM;
+
+  applyInterfaceSettings();
+  syncThemeEditorControls();
+
+  if (persist) {
+    persistInterfaceThemeSettings();
+  }
+}
+
+function applyThemePresetById(presetId, { persist = true } = {}) {
+  if (presetId === INTERFACE_THEME_PRESET_CUSTOM) {
+    resetThemePaletteToBaseTheme({ persist });
+    return true;
+  }
+
+  const preset = COMMUNITY_THEME_PRESETS.find((entry) => entry.id === presetId);
+  if (!preset) return false;
+
+  state.interface.theme = INTERFACE_THEMES.includes(preset.baseTheme) ? preset.baseTheme : DEFAULT_INTERFACE_THEME;
+  state.interface.themePreset = preset.id;
+  state.interface.themePalette = normalizeThemePalette(preset.palette, state.interface.theme);
+
+  applyInterfaceSettings();
+  syncThemeEditorControls();
+
+  if (persist) {
+    persistInterfaceThemeSettings();
+  }
+
+  return true;
+}
+
 function applyInterfaceSettings() {
   document.documentElement.dataset.theme = state.interface.theme;
+  applyThemePaletteOverrides();
+  applyInterfaceBackgroundImage();
   document.documentElement.dataset.density = state.interface.density;
   document.body.classList.toggle("compact-mode", state.interface.compact);
   document.body.classList.toggle("sidebar-collapsed", state.interface.sidebarCollapsed);
   els.machineLayout?.classList.toggle("machine-side-collapsed", !!state.interface.machineSideCollapsed);
   updateSidebarToggleUi();
   updateMachineSideToggleUi();
+  updateSettingsSubnavVisibility();
 }
 
 function isPrettyGcodeViewerVisible() {
@@ -3756,6 +4542,10 @@ function switchView(viewName) {
   els.pageTitle.textContent = VIEW_TITLES[viewName] || viewName.slice(0, 1).toUpperCase() + viewName.slice(1);
   state.activeView = viewName;
   syncPrettyGcodeCardPlacement();
+  updateSettingsSubnavVisibility();
+  if (viewName === "settings") {
+    queueSettingsSubnavSync();
+  }
   localStorage.setItem(ACTIVE_VIEW_STORAGE_KEY, viewName);
 
   if (isPrettyGcodeViewerVisible()) {
@@ -13605,6 +14395,30 @@ function wireEvents() {
       await requestViewChange(btn.dataset.view);
     });
   });
+
+  els.settingsSubnavItems.forEach((item) => {
+    item.addEventListener("click", (event) => {
+      event.preventDefault();
+      const anchor = normalizeSettingsAnchor(item.dataset.settingsAnchor);
+      if (!anchor) return;
+
+      const scrolled = scrollSettingsSectionIntoView(anchor);
+      if (!scrolled) {
+        setActiveSettingsSubnavAnchor(anchor);
+      }
+    });
+  });
+
+  window.addEventListener("scroll", () => {
+    if (state.activeView !== "settings") return;
+    queueSettingsSubnavSync();
+  }, { passive: true });
+
+  window.addEventListener("resize", () => {
+    if (state.activeView !== "settings") return;
+    queueSettingsSubnavSync();
+  });
+
   els.sidebarToggle?.addEventListener("click", toggleSidebar);
   els.machineSideToggle?.addEventListener("click", toggleMachineSideColumn);
 
@@ -14242,6 +15056,116 @@ function wireEvents() {
     }
   });
 
+  els.interfaceTheme?.addEventListener("change", () => {
+    const nextTheme = INTERFACE_THEMES.includes(els.interfaceTheme.value) ? els.interfaceTheme.value : DEFAULT_INTERFACE_THEME;
+    state.interface.theme = nextTheme;
+    resetThemePaletteToBaseTheme({ persist: false });
+    state.interface.themePreset = INTERFACE_THEME_PRESET_CUSTOM;
+    applyInterfaceSettings();
+    syncThemeEditorControls();
+    persistInterfaceThemeSettings();
+  });
+
+  els.themeCommunityApply?.addEventListener("click", () => {
+    const presetId = String(els.themeCommunityPreset?.value || "").trim();
+    const applied = applyThemePresetById(presetId);
+    if (applied) {
+      appendConsole(`Theme preset applied: ${presetId}`, "info");
+    }
+  });
+
+  els.themePaletteReset?.addEventListener("click", () => {
+    resetThemePaletteToBaseTheme();
+    appendConsole("Theme colors reset to the current base theme.", "info");
+  });
+
+  INTERFACE_THEME_COLOR_FIELDS.forEach((field) => {
+    const input = els[field.elKey];
+    if (!input) return;
+
+    input.addEventListener("input", () => {
+      setThemePaletteColor(field.key, input.value);
+    });
+  });
+
+  els.interfaceBgImageEnabled?.addEventListener("change", () => {
+    state.interface.backgroundImageEnabled = !!els.interfaceBgImageEnabled.checked;
+    state.interface.backgroundImageUrl = normalizeInterfaceBackgroundImageUrl(els.interfaceBgImageUrl?.value || "");
+
+    persistInterfaceBackgroundImageSettings();
+    applyInterfaceSettings();
+    syncInterfaceBackgroundImageControls();
+  });
+
+  els.interfaceBgImageApply?.addEventListener("click", () => {
+    state.interface.backgroundImageEnabled = !!els.interfaceBgImageEnabled?.checked;
+    state.interface.backgroundImageUrl = normalizeInterfaceBackgroundImageUrl(els.interfaceBgImageUrl?.value || "");
+    persistInterfaceBackgroundImageSettings();
+    applyInterfaceSettings();
+    syncInterfaceBackgroundImageControls();
+    appendConsole("Background image settings applied.", "info");
+  });
+
+  els.interfaceBgImageUrl?.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    els.interfaceBgImageApply?.click();
+  });
+
+  els.interfaceBgImageClear?.addEventListener("click", () => {
+    state.interface.backgroundImageEnabled = false;
+    state.interface.backgroundImageUrl = "";
+    persistInterfaceBackgroundImageSettings();
+    applyInterfaceSettings();
+    syncInterfaceBackgroundImageControls();
+    appendConsole("Background image cleared.", "info");
+  });
+
+  els.settingsConsoleDirection?.addEventListener("change", () => {
+    state.console.direction = normalizeConsoleDirection(els.settingsConsoleDirection?.value);
+    persistConsoleDisplaySettings();
+    applyConsoleDisplaySettings();
+  });
+
+  els.settingsConsoleEntryDesign?.addEventListener("change", () => {
+    state.console.entryDesign = normalizeConsoleEntryDesign(els.settingsConsoleEntryDesign?.value);
+    persistConsoleDisplaySettings();
+    applyConsoleDisplaySettings();
+  });
+
+  els.settingsConsoleHeight?.addEventListener("change", () => {
+    state.console.height = normalizeConsoleHeight(els.settingsConsoleHeight?.value);
+    persistConsoleDisplaySettings();
+    applyConsoleDisplaySettings();
+    syncConsoleSettingsControls();
+  });
+
+  els.settingsConsoleHideTemps?.addEventListener("change", () => {
+    setConsoleHideTemps(!!els.settingsConsoleHideTemps?.checked);
+  });
+
+  els.settingsConsoleHideTimelapse?.addEventListener("change", () => {
+    setConsoleHideTimelapse(!!els.settingsConsoleHideTimelapse?.checked);
+  });
+
+  els.settingsConsoleFilterAdd?.addEventListener("click", () => {
+    openConsoleFilterEditor();
+  });
+
+  els.settingsConsoleFilterCancel?.addEventListener("click", () => {
+    resetConsoleFilterEditor();
+  });
+
+  els.settingsConsoleFilterSave?.addEventListener("click", () => {
+    saveConsoleFilterFromEditor();
+  });
+
+  els.settingsConsoleFilterRegex?.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    saveConsoleFilterFromEditor();
+  });
+
   els.settingsForm.addEventListener("submit", async (event) => {
     event.preventDefault();
 
@@ -14249,10 +15173,11 @@ function wireEvents() {
     if (!url) return;
 
     state.moonrakerUrl = url;
-    state.interface.theme = INTERFACE_THEMES.includes(els.interfaceTheme.value) ? els.interfaceTheme.value : "ocean";
+    state.interface.theme = INTERFACE_THEMES.includes(els.interfaceTheme.value) ? els.interfaceTheme.value : DEFAULT_INTERFACE_THEME;
     state.interface.compact = els.interfaceCompact.checked;
     state.interface.density = INTERFACE_DENSITIES.includes(els.interfaceDensity.value) ? els.interfaceDensity.value : "comfortable";
-
+    state.interface.backgroundImageEnabled = !!els.interfaceBgImageEnabled?.checked;
+    state.interface.backgroundImageUrl = normalizeInterfaceBackgroundImageUrl(els.interfaceBgImageUrl?.value || "");
     state.dashboard.showPrintProgress = els.dashShowPrintProgress.checked;
     state.dashboard.showTemperatures = els.dashShowTemperatures.checked;
     state.dashboard.showMotion = els.dashShowMotion.checked;
@@ -14272,7 +15197,8 @@ function wireEvents() {
     state.toolheadCamera.renderMode = els.toolheadCameraRenderMode.value === CAMERA_MODES.IFRAME ? CAMERA_MODES.IFRAME : CAMERA_MODES.IMAGE;
 
     localStorage.setItem("moonraker_url", state.moonrakerUrl);
-    localStorage.setItem("interface_theme", state.interface.theme);
+    persistInterfaceThemeSettings();
+    persistInterfaceBackgroundImageSettings();
     localStorage.setItem("interface_compact", String(state.interface.compact));
     localStorage.setItem("interface_density", state.interface.density);
     localStorage.setItem("interface_sidebar_collapsed", String(state.interface.sidebarCollapsed));
@@ -14683,10 +15609,9 @@ function wireEvents() {
 
 async function init() {
   els.moonrakerUrl.value = state.moonrakerUrl;
-  els.interfaceTheme.value = state.interface.theme;
+  syncThemeEditorControls();
   els.interfaceCompact.checked = state.interface.compact;
   els.interfaceDensity.value = state.interface.density;
-
   els.dashShowPrintProgress.checked = state.dashboard.showPrintProgress;
   els.dashShowTemperatures.checked = state.dashboard.showTemperatures;
   els.dashShowMotion.checked = state.dashboard.showMotion;
@@ -14779,6 +15704,9 @@ async function init() {
   renderConsoleHelperEntries();
   resetConsoleHistoryCursor();
   updateConsoleMeta();
+  syncConsoleSettingsControls();
+  resetConsoleFilterEditor();
+  applyConsoleDisplaySettings();
 
   switchView(state.activeView);
   syncConfigSelectionUi();
@@ -14826,6 +15754,33 @@ init().catch((error) => {
   setConnectionUi("error");
   appendConsole(`Init failed: ${message}`, "error");
 });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
