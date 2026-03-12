@@ -323,6 +323,14 @@ const els = {
   views: [...document.querySelectorAll(".view")],
   sidebar: document.getElementById("sidebar"),
   sidebarToggle: document.getElementById("sidebar-toggle"),
+  toolsMenuToggle: document.getElementById("tools-menu-toggle"),
+  toolsMenuClose: document.getElementById("tools-menu-close"),
+  toolsDrawer: document.getElementById("tools-drawer"),
+  toolsDrawerBackdrop: document.getElementById("tools-drawer-backdrop"),
+  toolsPowerStatus: document.getElementById("tools-power-status"),
+  toolsPowerList: document.getElementById("tools-power-list"),
+  toolsServicesStatus: document.getElementById("tools-services-status"),
+  toolsServicesList: document.getElementById("tools-services-list"),
   pageTitle: document.getElementById("page-title"),
   connectionPill: document.getElementById("connection-pill"),
   connectionText: document.getElementById("connection-text"),
@@ -1169,6 +1177,17 @@ function createDefaultMachineLoadsState() {
   };
 }
 
+function createDefaultToolsMenuState() {
+  return {
+    open: false,
+    loading: false,
+    powerDevices: [],
+    services: [],
+    supportsHostControl: true,
+    actionInFlight: false,
+    lastError: "",
+  };
+}
 function createDefaultUpdateManagerState() {
   return {
     busy: false,
@@ -1395,6 +1414,7 @@ const state = {
     },
   },
   machineLoads: createDefaultMachineLoadsState(),
+  toolsMenu: createDefaultToolsMenuState(),
   updateManager: createDefaultUpdateManagerState(),
   endstops: createDefaultEndstopsState(),
   logFiles: createDefaultMachineLogFilesState(),
@@ -2642,6 +2662,457 @@ function toggleMachineSideColumn() {
   applyInterfaceSettings();
 }
 
+function normalizeToolsMenuPowerDevices(payload) {
+  const root = payload?.result?.devices ?? payload?.result ?? payload?.devices ?? payload;
+  if (!Array.isArray(root)) return [];
+
+  return root
+    .map((entry) => {
+      const device = String(entry?.device ?? entry?.name ?? "").trim();
+      if (!device) return null;
+
+      return {
+        device,
+        status: String(entry?.status ?? entry?.state ?? "unknown").trim().toLowerCase(),
+        lockedWhilePrinting: !!entry?.locked_while_printing,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.device.localeCompare(b.device));
+}
+
+function normalizeToolsMenuServices(systemInfo) {
+  const stateMap = systemInfo?.service_state;
+  const available = Array.isArray(systemInfo?.available_services) ? systemInfo.available_services : [];
+  const merged = new Map();
+
+  if (stateMap && typeof stateMap === "object" && !Array.isArray(stateMap)) {
+    Object.entries(stateMap).forEach(([name, meta]) => {
+      const normalizedName = String(name || "").trim();
+      if (!normalizedName) return;
+
+      merged.set(normalizedName, {
+        name: normalizedName,
+        activeState: String(meta?.active_state ?? meta?.state ?? "unknown").trim().toLowerCase(),
+        subState: String(meta?.sub_state ?? "").trim().toLowerCase(),
+      });
+    });
+  }
+
+  available.forEach((entry) => {
+    const normalizedName = String(entry || "").trim();
+    if (!normalizedName || merged.has(normalizedName)) return;
+
+    merged.set(normalizedName, {
+      name: normalizedName,
+      activeState: "unknown",
+      subState: "",
+    });
+  });
+
+  return [...merged.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function isPrintActiveForSystemActions() {
+  const printState = normalizePrinterState(
+    state.printStatus?.lastPrintStats?.state
+      || state.printStatus?.lastPrintStats?.status
+      || els.printerState?.dataset?.state
+  );
+
+  return printState === "printing" || printState === "paused";
+}
+
+function setToolsMenuOpen(isOpen, { refresh = true } = {}) {
+  const open = !!isOpen;
+  state.toolsMenu.open = open;
+
+  if (els.toolsMenuToggle) {
+    els.toolsMenuToggle.setAttribute("aria-expanded", String(open));
+  }
+
+  if (els.toolsDrawerBackdrop) {
+    els.toolsDrawerBackdrop.hidden = !open;
+  }
+
+  if (els.toolsDrawer) {
+    els.toolsDrawer.setAttribute("aria-hidden", String(!open));
+  }
+
+  document.body.classList.toggle("tools-drawer-open", open);
+
+  if (open && refresh) {
+    void refreshToolsMenuData({ silent: true });
+  }
+
+  renderToolsMenu();
+}
+
+function renderToolsMenu() {
+  const connected = !!state.client && state.connectionStatus === "connected";
+  const busy = isPrintActiveForSystemActions();
+  const supportsHostControl = !!state.toolsMenu.supportsHostControl;
+
+  const hostRebootBtn = els.toolsDrawer?.querySelector('[data-tools-action="host-reboot"]');
+  const hostShutdownBtn = els.toolsDrawer?.querySelector('[data-tools-action="host-shutdown"]');
+
+  [hostRebootBtn, hostShutdownBtn].forEach((button) => {
+    if (!(button instanceof HTMLButtonElement)) return;
+
+    button.disabled = !connected || busy || state.toolsMenu.actionInFlight || !supportsHostControl;
+    if (!supportsHostControl) {
+      button.title = "Host control is unavailable in containerized environments.";
+    } else if (busy) {
+      button.title = "Disabled while printing or paused.";
+    } else {
+      button.title = "";
+    }
+  });
+
+  if (els.toolsPowerStatus) {
+    if (!connected) {
+      els.toolsPowerStatus.textContent = "Connect to Moonraker to load power devices.";
+    } else if (state.toolsMenu.loading) {
+      els.toolsPowerStatus.textContent = "Loading power devices...";
+    } else if (!state.toolsMenu.powerDevices.length) {
+      els.toolsPowerStatus.textContent = "No power devices reported by Moonraker.";
+    } else {
+      els.toolsPowerStatus.textContent = "";
+    }
+  }
+
+  if (els.toolsPowerList) {
+    els.toolsPowerList.innerHTML = "";
+
+    state.toolsMenu.powerDevices.forEach((device) => {
+      const item = document.createElement("div");
+      item.className = "tools-power-item";
+
+      const label = document.createElement("div");
+      label.className = "tools-power-label";
+
+      const name = document.createElement("span");
+      name.className = "tools-power-name";
+      name.textContent = device.device;
+
+      const stateLabel = document.createElement("span");
+      stateLabel.className = "tools-power-state";
+      const normalizedStatus = String(device.status || "unknown").trim().toLowerCase();
+      stateLabel.textContent = `State: ${normalizedStatus || "unknown"}`;
+
+      label.append(name, stateLabel);
+
+      const toggle = document.createElement("button");
+      toggle.type = "button";
+      toggle.className = "tools-power-toggle";
+      toggle.dataset.toolsPowerDevice = device.device;
+      toggle.dataset.toolsPowerAction = normalizedStatus === "on" ? "off" : "on";
+      toggle.textContent = normalizedStatus === "on" ? "Turn Off" : "Turn On";
+
+      const isDeviceUnavailable = ["error", "init"].includes(normalizedStatus);
+      const isLocked = busy && device.lockedWhilePrinting;
+      toggle.disabled = !connected || state.toolsMenu.loading || state.toolsMenu.actionInFlight || isDeviceUnavailable || isLocked;
+
+      item.append(label, toggle);
+      els.toolsPowerList.appendChild(item);
+    });
+  }
+
+  if (els.toolsServicesStatus) {
+    if (!connected) {
+      els.toolsServicesStatus.textContent = "Connect to Moonraker to load services.";
+    } else if (state.toolsMenu.loading) {
+      els.toolsServicesStatus.textContent = "Loading services...";
+    } else if (!state.toolsMenu.services.length) {
+      els.toolsServicesStatus.textContent = "No services reported by Moonraker.";
+    } else {
+      els.toolsServicesStatus.textContent = "";
+    }
+  }
+
+  if (els.toolsServicesList) {
+    els.toolsServicesList.innerHTML = "";
+
+    state.toolsMenu.services.forEach((service) => {
+      const row = document.createElement("div");
+      row.className = "tools-service-row";
+
+      const head = document.createElement("div");
+      head.className = "tools-service-head";
+
+      const name = document.createElement("span");
+      name.className = "tools-service-name";
+      name.textContent = service.name;
+
+      const serviceState = service.subState
+        ? `${service.activeState} (${service.subState})`
+        : service.activeState;
+
+      const stateLabel = document.createElement("span");
+      stateLabel.className = "tools-service-state";
+      stateLabel.textContent = serviceState;
+
+      head.append(name, stateLabel);
+
+      const actions = document.createElement("div");
+      actions.className = "tools-service-actions";
+
+      const startButton = document.createElement("button");
+      startButton.type = "button";
+      startButton.className = "tools-service-btn";
+      startButton.textContent = "Start";
+      startButton.dataset.toolsServiceAction = "start";
+      startButton.dataset.toolsServiceName = service.name;
+      startButton.disabled = !connected || state.toolsMenu.loading || state.toolsMenu.actionInFlight || service.activeState !== "inactive";
+
+      const restartButton = document.createElement("button");
+      restartButton.type = "button";
+      restartButton.className = "tools-service-btn";
+      restartButton.textContent = "Restart";
+      restartButton.dataset.toolsServiceAction = "restart";
+      restartButton.dataset.toolsServiceName = service.name;
+      restartButton.disabled = !connected || state.toolsMenu.loading || state.toolsMenu.actionInFlight || busy;
+
+      const stopButton = document.createElement("button");
+      stopButton.type = "button";
+      stopButton.className = "tools-service-btn danger";
+      stopButton.textContent = "Stop";
+      stopButton.dataset.toolsServiceAction = "stop";
+      stopButton.dataset.toolsServiceName = service.name;
+      stopButton.disabled = !connected
+        || state.toolsMenu.loading
+        || state.toolsMenu.actionInFlight
+        || busy
+        || service.activeState === "inactive"
+        || service.name.toLowerCase() === "moonraker";
+
+      actions.append(startButton, restartButton, stopButton);
+      row.append(head, actions);
+      els.toolsServicesList.appendChild(row);
+    });
+  }
+
+  if (connected && state.toolsMenu.lastError) {
+    if (els.toolsPowerStatus && !els.toolsPowerStatus.textContent) {
+      els.toolsPowerStatus.textContent = `Power update issue: ${state.toolsMenu.lastError}`;
+    }
+    if (els.toolsServicesStatus && !els.toolsServicesStatus.textContent) {
+      els.toolsServicesStatus.textContent = `Service update issue: ${state.toolsMenu.lastError}`;
+    }
+  }
+}
+
+async function refreshToolsMenuData({ silent = false } = {}) {
+  if (!state.toolsMenu) {
+    state.toolsMenu = createDefaultToolsMenuState();
+  }
+
+  const connected = !!state.client && state.connectionStatus === "connected";
+
+  if (!connected) {
+    state.toolsMenu.loading = false;
+    state.toolsMenu.powerDevices = [];
+    state.toolsMenu.services = normalizeToolsMenuServices(state.machineLoads?.systemInfo || null);
+    state.toolsMenu.supportsHostControl = true;
+    if (!silent) {
+      state.toolsMenu.lastError = "";
+    }
+    renderToolsMenu();
+    return;
+  }
+
+  state.toolsMenu.loading = true;
+  if (!silent) {
+    state.toolsMenu.lastError = "";
+  }
+  renderToolsMenu();
+
+  const [powerResult, systemInfoResult] = await Promise.allSettled([
+    state.client.getMachinePowerDevices(),
+    state.client.getMachineSystemInfo(),
+  ]);
+
+  const errors = [];
+
+  if (powerResult.status === "fulfilled") {
+    state.toolsMenu.powerDevices = normalizeToolsMenuPowerDevices(powerResult.value);
+  } else {
+    errors.push(powerResult.reason?.message || String(powerResult.reason));
+  }
+
+  let systemInfo = state.machineLoads?.systemInfo || null;
+
+  if (systemInfoResult.status === "fulfilled") {
+    systemInfo = systemInfoResult.value?.result?.system_info || systemInfoResult.value?.result || null;
+    state.machineLoads.systemInfo = systemInfo;
+  } else {
+    errors.push(systemInfoResult.reason?.message || String(systemInfoResult.reason));
+  }
+
+  state.toolsMenu.services = normalizeToolsMenuServices(systemInfo);
+  state.toolsMenu.supportsHostControl = String(systemInfo?.virtualization?.virt_type || "").trim().toLowerCase() !== "container";
+  state.toolsMenu.lastError = errors[0] || "";
+  state.toolsMenu.loading = false;
+
+  renderToolsMenu();
+}
+
+async function runToolsHostAction(action) {
+  if (!state.client || state.connectionStatus !== "connected") {
+    appendConsole("Connect to Moonraker before running host actions.", "warn");
+    return;
+  }
+
+  if (!state.toolsMenu.supportsHostControl) {
+    appendConsole("Host actions are unavailable in this environment.", "warn");
+    return;
+  }
+
+  if (isPrintActiveForSystemActions()) {
+    appendConsole("Host actions are disabled while printing or paused.", "warn");
+    return;
+  }
+
+  const confirmMessage = action === "reboot"
+    ? "Reboot host now?"
+    : "Shutdown host now?";
+
+  if (!window.confirm(confirmMessage)) return;
+
+  state.toolsMenu.actionInFlight = true;
+  renderToolsMenu();
+
+  try {
+    if (action === "reboot") {
+      await state.client.rebootHost();
+      appendConsole("Host reboot requested.", "warn");
+    } else {
+      await state.client.shutdownHost();
+      appendConsole("Host shutdown requested.", "warn");
+    }
+
+    setToolsMenuOpen(false, { refresh: false });
+  } catch (error) {
+    const message = error?.message || String(error);
+    state.toolsMenu.lastError = message;
+    appendConsole(`Host ${action} failed: ${message}`, "error");
+    renderToolsMenu();
+  } finally {
+    state.toolsMenu.actionInFlight = false;
+  }
+}
+
+async function runToolsServiceAction(serviceName, action) {
+  const normalizedService = String(serviceName || "").trim();
+  const normalizedAction = String(action || "").trim().toLowerCase();
+  if (!normalizedService || !["start", "restart", "stop"].includes(normalizedAction)) return;
+
+  if (!state.client || state.connectionStatus !== "connected") {
+    appendConsole("Connect to Moonraker before running service actions.", "warn");
+    return;
+  }
+
+  if (isPrintActiveForSystemActions() && ["restart", "stop"].includes(normalizedAction)) {
+    appendConsole("Service restart/stop is disabled while printing or paused.", "warn");
+    return;
+  }
+
+  const needsConfirm = ["restart", "stop"].includes(normalizedAction);
+  if (needsConfirm) {
+    const confirmed = window.confirm(`${normalizedAction.toUpperCase()} service "${normalizedService}"?`);
+    if (!confirmed) return;
+  }
+
+  state.toolsMenu.actionInFlight = true;
+  renderToolsMenu();
+
+  try {
+    await state.client.runMachineServiceAction(normalizedService, normalizedAction);
+    appendConsole(`Service ${normalizedAction} requested: ${normalizedService}`, "info");
+    setToolsMenuOpen(false, { refresh: false });
+  } catch (error) {
+    const message = error?.message || String(error);
+    state.toolsMenu.lastError = message;
+    appendConsole(`Service ${normalizedAction} failed (${normalizedService}): ${message}`, "error");
+    renderToolsMenu();
+  } finally {
+    state.toolsMenu.actionInFlight = false;
+    if (state.toolsMenu.open) {
+      await refreshToolsMenuData({ silent: true });
+    }
+  }
+}
+
+async function runToolsPowerAction(deviceName, action) {
+  const normalizedDevice = String(deviceName || "").trim();
+  const normalizedAction = String(action || "").trim().toLowerCase();
+  if (!normalizedDevice || !["on", "off", "toggle"].includes(normalizedAction)) return;
+
+  if (!state.client || state.connectionStatus !== "connected") {
+    appendConsole("Connect to Moonraker before changing power devices.", "warn");
+    return;
+  }
+
+  state.toolsMenu.actionInFlight = true;
+  renderToolsMenu();
+
+  try {
+    await state.client.setMachinePowerDevice(normalizedDevice, normalizedAction);
+    appendConsole(`Power device ${normalizedDevice} set ${normalizedAction}.`, "info");
+  } catch (error) {
+    const message = error?.message || String(error);
+    state.toolsMenu.lastError = message;
+    appendConsole(`Power action failed (${normalizedDevice}): ${message}`, "error");
+  } finally {
+    state.toolsMenu.actionInFlight = false;
+    if (state.toolsMenu.open) {
+      await refreshToolsMenuData({ silent: true });
+    }
+  }
+}
+
+async function runToolsMenuAction(action) {
+  const normalizedAction = String(action || "").trim().toLowerCase();
+
+  switch (normalizedAction) {
+    case "klipper-restart": {
+      const sent = await executeGcodeAction("RESTART", {
+        actionLabel: "Klipper restart",
+        successMessage: "Klipper restart requested.",
+      });
+      if (sent) {
+        setToolsMenuOpen(false, { refresh: false });
+      }
+      break;
+    }
+    case "klipper-firmware-restart": {
+      const sent = await executeGcodeAction("FIRMWARE_RESTART", {
+        actionLabel: "Klipper firmware restart",
+        successMessage: "Klipper firmware restart requested.",
+      });
+      if (sent) {
+        setToolsMenuOpen(false, { refresh: false });
+      }
+      break;
+    }
+    case "host-reboot": {
+      await runToolsHostAction("reboot");
+      break;
+    }
+    case "host-shutdown": {
+      await runToolsHostAction("shutdown");
+      break;
+    }
+    case "layout-adjust": {
+      openDashboardLayoutDialog();
+      setToolsMenuOpen(false, { refresh: false });
+      break;
+    }
+    default:
+      break;
+  }
+}
+
 function normalizePrinterState(value) {
   const normalized = String(value || "").trim().toLowerCase();
   if (!normalized) return "unknown";
@@ -2677,6 +3148,16 @@ function setConnectionUi(status) {
     if (status === "disconnected") setPrinterState("disconnected");
     if (status === "error") setPrinterState("error");
   }
+
+  if (status !== "connected") {
+    state.toolsMenu.loading = false;
+    state.toolsMenu.powerDevices = [];
+    state.toolsMenu.lastError = "";
+  } else if (state.toolsMenu.open) {
+    void refreshToolsMenuData({ silent: true });
+  }
+
+  renderToolsMenu();
 
   if (isPrettyGcodeViewerVisible()) {
     renderPrettyGcodeView();
@@ -13127,6 +13608,41 @@ function wireEvents() {
   els.sidebarToggle?.addEventListener("click", toggleSidebar);
   els.machineSideToggle?.addEventListener("click", toggleMachineSideColumn);
 
+  els.toolsMenuToggle?.addEventListener("click", (event) => {
+    event.preventDefault();
+    setToolsMenuOpen(!state.toolsMenu.open);
+  });
+
+  els.toolsMenuClose?.addEventListener("click", () => {
+    setToolsMenuOpen(false, { refresh: false });
+  });
+
+  els.toolsDrawerBackdrop?.addEventListener("click", () => {
+    setToolsMenuOpen(false, { refresh: false });
+  });
+
+  els.toolsDrawer?.addEventListener("click", async (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+
+    const actionButton = target.closest("[data-tools-action]");
+    if (actionButton instanceof HTMLButtonElement && !actionButton.disabled) {
+      await runToolsMenuAction(actionButton.dataset.toolsAction);
+      return;
+    }
+
+    const serviceButton = target.closest("[data-tools-service-action]");
+    if (serviceButton instanceof HTMLButtonElement && !serviceButton.disabled) {
+      await runToolsServiceAction(serviceButton.dataset.toolsServiceName, serviceButton.dataset.toolsServiceAction);
+      return;
+    }
+
+    const powerButton = target.closest("[data-tools-power-action]");
+    if (powerButton instanceof HTMLButtonElement && !powerButton.disabled) {
+      await runToolsPowerAction(powerButton.dataset.toolsPowerDevice, powerButton.dataset.toolsPowerAction);
+    }
+  });
+
   els.statusClearFile?.addEventListener("click", () => {
     clearStatusFileFromCard();
   });
@@ -13925,6 +14441,9 @@ function wireEvents() {
     if (event.key === "Escape") {
       closeJobsToolbarMenus();
       closePrintHistoryColumnsMenu();
+      if (state.toolsMenu.open) {
+        setToolsMenuOpen(false, { refresh: false });
+      }
       closeControlsZOffsetSaveDialog();
 
       if (els.manualProbeDialog?.open && state.manualProbe.isActive) {
@@ -14290,6 +14809,7 @@ async function init() {
   state.controls.fanSpeed = normalizeFanSpeedPercent(state.controls.fanSpeed);
   renderControlsPanel();
   renderManualProbeDialog();
+  setToolsMenuOpen(false, { refresh: false });
   wireEvents();
 
   connectMoonraker().catch((error) => {
@@ -14306,6 +14826,17 @@ init().catch((error) => {
   setConnectionUi("error");
   appendConsole(`Init failed: ${message}`, "error");
 });
+
+
+
+
+
+
+
+
+
+
+
 
 
 

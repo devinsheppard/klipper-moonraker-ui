@@ -25,7 +25,61 @@
         <button type="button" class="global-header-file-btn" data-gcode="SAVE_CONFIG">Save Config</button>
       </div>
       <button id="emergency-stop" class="emergency-stop-btn" type="button" data-gcode="M112" aria-label="Emergency stop" title="Emergency stop (M112)">STOP</button>
+      <button
+        id="tools-menu-toggle"
+        class="global-tools-menu-toggle"
+        type="button"
+        aria-label="Open tools menu"
+        aria-controls="tools-drawer"
+        aria-expanded="false"
+        title="Tools"
+      >
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <circle cx="12" cy="5.5" r="1.7"></circle>
+          <circle cx="12" cy="12" r="1.7"></circle>
+          <circle cx="12" cy="18.5" r="1.7"></circle>
+        </svg>
+      </button>
     </header>
+    <div id="tools-drawer-backdrop" class="tools-drawer-backdrop" hidden></div>
+    <aside id="tools-drawer" class="tools-drawer" aria-hidden="true">
+      <div class="tools-drawer-head">
+        <h2>Forge Tools</h2>
+        <button type="button" id="tools-menu-close" class="tools-drawer-close" aria-label="Close tools menu">Close</button>
+      </div>
+      <div class="tools-drawer-content">
+        <section class="tools-drawer-section">
+          <p class="tools-drawer-title">Klipper Control</p>
+          <div class="tools-drawer-list">
+            <button type="button" class="tools-drawer-action" data-tools-action="klipper-restart">Klipper Restart</button>
+            <button type="button" class="tools-drawer-action" data-tools-action="klipper-firmware-restart">Klipper Firmware Restart</button>
+          </div>
+        </section>
+        <section class="tools-drawer-section">
+          <p class="tools-drawer-title">Power Devices</p>
+          <p id="tools-power-status" class="tools-drawer-note">Connect to Moonraker to load power devices.</p>
+          <div id="tools-power-list" class="tools-drawer-list"></div>
+        </section>
+        <section class="tools-drawer-section">
+          <p class="tools-drawer-title">Service Control</p>
+          <p id="tools-services-status" class="tools-drawer-note">Connect to Moonraker to load services.</p>
+          <div id="tools-services-list" class="tools-services-list"></div>
+        </section>
+        <section class="tools-drawer-section">
+          <p class="tools-drawer-title">Host Control</p>
+          <div class="tools-drawer-list">
+            <button type="button" class="tools-drawer-action" data-tools-action="host-reboot">Reboot Host</button>
+            <button type="button" class="tools-drawer-action danger" data-tools-action="host-shutdown">Shutdown Host</button>
+          </div>
+        </section>
+        <section class="tools-drawer-section">
+          <p class="tools-drawer-title">Layout</p>
+          <div class="tools-drawer-list">
+            <button type="button" class="tools-drawer-action" data-tools-action="layout-adjust">Adjust Dashboard Layout</button>
+          </div>
+        </section>
+      </div>
+    </aside>
     <div class="shell">
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-head">

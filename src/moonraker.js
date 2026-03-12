@@ -342,6 +342,81 @@ export class MoonrakerClient {
     return this.call("/machine/proc_stats");
   }
 
+  async rebootHost() {
+    return this.call("/machine/reboot", { method: "POST" });
+  }
+
+  async shutdownHost() {
+    return this.call("/machine/shutdown", { method: "POST" });
+  }
+
+  async getMachinePowerDevices() {
+    return this.call("/machine/device_power/devices");
+  }
+
+  async setMachinePowerDevice(device, state) {
+    const normalizedDevice = String(device || "").trim();
+    const normalizedState = String(state || "").trim().toLowerCase();
+    if (!normalizedDevice) {
+      throw new Error("A power device name is required.");
+    }
+    if (!["on", "off", "toggle"].includes(normalizedState)) {
+      throw new Error(`Unsupported power state: ${normalizedState}`);
+    }
+
+    try {
+      return await this.call(
+        `/machine/device_power/device?device=${encodeURIComponent(normalizedDevice)}&action=${encodeURIComponent(normalizedState)}`,
+        { method: "POST" }
+      );
+    } catch (error) {
+      const status = Number(error?.status);
+      if (!Number.isFinite(status) || ![404, 405, 422, 501].includes(status)) {
+        throw error;
+      }
+
+      return this.call("/machine/device_power/device", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          device: normalizedDevice,
+          action: normalizedState,
+        }),
+      });
+    }
+  }
+
+  async runMachineServiceAction(service, action) {
+    const normalizedService = String(service || "").trim();
+    const normalizedAction = String(action || "").trim().toLowerCase();
+    if (!normalizedService) {
+      throw new Error("A service name is required.");
+    }
+    if (!["start", "restart", "stop"].includes(normalizedAction)) {
+      throw new Error(`Unsupported service action: ${normalizedAction}`);
+    }
+
+    try {
+      return await this.call(
+        `/machine/services/${normalizedAction}?service=${encodeURIComponent(normalizedService)}`,
+        { method: "POST" }
+      );
+    } catch (error) {
+      const status = Number(error?.status);
+      if (!Number.isFinite(status) || ![404, 405, 422, 501].includes(status)) {
+        throw error;
+      }
+
+      return this.call(`/machine/services/${normalizedAction}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          service: normalizedService,
+        }),
+      });
+    }
+  }
+
   async getMcuAndSystemStats() {
     return this.call("/printer/objects/query?mcu&system_stats");
   }
@@ -771,6 +846,7 @@ export class MoonrakerClient {
     return this.deleteFile("logs", path);
   }
 }
+
 
 
 
