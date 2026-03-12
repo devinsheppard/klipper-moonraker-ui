@@ -151,6 +151,50 @@ const DASHBOARD_LAYOUT_DEFAULT = {
   right: ["card-temperatures", "card-quick-commands", "card-dashboard-console", KLIPPERVIEW_CARD_ID, "camera-toolhead-card"],
 };
 
+const DASHBOARD_VIEWPORTS = ["mobile", "tablet", "desktop", "widescreen"];
+const DASHBOARD_VIEWPORT_COLUMN_COUNT = Object.freeze({
+  mobile: 1,
+  tablet: 2,
+  desktop: 2,
+  widescreen: 3,
+});
+const DASHBOARD_LAYOUT_DEFAULTS = Object.freeze({
+  mobile: Object.freeze({
+    columns: [Object.freeze([...DASHBOARD_LAYOUT_DEFAULT.left, ...DASHBOARD_LAYOUT_DEFAULT.right])],
+  }),
+  tablet: Object.freeze({
+    columns: [Object.freeze([...DASHBOARD_LAYOUT_DEFAULT.left]), Object.freeze([...DASHBOARD_LAYOUT_DEFAULT.right])],
+  }),
+  desktop: Object.freeze({
+    columns: [Object.freeze([...DASHBOARD_LAYOUT_DEFAULT.left]), Object.freeze([...DASHBOARD_LAYOUT_DEFAULT.right])],
+  }),
+  widescreen: Object.freeze({
+    columns: [
+      Object.freeze(["card-print-progress", "card-motion", "card-macros"]),
+      Object.freeze(["card-temperatures", "card-quick-commands", "card-dashboard-console"]),
+      Object.freeze(["camera-main-card", "camera-toolhead-card", KLIPPERVIEW_CARD_ID]),
+    ],
+  }),
+});
+const DASHBOARD_LAYOUT_STORAGE_KEYS = Object.freeze({
+  mobile: "dashboard_layout_mobile_v1",
+  tablet: "dashboard_layout_tablet_v1",
+  desktop: "dashboard_layout_desktop_v1",
+  widescreen: "dashboard_layout_widescreen_v1",
+});
+const DASHBOARD_LAYOUT_LEGACY_STORAGE_KEY = "dashboard_layout";
+const DASHBOARD_LAYOUT_LEGACY_ORDER_STORAGE_KEY = "dashboard_layout_order";
+const DASHBOARD_VISIBILITY_STORAGE_KEYS = Object.freeze({
+  "card-print-progress": "dashboard_show_print_progress",
+  "card-temperatures": "dashboard_show_temperatures",
+  "card-motion": "dashboard_show_motion",
+  "card-quick-commands": "dashboard_show_quick_commands",
+  "card-macros": "dashboard_show_macros",
+  "camera-main-card": "dashboard_show_main_camera",
+  "camera-toolhead-card": "dashboard_show_toolhead_camera",
+  "card-dashboard-console": "dashboard_show_console",
+  [KLIPPERVIEW_CARD_ID]: "dashboard_show_klipperview",
+});
 const DASHBOARD_CARD_LABELS = {
   "card-print-progress": "Status",
   "card-temperatures": "Thermals",
@@ -186,6 +230,7 @@ const VIEW_TITLES = {
 };
 const SETTINGS_SUBNAV_ANCHORS = [
   "general",
+  "dashboard",
   "warnings",
   "theme",
   "auth",
@@ -207,6 +252,12 @@ const CONFIG_SELECTED_PATH_STORAGE_KEY = "config_selected_path";
 const CONFIG_FILE_FILTER_STORAGE_KEY = "config_file_type_filter";
 const CONFIG_FILE_SEARCH_STORAGE_KEY = "config_file_search_filter";
 const MACHINE_SIDE_COLLAPSED_STORAGE_KEY = "interface_machine_side_collapsed";
+const WARNINGS_SETTINGS_DEFAULTS = Object.freeze({
+  warnOnCpuThrottled: true,
+  warnOnStepperDriverOverheating: true,
+});
+const WARNINGS_CPU_THROTTLED_STORAGE_KEY = "warnings_warn_on_cpu_throttled";
+const WARNINGS_STEPPER_DRIVER_OVERHEATING_STORAGE_KEY = "warnings_warn_on_stepper_driver_overheating";
 const JOBS_SORT_STORAGE_KEY = "jobs_sort_mode";
 const JOBS_TYPE_FILTER_STORAGE_KEY = "jobs_type_filter";
 const JOBS_SEARCH_STORAGE_KEY = "jobs_search_query";
@@ -329,6 +380,8 @@ const CONSOLE_MAX_HEIGHT = 960;
 const CONSOLE_HISTORY_LIMIT = 120;
 const CONSOLE_PAUSED_BUFFER_LIMIT = 1500;
 const CONSOLE_FILTER_VALUES = ["all", "command", "response", "error", "system"];
+const MACRO_SETTINGS_STORAGE_KEY = "macro_settings_v1";
+const MACRO_DEFAULT_CATEGORY_ID = "0";
 const CONSOLE_HELPER_BASE_COMMANDS = [
   "G0", "G1", "G2", "G3", "G4", "G10", "G20", "G21", "G28", "G90", "G91", "G92",
   "M82", "M83", "M84", "M104", "M105", "M106", "M107", "M109", "M114", "M115", "M117",
@@ -734,6 +787,9 @@ const els = {
   interfaceBgImageUrl: document.getElementById("interface-bg-image-url"),
   interfaceBgImageApply: document.getElementById("interface-bg-image-apply"),
   interfaceBgImageClear: document.getElementById("interface-bg-image-clear"),
+  settingsWarningCpuThrottled: document.getElementById("settings-warning-cpu-throttled"),
+  settingsWarningStepperDriverOverheating: document.getElementById("settings-warning-stepper-driver-overheating"),
+  settingsWarningReset: document.getElementById("settings-warning-reset"),
   settingsConsoleDirection: document.getElementById("settings-console-direction"),
   settingsConsoleEntryDesign: document.getElementById("settings-console-entry-design"),
   settingsConsoleHeight: document.getElementById("settings-console-height"),
@@ -747,6 +803,27 @@ const els = {
   settingsConsoleFilterSave: document.getElementById("settings-console-filter-save"),
   settingsConsoleFilterCancel: document.getElementById("settings-console-filter-cancel"),
   settingsConsoleFilterList: document.getElementById("settings-console-filter-list"),
+  settingsMacrosCategoryAdd: document.getElementById("settings-macros-category-add"),
+  settingsMacrosCategoryList: document.getElementById("settings-macros-category-list"),
+  settingsMacrosSelectedCategory: document.getElementById("settings-macros-selected-category"),
+  settingsMacrosSearch: document.getElementById("settings-macros-search"),
+  settingsMacrosAllOn: document.getElementById("settings-macros-all-on"),
+  settingsMacrosAllOff: document.getElementById("settings-macros-all-off"),
+  settingsMacrosItemList: document.getElementById("settings-macros-item-list"),
+  settingsMacroDialog: document.getElementById("settings-macro-dialog"),
+  settingsMacroDialogTitle: document.getElementById("settings-macro-dialog-title"),
+  settingsMacroClose: document.getElementById("settings-macro-close"),
+  settingsMacroAlias: document.getElementById("settings-macro-alias"),
+  settingsMacroCategory: document.getElementById("settings-macro-category"),
+  settingsMacroColor: document.getElementById("settings-macro-color"),
+  settingsMacroColorReset: document.getElementById("settings-macro-color-reset"),
+  settingsMacroDisabledWhilePrinting: document.getElementById("settings-macro-disabled-while-printing"),
+  settingsMacroVisible: document.getElementById("settings-macro-visible"),
+  settingsMacroSave: document.getElementById("settings-macro-save"),
+  settingsMacroCancel: document.getElementById("settings-macro-cancel"),
+  settingsDashboardViewportButtons: [...document.querySelectorAll(".settings-dashboard-viewport-btn")],
+  settingsDashboardColumns: document.getElementById("settings-dashboard-columns"),
+  settingsDashboardReset: document.getElementById("settings-dashboard-reset"),
   dashShowPrintProgress: document.getElementById("dash-show-print-progress"),
   dashShowTemperatures: document.getElementById("dash-show-temperatures"),
   dashShowMotion: document.getElementById("dash-show-motion"),
@@ -831,6 +908,7 @@ const els = {
   quickGcode: [...document.querySelectorAll("[data-gcode]")],
 };
 
+let runtimeDashboardViewport = getDashboardRuntimeViewport();
 let layoutDraggedCardId = null;
 let layoutDraggedFromColumn = null;
 let temperaturePollTimer = null;
@@ -1185,6 +1263,41 @@ function loadStoredPrintHistoryTrendMode() {
   return normalizePrintHistoryTrendMode(localStorage.getItem(PRINT_HISTORY_TREND_MODE_STORAGE_KEY));
 }
 
+function loadStoredWarningsSettings() {
+  return {
+    warnOnCpuThrottled: loadStoredBool(WARNINGS_CPU_THROTTLED_STORAGE_KEY, WARNINGS_SETTINGS_DEFAULTS.warnOnCpuThrottled),
+    warnOnStepperDriverOverheating: loadStoredBool(
+      WARNINGS_STEPPER_DRIVER_OVERHEATING_STORAGE_KEY,
+      WARNINGS_SETTINGS_DEFAULTS.warnOnStepperDriverOverheating
+    ),
+  };
+}
+
+function normalizeWarningsSettings(candidate) {
+  const source = candidate && typeof candidate === "object" ? candidate : {};
+  return {
+    warnOnCpuThrottled: source.warnOnCpuThrottled !== false,
+    warnOnStepperDriverOverheating: source.warnOnStepperDriverOverheating !== false,
+  };
+}
+
+function persistWarningsSettings() {
+  localStorage.setItem(WARNINGS_CPU_THROTTLED_STORAGE_KEY, String(state.warnings.warnOnCpuThrottled));
+  localStorage.setItem(
+    WARNINGS_STEPPER_DRIVER_OVERHEATING_STORAGE_KEY,
+    String(state.warnings.warnOnStepperDriverOverheating)
+  );
+}
+
+function syncWarningsSettingsControls() {
+  if (els.settingsWarningCpuThrottled) {
+    els.settingsWarningCpuThrottled.checked = !!state.warnings.warnOnCpuThrottled;
+  }
+
+  if (els.settingsWarningStepperDriverOverheating) {
+    els.settingsWarningStepperDriverOverheating.checked = !!state.warnings.warnOnStepperDriverOverheating;
+  }
+}
 function persistConfigViewState() {
   localStorage.setItem(CONFIG_SELECTED_PATH_STORAGE_KEY, state.config.selectedPath || "");
   localStorage.setItem(CONFIG_FILE_FILTER_STORAGE_KEY, normalizeConfigFileType(state.config.fileTypeFilter));
@@ -1202,6 +1315,75 @@ function normalizeDashboardCardIds(cardIdsCandidate) {
   const candidate = Array.isArray(cardIdsCandidate) ? cardIdsCandidate : [];
   const validKnown = candidate.filter((id) => DASHBOARD_CARD_IDS.includes(id));
   return [...new Set(validKnown)];
+}
+
+function normalizeDashboardViewport(viewportCandidate) {
+  const normalized = String(viewportCandidate || "").trim().toLowerCase();
+  return DASHBOARD_VIEWPORTS.includes(normalized) ? normalized : "desktop";
+}
+
+function getDashboardViewportColumnCount(viewportCandidate) {
+  const viewport = normalizeDashboardViewport(viewportCandidate);
+  return DASHBOARD_VIEWPORT_COLUMN_COUNT[viewport] || DASHBOARD_VIEWPORT_COLUMN_COUNT.desktop;
+}
+
+function getDashboardViewportForWidth(widthCandidate) {
+  const width = Number(widthCandidate);
+  if (!Number.isFinite(width)) return "desktop";
+  if (width < 700) return "mobile";
+  if (width < 1100) return "tablet";
+  if (width < 1600) return "desktop";
+  return "widescreen";
+}
+
+function getDashboardRuntimeViewport() {
+  return getDashboardViewportForWidth(window.innerWidth || 0);
+}
+
+function normalizeDashboardViewportLayout(layoutCandidate, viewportCandidate) {
+  const viewport = normalizeDashboardViewport(viewportCandidate);
+  const columnCount = getDashboardViewportColumnCount(viewport);
+  const candidate = layoutCandidate && typeof layoutCandidate === "object" ? layoutCandidate : {};
+  const sourceColumns = Array.isArray(candidate.columns) ? candidate.columns : [];
+
+  const columns = Array.from({ length: columnCount }, (_, index) => normalizeDashboardCardIds(sourceColumns[index]));
+  const used = new Set();
+
+  columns.forEach((column, columnIndex) => {
+    columns[columnIndex] = column.filter((id) => {
+      if (used.has(id)) return false;
+      used.add(id);
+      return true;
+    });
+  });
+
+  const missing = DASHBOARD_CARD_IDS.filter((id) => !used.has(id));
+  missing.forEach((id) => {
+    let targetIndex = 0;
+    let minCount = Number.POSITIVE_INFINITY;
+
+    columns.forEach((column, columnIndex) => {
+      if (column.length < minCount) {
+        minCount = column.length;
+        targetIndex = columnIndex;
+      }
+    });
+
+    columns[targetIndex].push(id);
+  });
+
+  return { columns };
+}
+
+function cloneDashboardViewportLayout(layoutCandidate, viewportCandidate) {
+  const normalized = normalizeDashboardViewportLayout(layoutCandidate, viewportCandidate);
+  return { columns: normalized.columns.map((column) => [...column]) };
+}
+
+function getDashboardDefaultLayoutForViewport(viewportCandidate) {
+  const viewport = normalizeDashboardViewport(viewportCandidate);
+  const fallback = DASHBOARD_LAYOUT_DEFAULTS.desktop;
+  return cloneDashboardViewportLayout(DASHBOARD_LAYOUT_DEFAULTS[viewport] || fallback, viewport);
 }
 
 function normalizeDashboardLayout(layoutCandidate) {
@@ -1249,8 +1431,54 @@ function flattenDashboardLayout(layoutCandidate) {
   return flat;
 }
 
+function convertLegacyLayoutToViewportLayout(layoutCandidate, viewportCandidate) {
+  const viewport = normalizeDashboardViewport(viewportCandidate);
+  const legacy = normalizeDashboardLayout(layoutCandidate);
+
+  if (viewport === "mobile") {
+    return normalizeDashboardViewportLayout({ columns: [[...legacy.left, ...legacy.right]] }, viewport);
+  }
+
+  if (viewport === "widescreen") {
+    const right = [...legacy.right];
+    const splitIndex = Math.ceil(right.length / 2);
+    return normalizeDashboardViewportLayout(
+      {
+        columns: [
+          [...legacy.left],
+          right.slice(0, splitIndex),
+          right.slice(splitIndex),
+        ],
+      },
+      viewport
+    );
+  }
+
+  return normalizeDashboardViewportLayout({ columns: [[...legacy.left], [...legacy.right]] }, viewport);
+}
+
+function convertViewportLayoutToLegacyLayout(layoutCandidate, viewportCandidate) {
+  const viewport = normalizeDashboardViewport(viewportCandidate);
+  const layout = normalizeDashboardViewportLayout(layoutCandidate, viewport);
+
+  if (viewport === "mobile") {
+    return normalizeDashboardLayout({ left: [...layout.columns[0]], right: [] });
+  }
+
+  if (viewport === "widescreen") {
+    const left = [...(layout.columns[0] || [])];
+    const right = [...(layout.columns[1] || []), ...(layout.columns[2] || [])];
+    return normalizeDashboardLayout({ left, right });
+  }
+
+  return normalizeDashboardLayout({
+    left: [...(layout.columns[0] || [])],
+    right: [...(layout.columns[1] || [])],
+  });
+}
+
 function loadDashboardLayout() {
-  const rawLayout = localStorage.getItem("dashboard_layout");
+  const rawLayout = localStorage.getItem(DASHBOARD_LAYOUT_LEGACY_STORAGE_KEY);
   if (rawLayout) {
     try {
       const parsed = JSON.parse(rawLayout);
@@ -1260,7 +1488,7 @@ function loadDashboardLayout() {
     }
   }
 
-  const rawOrder = localStorage.getItem("dashboard_layout_order");
+  const rawOrder = localStorage.getItem(DASHBOARD_LAYOUT_LEGACY_ORDER_STORAGE_KEY);
   if (rawOrder) {
     try {
       const parsed = JSON.parse(rawOrder);
@@ -1273,6 +1501,465 @@ function loadDashboardLayout() {
   return normalizeDashboardLayout(DASHBOARD_LAYOUT_DEFAULT);
 }
 
+function loadStoredDashboardViewportLayout(viewportCandidate, fallbackLegacyLayout) {
+  const viewport = normalizeDashboardViewport(viewportCandidate);
+  const storageKey = DASHBOARD_LAYOUT_STORAGE_KEYS[viewport];
+  const fallback = convertLegacyLayoutToViewportLayout(fallbackLegacyLayout, viewport);
+  const raw = storageKey ? localStorage.getItem(storageKey) : null;
+
+  if (!raw) return fallback;
+
+  try {
+    const parsed = JSON.parse(raw);
+    return normalizeDashboardViewportLayout(parsed, viewport);
+  } catch {
+    return fallback;
+  }
+}
+
+function loadDashboardLayoutsByViewport(baseLegacyLayout = loadDashboardLayout()) {
+  const legacy = normalizeDashboardLayout(baseLegacyLayout);
+  const layouts = {};
+
+  DASHBOARD_VIEWPORTS.forEach((viewport) => {
+    layouts[viewport] = loadStoredDashboardViewportLayout(viewport, legacy);
+  });
+
+  return layouts;
+}
+
+function getDashboardLayoutForViewport(viewportCandidate) {
+  const viewport = normalizeDashboardViewport(viewportCandidate);
+  const candidate = state.dashboard.layoutsByViewport?.[viewport];
+  return normalizeDashboardViewportLayout(candidate || getDashboardDefaultLayoutForViewport(viewport), viewport);
+}
+
+function setDashboardLayoutForViewport(viewportCandidate, layoutCandidate, { persist = true } = {}) {
+  const viewport = normalizeDashboardViewport(viewportCandidate);
+  const normalized = normalizeDashboardViewportLayout(layoutCandidate, viewport);
+  state.dashboard.layoutsByViewport[viewport] = normalized;
+
+  if (persist) {
+    const storageKey = DASHBOARD_LAYOUT_STORAGE_KEYS[viewport];
+    if (storageKey) {
+      localStorage.setItem(storageKey, JSON.stringify(normalized));
+    }
+  }
+
+  if (viewport === "desktop") {
+    state.dashboard.layout = convertViewportLayoutToLegacyLayout(normalized, "desktop");
+    localStorage.setItem(DASHBOARD_LAYOUT_LEGACY_STORAGE_KEY, JSON.stringify(state.dashboard.layout));
+    localStorage.setItem(DASHBOARD_LAYOUT_LEGACY_ORDER_STORAGE_KEY, JSON.stringify(flattenDashboardLayout(state.dashboard.layout)));
+  }
+}
+
+function persistDashboardLayoutsByViewport() {
+  DASHBOARD_VIEWPORTS.forEach((viewport) => {
+    setDashboardLayoutForViewport(viewport, state.dashboard.layoutsByViewport?.[viewport], { persist: true });
+  });
+}
+
+function getRuntimeDashboardLegacyLayout(viewportCandidate = getDashboardRuntimeViewport()) {
+  const viewport = normalizeDashboardViewport(viewportCandidate);
+  const layout = getDashboardLayoutForViewport(viewport);
+  return convertViewportLayoutToLegacyLayout(layout, viewport);
+}
+
+function getDashboardCardVisibilityValue(cardId) {
+  switch (cardId) {
+    case "card-print-progress":
+      return !!state.dashboard.showPrintProgress;
+    case "card-temperatures":
+      return !!state.dashboard.showTemperatures;
+    case "card-motion":
+      return !!state.dashboard.showMotion;
+    case "card-quick-commands":
+      return !!state.dashboard.showQuickCommands;
+    case "card-macros":
+      return !!state.dashboard.showMacros;
+    case "camera-main-card":
+      return !!state.dashboard.showMainCamera;
+    case "camera-toolhead-card":
+      return !!state.dashboard.showToolheadCamera;
+    case "card-dashboard-console":
+      return !!state.dashboard.showConsole;
+    case KLIPPERVIEW_CARD_ID:
+      return !!state.dashboard.showKlipperView;
+    default:
+      return true;
+  }
+}
+
+function setDashboardCardVisibilityValue(cardId, visible) {
+  const nextValue = !!visible;
+
+  switch (cardId) {
+    case "card-print-progress":
+      state.dashboard.showPrintProgress = nextValue;
+      break;
+    case "card-temperatures":
+      state.dashboard.showTemperatures = nextValue;
+      break;
+    case "card-motion":
+      state.dashboard.showMotion = nextValue;
+      break;
+    case "card-quick-commands":
+      state.dashboard.showQuickCommands = nextValue;
+      break;
+    case "card-macros":
+      state.dashboard.showMacros = nextValue;
+      break;
+    case "camera-main-card":
+      state.dashboard.showMainCamera = nextValue;
+      break;
+    case "camera-toolhead-card":
+      state.dashboard.showToolheadCamera = nextValue;
+      break;
+    case "card-dashboard-console":
+      state.dashboard.showConsole = nextValue;
+      break;
+    case KLIPPERVIEW_CARD_ID:
+      state.dashboard.showKlipperView = nextValue;
+      break;
+    default:
+      break;
+  }
+}
+
+function persistDashboardVisibilityState() {
+  Object.entries(DASHBOARD_VISIBILITY_STORAGE_KEYS).forEach(([cardId, storageKey]) => {
+    localStorage.setItem(storageKey, String(getDashboardCardVisibilityValue(cardId)));
+  });
+}
+
+function syncDashboardVisibilityInputs() {
+  if (els.dashShowPrintProgress) els.dashShowPrintProgress.checked = state.dashboard.showPrintProgress;
+  if (els.dashShowTemperatures) els.dashShowTemperatures.checked = state.dashboard.showTemperatures;
+  if (els.dashShowMotion) els.dashShowMotion.checked = state.dashboard.showMotion;
+  if (els.dashShowQuickCommands) els.dashShowQuickCommands.checked = state.dashboard.showQuickCommands;
+  if (els.dashShowMacros) els.dashShowMacros.checked = state.dashboard.showMacros;
+  if (els.dashShowMainCamera) els.dashShowMainCamera.checked = state.dashboard.showMainCamera;
+  if (els.dashShowToolheadCamera) els.dashShowToolheadCamera.checked = state.dashboard.showToolheadCamera;
+  if (els.dashShowConsole) els.dashShowConsole.checked = state.dashboard.showConsole;
+  if (els.dashShowKlipperView) els.dashShowKlipperView.checked = state.dashboard.showKlipperView;
+}
+
+let settingsDashboardDraggedCardId = null;
+let settingsDashboardDraggedFromColumn = null;
+
+function moveDashboardCardInViewportLayout(viewportCandidate, cardId, toColumnIndex, beforeCardId = null) {
+  const viewport = normalizeDashboardViewport(viewportCandidate);
+  const layout = cloneDashboardViewportLayout(getDashboardLayoutForViewport(viewport), viewport);
+  const maxColumnIndex = getDashboardViewportColumnCount(viewport) - 1;
+  const targetIndex = Math.max(0, Math.min(maxColumnIndex, Number(toColumnIndex) || 0));
+
+  layout.columns.forEach((column) => {
+    const cardIndex = column.indexOf(cardId);
+    if (cardIndex >= 0) {
+      column.splice(cardIndex, 1);
+    }
+  });
+
+  const targetColumn = layout.columns[targetIndex];
+  if (!Array.isArray(targetColumn)) return;
+
+  if (beforeCardId) {
+    const insertIndex = targetColumn.indexOf(beforeCardId);
+    if (insertIndex >= 0) {
+      targetColumn.splice(insertIndex, 0, cardId);
+    } else {
+      targetColumn.push(cardId);
+    }
+  } else {
+    targetColumn.push(cardId);
+  }
+
+  setDashboardLayoutForViewport(viewport, layout, { persist: true });
+}
+
+function renderSettingsDashboardLayout() {
+  if (!els.settingsDashboardColumns) return;
+
+  const viewport = normalizeDashboardViewport(state.dashboard.settingsViewport);
+  const layout = getDashboardLayoutForViewport(viewport);
+  const columnCount = getDashboardViewportColumnCount(viewport);
+
+  els.settingsDashboardColumns.innerHTML = "";
+  els.settingsDashboardColumns.dataset.dashboardViewport = viewport;
+  els.settingsDashboardColumns.style.setProperty("--dashboard-settings-columns", String(columnCount));
+
+  layout.columns.forEach((cards, columnIndex) => {
+    const column = document.createElement("section");
+    column.className = "settings-dashboard-column";
+
+    const heading = document.createElement("h4");
+    heading.textContent = columnCount === 1 ? "Mobile Layout" : `Column ${columnIndex + 1}`;
+
+    const list = document.createElement("ul");
+    list.className = "settings-dashboard-list";
+    list.dataset.columnIndex = String(columnIndex);
+
+    if (columnIndex === 0) {
+      const locked = document.createElement("li");
+      locked.className = "settings-dashboard-locked";
+      const lockedLabel = document.createElement("span");
+      lockedLabel.textContent = "Status";
+      const lockedIcon = document.createElement("span");
+      lockedIcon.textContent = "LOCKED";
+      locked.append(lockedLabel, lockedIcon);
+      list.appendChild(locked);
+    }
+
+    cards.forEach((cardId) => {
+      const item = document.createElement("li");
+      item.className = "settings-dashboard-item";
+      item.draggable = true;
+      item.dataset.cardId = cardId;
+
+      const handle = document.createElement("span");
+      handle.className = "settings-dashboard-handle";
+      handle.textContent = "::";
+
+      const label = document.createElement("span");
+      label.className = "settings-dashboard-label";
+      label.textContent = DASHBOARD_CARD_LABELS[cardId] || cardId;
+
+      const visibleButton = document.createElement("button");
+      visibleButton.type = "button";
+      visibleButton.className = "settings-dashboard-visible";
+      const visible = getDashboardCardVisibilityValue(cardId);
+      visibleButton.dataset.visible = visible ? "true" : "false";
+      visibleButton.textContent = visible ? "ON" : "OFF";
+      visibleButton.setAttribute("aria-label", visible ? "Hide card" : "Show card");
+      visibleButton.addEventListener("click", (event) => {
+        event.preventDefault();
+        const nextVisible = !getDashboardCardVisibilityValue(cardId);
+        setDashboardCardVisibilityValue(cardId, nextVisible);
+        persistDashboardVisibilityState();
+        syncDashboardVisibilityInputs();
+        applyDashboardSettings();
+        renderSettingsDashboardLayout();
+      });
+
+      item.append(handle, label, visibleButton);
+
+      item.addEventListener("dragstart", (event) => {
+        settingsDashboardDraggedCardId = cardId;
+        settingsDashboardDraggedFromColumn = columnIndex;
+        item.classList.add("dragging");
+        if (event.dataTransfer) {
+          event.dataTransfer.effectAllowed = "move";
+          event.dataTransfer.setData("text/plain", `${cardId}|${columnIndex}`);
+        }
+      });
+
+      item.addEventListener("dragend", () => {
+        item.classList.remove("dragging");
+        settingsDashboardDraggedCardId = null;
+        settingsDashboardDraggedFromColumn = null;
+        els.settingsDashboardColumns?.querySelectorAll(".drop-target").forEach((el) => el.classList.remove("drop-target"));
+      });
+
+      item.addEventListener("dragover", (event) => {
+        event.preventDefault();
+        item.classList.add("drop-target");
+        if (event.dataTransfer) {
+          event.dataTransfer.dropEffect = "move";
+        }
+      });
+
+      item.addEventListener("dragleave", () => {
+        item.classList.remove("drop-target");
+      });
+
+      item.addEventListener("drop", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        item.classList.remove("drop-target");
+
+        const payload = event.dataTransfer?.getData("text/plain") || "";
+        const payloadCardId = payload.split("|")[0];
+        const draggedCardId = settingsDashboardDraggedCardId || payloadCardId;
+        if (!DASHBOARD_CARD_IDS.includes(draggedCardId)) return;
+
+        moveDashboardCardInViewportLayout(viewport, draggedCardId, columnIndex, cardId);
+        if (viewport === getDashboardRuntimeViewport()) {
+          applyDashboardLayout();
+        }
+        renderSettingsDashboardLayout();
+      });
+
+      list.appendChild(item);
+    });
+
+    list.addEventListener("dragover", (event) => {
+      event.preventDefault();
+      list.classList.add("drop-target");
+      if (event.dataTransfer) {
+        event.dataTransfer.dropEffect = "move";
+      }
+    });
+
+    list.addEventListener("dragleave", (event) => {
+      if (event.target === list) {
+        list.classList.remove("drop-target");
+      }
+    });
+
+    list.addEventListener("drop", (event) => {
+      event.preventDefault();
+      list.classList.remove("drop-target");
+
+      const payload = event.dataTransfer?.getData("text/plain") || "";
+      const payloadCardId = payload.split("|")[0];
+      const draggedCardId = settingsDashboardDraggedCardId || payloadCardId;
+      if (!DASHBOARD_CARD_IDS.includes(draggedCardId)) return;
+
+      moveDashboardCardInViewportLayout(viewport, draggedCardId, columnIndex);
+      if (viewport === getDashboardRuntimeViewport()) {
+        applyDashboardLayout();
+      }
+      renderSettingsDashboardLayout();
+    });
+
+    column.append(heading, list);
+    els.settingsDashboardColumns.appendChild(column);
+  });
+
+  els.settingsDashboardViewportButtons.forEach((button) => {
+    const buttonViewport = normalizeDashboardViewport(button.dataset.dashboardViewport);
+    const isActive = buttonViewport === viewport;
+    button.classList.toggle("active", isActive);
+    button.setAttribute("aria-selected", String(isActive));
+  });
+}
+
+function resetDashboardLayoutForViewport(viewportCandidate) {
+  const viewport = normalizeDashboardViewport(viewportCandidate);
+  const defaults = getDashboardDefaultLayoutForViewport(viewport);
+  setDashboardLayoutForViewport(viewport, defaults, { persist: true });
+
+  if (viewport === getDashboardRuntimeViewport()) {
+    applyDashboardLayout();
+  }
+}
+function handleDashboardViewportResize() {
+  const nextViewport = getDashboardRuntimeViewport();
+  const viewportChanged = nextViewport !== runtimeDashboardViewport;
+
+  if (viewportChanged) {
+    runtimeDashboardViewport = nextViewport;
+    state.dashboard.layout = getRuntimeDashboardLegacyLayout(nextViewport);
+    applyDashboardLayout();
+    applyDashboardSettings();
+  }
+
+  if (state.activeView === "settings") {
+    queueSettingsSubnavSync();
+    renderSettingsDashboardLayout();
+  }
+}
+function normalizeMacroCategoryId(value) {
+  const normalized = String(value || "").trim();
+  return normalized && normalized !== MACRO_DEFAULT_CATEGORY_ID ? normalized : MACRO_DEFAULT_CATEGORY_ID;
+}
+
+function normalizeMacroColor(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (/^#[0-9a-f]{6}$/.test(normalized)) return normalized;
+  if (/^#[0-9a-f]{3}$/.test(normalized)) {
+    return `#${normalized[1]}${normalized[1]}${normalized[2]}${normalized[2]}${normalized[3]}${normalized[3]}`;
+  }
+  return "";
+}
+function getMacroColorContrastText(value) {
+  const color = normalizeMacroColor(value);
+  if (!color) return "#f8fafc";
+
+  const red = Number.parseInt(color.slice(1, 3), 16);
+  const green = Number.parseInt(color.slice(3, 5), 16);
+  const blue = Number.parseInt(color.slice(5, 7), 16);
+  const luminance = ((0.299 * red) + (0.587 * green) + (0.114 * blue)) / 255;
+  return luminance >= 0.62 ? "#0b1120" : "#f8fafc";
+}
+
+function sanitizeMacroStoredEntry(entry) {
+  const name = String(entry?.name || "").trim().toLowerCase();
+  if (!name) return null;
+
+  const orderRaw = Number(entry?.order);
+  const sanitized = {
+    name,
+    alias: String(entry?.alias || "").trim().slice(0, 64),
+    visible: entry?.visible !== false,
+    categoryId: normalizeMacroCategoryId(entry?.categoryId),
+    disabledWhilePrinting: !!entry?.disabledWhilePrinting,
+    color: normalizeMacroColor(entry?.color),
+  };
+
+  if (Number.isFinite(orderRaw) && orderRaw >= 0) {
+    sanitized.order = Math.round(orderRaw);
+  }
+
+  return sanitized;
+}
+
+function sanitizeMacroCategoryEntry(entry) {
+  const id = String(entry?.id || "").trim();
+  const name = String(entry?.name || "").trim().slice(0, 40);
+  if (!id || id === MACRO_DEFAULT_CATEGORY_ID || !name) return null;
+  return { id, name };
+}
+
+function normalizeStoredMacroSettingsPayload(payload) {
+  const source = payload && typeof payload === "object" && !Array.isArray(payload) ? payload : {};
+  const storedCandidate = Array.isArray(source.stored) ? source.stored : [];
+  const categoriesCandidate = Array.isArray(source.categories) ? source.categories : [];
+
+  const stored = [];
+  const seenStored = new Set();
+  storedCandidate.forEach((entry) => {
+    const sanitized = sanitizeMacroStoredEntry(entry);
+    if (!sanitized || seenStored.has(sanitized.name)) return;
+    seenStored.add(sanitized.name);
+    stored.push(sanitized);
+  });
+
+  const categories = [];
+  const seenCategories = new Set();
+  categoriesCandidate.forEach((entry) => {
+    const sanitized = sanitizeMacroCategoryEntry(entry);
+    if (!sanitized || seenCategories.has(sanitized.id)) return;
+    seenCategories.add(sanitized.id);
+    categories.push(sanitized);
+  });
+
+  return { stored, categories };
+}
+
+function loadStoredMacroSettings() {
+  const raw = localStorage.getItem(MACRO_SETTINGS_STORAGE_KEY);
+  if (!raw) return { stored: [], categories: [] };
+
+  try {
+    return normalizeStoredMacroSettingsPayload(JSON.parse(raw));
+  } catch {
+    return { stored: [], categories: [] };
+  }
+}
+
+function createMacroState() {
+  const stored = loadStoredMacroSettings();
+  return {
+    keys: [],
+    stored: stored.stored,
+    categories: stored.categories,
+    selectedCategoryId: MACRO_DEFAULT_CATEGORY_ID,
+    searchQuery: "",
+    dialogMacroName: "",
+    dialogColorDefault: "",
+  };
+}
 function normalizeTemperatureSample(value, fallback = null) {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : fallback;
@@ -1608,16 +2295,20 @@ const state = {
     invalidRegex: false,
   },
   interface: createInterfaceState(),
+  warnings: normalizeWarningsSettings(loadStoredWarningsSettings()),
+  macros: createMacroState(),
   dashboard: {
-    showPrintProgress: loadStoredBool("dashboard_show_print_progress", true),
-    showTemperatures: loadStoredBool("dashboard_show_temperatures", true),
-    showMotion: loadStoredBool("dashboard_show_motion", true),
-    showQuickCommands: loadStoredBool("dashboard_show_quick_commands", true),
-    showMacros: loadStoredBool("dashboard_show_macros", true),
-    showMainCamera: loadStoredBool("dashboard_show_main_camera", true),
-    showToolheadCamera: loadStoredBool("dashboard_show_toolhead_camera", true),
-    showConsole: loadStoredBool("dashboard_show_console", true),
-    showKlipperView: loadStoredBool("dashboard_show_klipperview", true),
+    showPrintProgress: loadStoredBool(DASHBOARD_VISIBILITY_STORAGE_KEYS["card-print-progress"], true),
+    showTemperatures: loadStoredBool(DASHBOARD_VISIBILITY_STORAGE_KEYS["card-temperatures"], true),
+    showMotion: loadStoredBool(DASHBOARD_VISIBILITY_STORAGE_KEYS["card-motion"], true),
+    showQuickCommands: loadStoredBool(DASHBOARD_VISIBILITY_STORAGE_KEYS["card-quick-commands"], true),
+    showMacros: loadStoredBool(DASHBOARD_VISIBILITY_STORAGE_KEYS["card-macros"], true),
+    showMainCamera: loadStoredBool(DASHBOARD_VISIBILITY_STORAGE_KEYS["camera-main-card"], true),
+    showToolheadCamera: loadStoredBool(DASHBOARD_VISIBILITY_STORAGE_KEYS["camera-toolhead-card"], true),
+    showConsole: loadStoredBool(DASHBOARD_VISIBILITY_STORAGE_KEYS["card-dashboard-console"], true),
+    showKlipperView: loadStoredBool(DASHBOARD_VISIBILITY_STORAGE_KEYS[KLIPPERVIEW_CARD_ID], true),
+    layoutsByViewport: loadDashboardLayoutsByViewport(),
+    settingsViewport: "desktop",
     layout: loadDashboardLayout(),
   },
   controls: {
@@ -3198,7 +3889,9 @@ function syncPrettyGcodeCardPlacement() {
     return;
   }
 
-  const inLeftColumn = (state.dashboard.layout?.left || []).includes(KLIPPERVIEW_CARD_ID);
+  const runtimeViewport = getDashboardRuntimeViewport();
+  const runtimeLayout = getDashboardLayoutForViewport(runtimeViewport);
+  const inLeftColumn = (runtimeLayout.columns?.[0] || []).includes(KLIPPERVIEW_CARD_ID);
   const targetColumn = inLeftColumn ? els.dashboardColLeft : els.dashboardColRight;
   if (targetColumn && els.prettyGcodeCard.parentElement !== targetColumn) {
     targetColumn.appendChild(els.prettyGcodeCard);
@@ -3208,7 +3901,8 @@ function syncPrettyGcodeCardPlacement() {
 function applyDashboardLayout() {
   if (!els.dashboardColLeft || !els.dashboardColRight) return;
 
-  state.dashboard.layout = normalizeDashboardLayout(state.dashboard.layout);
+  const runtimeLayout = getRuntimeDashboardLegacyLayout();
+  state.dashboard.layout = normalizeDashboardLayout(runtimeLayout);
   const keepKlipperViewInViewer = state.activeView === "pretty-gcode";
 
   const leftFragment = document.createDocumentFragment();
@@ -3409,6 +4103,7 @@ function renderDashboardLayoutLists() {
 }
 
 function openDashboardLayoutDialog() {
+  state.dashboard.layout = getRuntimeDashboardLegacyLayout();
   renderDashboardLayoutLists();
   if (typeof els.dashboardLayoutDialog?.showModal === "function") {
     els.dashboardLayoutDialog.showModal();
@@ -3422,17 +4117,25 @@ function closeDashboardLayoutDialog() {
 }
 
 function saveDashboardLayout() {
+  const viewport = getDashboardRuntimeViewport();
   state.dashboard.layout = normalizeDashboardLayout(state.dashboard.layout);
-  localStorage.setItem("dashboard_layout", JSON.stringify(state.dashboard.layout));
-  localStorage.setItem("dashboard_layout_order", JSON.stringify(flattenDashboardLayout(state.dashboard.layout)));
+  const viewportLayout = convertLegacyLayoutToViewportLayout(state.dashboard.layout, viewport);
+  setDashboardLayoutForViewport(viewport, viewportLayout, { persist: true });
+
+  localStorage.setItem(DASHBOARD_LAYOUT_LEGACY_STORAGE_KEY, JSON.stringify(state.dashboard.layout));
+  localStorage.setItem(DASHBOARD_LAYOUT_LEGACY_ORDER_STORAGE_KEY, JSON.stringify(flattenDashboardLayout(state.dashboard.layout)));
+
   applyDashboardLayout();
   applyDashboardSettings();
+  renderSettingsDashboardLayout();
   closeDashboardLayoutDialog();
   appendConsole("Dashboard layout saved.");
 }
 
 function resetDashboardLayout() {
-  state.dashboard.layout = normalizeDashboardLayout(DASHBOARD_LAYOUT_DEFAULT);
+  const viewport = getDashboardRuntimeViewport();
+  const defaults = getDashboardDefaultLayoutForViewport(viewport);
+  state.dashboard.layout = convertViewportLayoutToLegacyLayout(defaults, viewport);
   renderDashboardLayoutLists();
 }
 
@@ -3959,6 +4662,7 @@ function setPrinterState(value) {
   renderJobsJobControls();
   renderControlsPanel();
   renderStatusClearFileButton(state.printStatus.lastPrintStats);
+  refreshMacroActionButtonState();
 }
 
 function setStatusFilename(filename) {
@@ -4545,6 +5249,7 @@ function switchView(viewName) {
   updateSettingsSubnavVisibility();
   if (viewName === "settings") {
     queueSettingsSubnavSync();
+    renderSettingsDashboardLayout();
   }
   localStorage.setItem(ACTIVE_VIEW_STORAGE_KEY, viewName);
 
@@ -8319,11 +9024,659 @@ async function connectMoonraker() {
   await loadConfigFiles({ preserveSelection: true });
 }
 
-function renderMacroButtons(container, macroKeys) {
+function persistMacroSettings() {
+  const normalized = normalizeStoredMacroSettingsPayload({
+    stored: state.macros.stored,
+    categories: state.macros.categories,
+  });
+
+  state.macros.stored = normalized.stored;
+  state.macros.categories = normalized.categories;
+  localStorage.setItem(MACRO_SETTINGS_STORAGE_KEY, JSON.stringify(normalized));
+}
+
+function createMacroCategoryId() {
+  return `macro-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function normalizeMacroName(value) {
+  return String(value || "").trim();
+}
+
+function normalizeMacroStorageName(value) {
+  return normalizeMacroName(value).toLowerCase();
+}
+
+function getMacroNameFromKey(macroKey) {
+  return String(macroKey || "").replace(/^gcode_macro\s+/i, "").trim();
+}
+
+function getMacroConfigForName(name) {
+  const normalized = normalizeMacroStorageName(name);
+  if (!normalized) return null;
+
+  const settings = state.controls?.configSettings;
+  if (!settings || typeof settings !== "object") return null;
+  return settings[`gcode_macro ${normalized}`] || null;
+}
+
+function getMacroStoredEntry(name) {
+  const normalized = normalizeMacroStorageName(name);
+  if (!normalized) return null;
+
+  const stored = Array.isArray(state.macros?.stored) ? state.macros.stored : [];
+  return stored.find((entry) => entry.name === normalized) || null;
+}
+
+function getMacroDescription(configEntry) {
+  const description = String(configEntry?.description || "").trim();
+  if (!description || /^g-?code macro$/i.test(description)) return "";
+  return description;
+}
+
+function buildMacroRuntimeEntry(macroKey, sourceIndex = 0) {
+  const name = getMacroNameFromKey(macroKey);
+  if (!name || name.startsWith("_")) return null;
+
+  const nameLower = normalizeMacroStorageName(name);
+  const stored = getMacroStoredEntry(name);
+  const config = getMacroConfigForName(name);
+
+  let categoryId = normalizeMacroCategoryId(stored?.categoryId);
+  if (categoryId !== MACRO_DEFAULT_CATEGORY_ID) {
+    const exists = state.macros.categories.some((category) => category.id === categoryId);
+    if (!exists) {
+      categoryId = MACRO_DEFAULT_CATEGORY_ID;
+    }
+  }
+
+  const orderRaw = Number(stored?.order);
+  return {
+    key: `gcode_macro ${name}`,
+    name,
+    nameLower,
+    alias: String(stored?.alias || "").trim(),
+    description: getMacroDescription(config),
+    visible: stored?.visible !== false,
+    disabledWhilePrinting: !!stored?.disabledWhilePrinting,
+    categoryId,
+    color: normalizeMacroColor(stored?.color),
+    order: Number.isFinite(orderRaw) && orderRaw >= 0 ? Math.round(orderRaw) : sourceIndex,
+  };
+}
+
+function compareMacroEntries(a, b) {
+  const orderA = Number.isFinite(Number(a?.order)) ? Number(a.order) : Number.MAX_SAFE_INTEGER;
+  const orderB = Number.isFinite(Number(b?.order)) ? Number(b.order) : Number.MAX_SAFE_INTEGER;
+
+  if (orderA !== orderB) return orderA - orderB;
+  return String(a?.name || "").toLowerCase().localeCompare(String(b?.name || "").toLowerCase());
+}
+
+function getAllMacroRuntimeEntries() {
+  const macroKeys = mergeMacroKeys(Array.isArray(state.macros?.keys) ? state.macros.keys : []);
+  return macroKeys
+    .map((macroKey, index) => buildMacroRuntimeEntry(macroKey, index))
+    .filter(Boolean);
+}
+
+function getMacrosForCategory(categoryId, { searchQuery = "" } = {}) {
+  const normalizedCategoryId = normalizeMacroCategoryId(categoryId);
+  const normalizedSearch = String(searchQuery || "").trim().toLowerCase();
+
+  return getAllMacroRuntimeEntries()
+    .filter((macro) => normalizeMacroCategoryId(macro.categoryId) === normalizedCategoryId)
+    .filter((macro) => {
+      if (!normalizedSearch) return true;
+
+      const haystack = [macro.name, macro.alias, macro.description]
+        .map((value) => String(value || "").toLowerCase())
+        .join(" ");
+
+      return haystack.includes(normalizedSearch);
+    })
+    .sort(compareMacroEntries);
+}
+
+function getMacroCategoryName(categoryId) {
+  const normalizedCategoryId = normalizeMacroCategoryId(categoryId);
+  if (normalizedCategoryId === MACRO_DEFAULT_CATEGORY_ID) {
+    return "Uncategorized";
+  }
+
+  const category = state.macros.categories.find((entry) => entry.id === normalizedCategoryId);
+  return category?.name || "Uncategorized";
+}
+
+function ensureSelectedMacroCategory() {
+  const selectedId = normalizeMacroCategoryId(state.macros.selectedCategoryId);
+  if (selectedId === MACRO_DEFAULT_CATEGORY_ID) {
+    state.macros.selectedCategoryId = selectedId;
+    return;
+  }
+
+  const exists = state.macros.categories.some((category) => category.id === selectedId);
+  state.macros.selectedCategoryId = exists ? selectedId : MACRO_DEFAULT_CATEGORY_ID;
+}
+
+function getMacroGroupsForDashboard() {
+  const groups = [];
+
+  state.macros.categories.forEach((category) => {
+    const macros = getMacrosForCategory(category.id).filter((macro) => macro.visible);
+    if (!macros.length) return;
+
+    groups.push({
+      id: category.id,
+      name: category.name,
+      macros,
+    });
+  });
+
+  const uncategorized = getMacrosForCategory(MACRO_DEFAULT_CATEGORY_ID).filter((macro) => macro.visible);
+  if (uncategorized.length) {
+    groups.push({
+      id: MACRO_DEFAULT_CATEGORY_ID,
+      name: groups.length ? "Uncategorized" : "",
+      macros: uncategorized,
+    });
+  }
+
+  return groups;
+}
+
+function applyMacroStoredPatch(collection, macroName, patch = {}) {
+  const normalizedName = normalizeMacroStorageName(macroName);
+  if (!normalizedName) return;
+
+  const index = collection.findIndex((entry) => entry.name === normalizedName);
+  const current = index >= 0 ? collection[index] : { name: normalizedName };
+  const next = sanitizeMacroStoredEntry({
+    ...current,
+    ...patch,
+    name: normalizedName,
+  });
+
+  if (!next) return;
+
+  if (index >= 0) {
+    collection.splice(index, 1, next);
+  } else {
+    collection.push(next);
+  }
+}
+
+function updateMacroStoredEntries(mutator) {
+  const working = [...(Array.isArray(state.macros.stored) ? state.macros.stored : [])];
+  mutator(working);
+  state.macros.stored = working;
+  persistMacroSettings();
+}
+
+function moveMacroCategory(categoryId, direction) {
+  const index = state.macros.categories.findIndex((category) => category.id === categoryId);
+  if (index < 0) return;
+
+  const targetIndex = index + Number(direction);
+  if (targetIndex < 0 || targetIndex >= state.macros.categories.length) return;
+
+  const next = [...state.macros.categories];
+  const [moved] = next.splice(index, 1);
+  next.splice(targetIndex, 0, moved);
+  state.macros.categories = next;
+  persistMacroSettings();
+  renderMacros(state.macros.keys);
+}
+
+function addMacroCategory() {
+  const input = window.prompt("Category name");
+  const name = String(input || "").trim().slice(0, 40);
+  if (!name) return;
+
+  const duplicate = state.macros.categories.some((category) => category.name.toLowerCase() === name.toLowerCase());
+  if (duplicate) {
+    appendConsole(`Macro category already exists: ${name}`, "warn");
+    return;
+  }
+
+  state.macros.categories.push({
+    id: createMacroCategoryId(),
+    name,
+  });
+  state.macros.selectedCategoryId = state.macros.categories[state.macros.categories.length - 1].id;
+  persistMacroSettings();
+  renderMacros(state.macros.keys);
+}
+
+function editMacroCategory(categoryId) {
+  const category = state.macros.categories.find((entry) => entry.id === categoryId);
+  if (!category) return;
+
+  const input = window.prompt("Edit category name", category.name);
+  const nextName = String(input || "").trim().slice(0, 40);
+  if (!nextName) return;
+
+  const duplicate = state.macros.categories.some(
+    (entry) => entry.id !== category.id && entry.name.toLowerCase() === nextName.toLowerCase()
+  );
+  if (duplicate) {
+    appendConsole(`Macro category already exists: ${nextName}`, "warn");
+    return;
+  }
+
+  category.name = nextName;
+  persistMacroSettings();
+  renderMacros(state.macros.keys);
+}
+
+function removeMacroCategory(categoryId) {
+  const category = state.macros.categories.find((entry) => entry.id === categoryId);
+  if (!category) return;
+
+  const confirmed = window.confirm(`Delete macro category "${category.name}"? Macros move to Uncategorized.`);
+  if (!confirmed) return;
+
+  state.macros.categories = state.macros.categories.filter((entry) => entry.id !== categoryId);
+
+  updateMacroStoredEntries((collection) => {
+    collection.forEach((entry) => {
+      if (normalizeMacroCategoryId(entry.categoryId) === categoryId) {
+        entry.categoryId = MACRO_DEFAULT_CATEGORY_ID;
+      }
+    });
+  });
+
+  ensureSelectedMacroCategory();
+  renderMacros(state.macros.keys);
+}
+
+function moveMacroInSelectedCategory(macroName, direction) {
+  const categoryId = normalizeMacroCategoryId(state.macros.selectedCategoryId);
+  const macros = getMacrosForCategory(categoryId);
+  const index = macros.findIndex((macro) => macro.nameLower === normalizeMacroStorageName(macroName));
+  if (index < 0) return;
+
+  const targetIndex = index + Number(direction);
+  if (targetIndex < 0 || targetIndex >= macros.length) return;
+
+  const nextOrder = [...macros];
+  const [moved] = nextOrder.splice(index, 1);
+  nextOrder.splice(targetIndex, 0, moved);
+
+  updateMacroStoredEntries((collection) => {
+    nextOrder.forEach((macro, orderIndex) => {
+      applyMacroStoredPatch(collection, macro.nameLower, {
+        categoryId,
+        order: orderIndex,
+      });
+    });
+  });
+
+  renderMacros(state.macros.keys);
+}
+
+function setMacroVisibility(macroName, visible) {
+  updateMacroStoredEntries((collection) => {
+    applyMacroStoredPatch(collection, macroName, {
+      visible: !!visible,
+    });
+  });
+
+  renderMacros(state.macros.keys);
+}
+
+function setSelectedMacrosVisibility(visible) {
+  const macros = getMacrosForCategory(state.macros.selectedCategoryId, {
+    searchQuery: state.macros.searchQuery,
+  });
+
+  if (!macros.length) return;
+
+  updateMacroStoredEntries((collection) => {
+    macros.forEach((macro) => {
+      applyMacroStoredPatch(collection, macro.nameLower, {
+        visible: !!visible,
+      });
+    });
+  });
+
+  renderMacros(state.macros.keys);
+}
+
+function getMacroDialogDefaultColor() {
+  const accent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim();
+  return normalizeMacroColor(accent) || "#ff8a3d";
+}
+
+function closeMacroSettingsDialog() {
+  if (els.settingsMacroDialog?.open) {
+    els.settingsMacroDialog.close();
+  }
+  state.macros.dialogMacroName = "";
+}
+
+function populateMacroDialogCategories(selectedCategoryId) {
+  if (!els.settingsMacroCategory) return;
+
+  els.settingsMacroCategory.innerHTML = "";
+
+  const uncategorizedOption = document.createElement("option");
+  uncategorizedOption.value = MACRO_DEFAULT_CATEGORY_ID;
+  uncategorizedOption.textContent = "Uncategorized";
+  els.settingsMacroCategory.appendChild(uncategorizedOption);
+
+  state.macros.categories.forEach((category) => {
+    const option = document.createElement("option");
+    option.value = category.id;
+    option.textContent = category.name;
+    els.settingsMacroCategory.appendChild(option);
+  });
+
+  els.settingsMacroCategory.value = normalizeMacroCategoryId(selectedCategoryId);
+}
+
+function openMacroSettingsDialog(macroName) {
+  const macro = getAllMacroRuntimeEntries().find((entry) => entry.nameLower === normalizeMacroStorageName(macroName));
+  if (!macro || !els.settingsMacroDialog) return;
+
+  state.macros.dialogMacroName = macro.nameLower;
+
+  if (els.settingsMacroDialogTitle) {
+    els.settingsMacroDialogTitle.textContent = macro.name.toUpperCase();
+  }
+
+  if (els.settingsMacroAlias) {
+    els.settingsMacroAlias.value = macro.alias || "";
+  }
+
+  populateMacroDialogCategories(macro.categoryId);
+
+  const defaultColor = getMacroDialogDefaultColor();
+  state.macros.dialogColorDefault = defaultColor;
+
+  if (els.settingsMacroColor) {
+    els.settingsMacroColor.dataset.mode = macro.color ? "custom" : "default";
+    els.settingsMacroColor.value = macro.color || defaultColor;
+  }
+
+  if (els.settingsMacroDisabledWhilePrinting) {
+    els.settingsMacroDisabledWhilePrinting.checked = !!macro.disabledWhilePrinting;
+  }
+
+  if (els.settingsMacroVisible) {
+    els.settingsMacroVisible.checked = !!macro.visible;
+  }
+
+  if (typeof els.settingsMacroDialog.showModal === "function") {
+    if (!els.settingsMacroDialog.open) {
+      els.settingsMacroDialog.showModal();
+    }
+  } else {
+    els.settingsMacroDialog.setAttribute("open", "open");
+  }
+}
+
+function saveMacroSettingsDialog() {
+  const macroName = normalizeMacroStorageName(state.macros.dialogMacroName);
+  if (!macroName) {
+    closeMacroSettingsDialog();
+    return;
+  }
+
+  const categoryValue = normalizeMacroCategoryId(els.settingsMacroCategory?.value);
+  const categoryExists = categoryValue === MACRO_DEFAULT_CATEGORY_ID
+    || state.macros.categories.some((category) => category.id === categoryValue);
+
+  const colorMode = els.settingsMacroColor?.dataset?.mode === "custom" ? "custom" : "default";
+  const colorValue = colorMode === "custom" ? normalizeMacroColor(els.settingsMacroColor?.value) : "";
+
+  updateMacroStoredEntries((collection) => {
+    applyMacroStoredPatch(collection, macroName, {
+      alias: String(els.settingsMacroAlias?.value || "").trim().slice(0, 64),
+      categoryId: categoryExists ? categoryValue : MACRO_DEFAULT_CATEGORY_ID,
+      color: colorValue,
+      disabledWhilePrinting: !!els.settingsMacroDisabledWhilePrinting?.checked,
+      visible: !!els.settingsMacroVisible?.checked,
+    });
+  });
+
+  closeMacroSettingsDialog();
+  renderMacros(state.macros.keys);
+}
+
+function renderMacroSettingsCategoryList() {
+  const list = els.settingsMacrosCategoryList;
+  if (!list) return;
+
+  ensureSelectedMacroCategory();
+  list.replaceChildren();
+
+  const runtime = getAllMacroRuntimeEntries();
+
+  const categorySummaries = state.macros.categories.map((category) => {
+    const categoryMacros = runtime
+      .filter((macro) => normalizeMacroCategoryId(macro.categoryId) === category.id)
+      .sort(compareMacroEntries);
+
+    return {
+      ...category,
+      count: categoryMacros.length,
+      visible: categoryMacros.filter((macro) => macro.visible).length,
+    };
+  });
+
+  const uncategorizedMacros = runtime
+    .filter((macro) => normalizeMacroCategoryId(macro.categoryId) === MACRO_DEFAULT_CATEGORY_ID)
+    .sort(compareMacroEntries);
+
+  const buildRow = (summary, { editable = false, index = -1 } = {}) => {
+    const row = document.createElement("div");
+    row.className = "settings-macros-category-item";
+
+    const select = document.createElement("button");
+    select.type = "button";
+    select.className = "settings-macros-category-select";
+
+    if (state.macros.selectedCategoryId === summary.id) {
+      select.classList.add("is-active");
+    }
+
+    const name = document.createElement("span");
+    name.textContent = summary.name;
+
+    const chip = document.createElement("span");
+    chip.className = "settings-macros-category-chip";
+    chip.textContent = `${summary.visible} / ${summary.count}`;
+
+    select.append(name, chip);
+    select.addEventListener("click", () => {
+      state.macros.selectedCategoryId = summary.id;
+      renderMacroSettings();
+    });
+
+    row.appendChild(select);
+
+    if (editable) {
+      const actions = document.createElement("div");
+      actions.className = "settings-macros-category-actions";
+
+      const up = document.createElement("button");
+      up.type = "button";
+      up.textContent = "Up";
+      up.disabled = index <= 0;
+      up.addEventListener("click", () => moveMacroCategory(summary.id, -1));
+
+      const down = document.createElement("button");
+      down.type = "button";
+      down.textContent = "Down";
+      down.disabled = index >= categorySummaries.length - 1;
+      down.addEventListener("click", () => moveMacroCategory(summary.id, 1));
+
+      const edit = document.createElement("button");
+      edit.type = "button";
+      edit.textContent = "Edit";
+      edit.addEventListener("click", () => editMacroCategory(summary.id));
+
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "danger";
+      remove.textContent = "Delete";
+      remove.addEventListener("click", () => removeMacroCategory(summary.id));
+
+      actions.append(up, down, edit, remove);
+      row.appendChild(actions);
+    }
+
+    return row;
+  };
+
+  categorySummaries.forEach((summary, index) => {
+    list.appendChild(buildRow(summary, { editable: true, index }));
+  });
+
+  list.appendChild(buildRow({
+    id: MACRO_DEFAULT_CATEGORY_ID,
+    name: "Uncategorized",
+    count: uncategorizedMacros.length,
+    visible: uncategorizedMacros.filter((macro) => macro.visible).length,
+  }));
+}
+
+function renderMacroSettingsMacroList() {
+  const list = els.settingsMacrosItemList;
+  if (!list) return;
+
+  ensureSelectedMacroCategory();
+
+  if (els.settingsMacrosSearch && els.settingsMacrosSearch.value !== state.macros.searchQuery) {
+    els.settingsMacrosSearch.value = state.macros.searchQuery;
+  }
+
+  if (els.settingsMacrosSelectedCategory) {
+    const label = getMacroCategoryName(state.macros.selectedCategoryId);
+    els.settingsMacrosSelectedCategory.textContent = `${label} Macros`;
+  }
+
+  list.replaceChildren();
+
+  const normalizedSearch = String(state.macros.searchQuery || "").trim();
+  const macros = getMacrosForCategory(state.macros.selectedCategoryId, {
+    searchQuery: normalizedSearch,
+  });
+
+  if (!macros.length) {
+    const empty = document.createElement("p");
+    empty.className = "muted settings-macros-empty";
+    empty.textContent = normalizedSearch
+      ? "No macros match this filter."
+      : "No macros in this category.";
+    list.appendChild(empty);
+    return;
+  }
+
+  const reorderDisabled = normalizedSearch.length > 0;
+
+  macros.forEach((macro, index) => {
+    const row = document.createElement("div");
+    row.className = "settings-macros-item";
+    if (!macro.visible) {
+      row.classList.add("is-hidden");
+    }
+    if (macro.color) {
+      row.style.setProperty("--macro-color", macro.color);
+    }
+
+    const metaButton = document.createElement("button");
+    metaButton.type = "button";
+    metaButton.className = "settings-macros-item-meta";
+
+    const title = document.createElement("strong");
+    title.textContent = macro.name.toUpperCase();
+
+    const subtitle = document.createElement("span");
+    const details = [];
+    if (macro.alias) details.push(`Alias: ${macro.alias}`);
+    if (macro.description) details.push(macro.description);
+    subtitle.textContent = details.length ? details.join(" | ") : "No description";
+
+    metaButton.append(title, subtitle);
+    metaButton.addEventListener("click", () => {
+      openMacroSettingsDialog(macro.nameLower);
+    });
+
+    const controls = document.createElement("div");
+    controls.className = "settings-macros-item-controls";
+
+    const visibleLabel = document.createElement("label");
+    visibleLabel.className = "settings-macros-visible";
+
+    const visibleInput = document.createElement("input");
+    visibleInput.type = "checkbox";
+    visibleInput.checked = !!macro.visible;
+    visibleInput.addEventListener("change", () => {
+      setMacroVisibility(macro.nameLower, visibleInput.checked);
+    });
+
+    const visibleText = document.createElement("span");
+    visibleText.textContent = "Visible";
+
+    visibleLabel.append(visibleInput, visibleText);
+
+    const settingsButton = document.createElement("button");
+    settingsButton.type = "button";
+    settingsButton.textContent = "Settings";
+    settingsButton.addEventListener("click", () => {
+      openMacroSettingsDialog(macro.nameLower);
+    });
+
+    const up = document.createElement("button");
+    up.type = "button";
+    up.textContent = "Up";
+    up.disabled = reorderDisabled || index === 0;
+    up.title = reorderDisabled ? "Clear search to reorder macros." : "";
+    up.addEventListener("click", () => moveMacroInSelectedCategory(macro.nameLower, -1));
+
+    const down = document.createElement("button");
+    down.type = "button";
+    down.textContent = "Down";
+    down.disabled = reorderDisabled || index === macros.length - 1;
+    down.title = reorderDisabled ? "Clear search to reorder macros." : "";
+    down.addEventListener("click", () => moveMacroInSelectedCategory(macro.nameLower, 1));
+
+    controls.append(visibleLabel, settingsButton, up, down);
+    row.append(metaButton, controls);
+    list.appendChild(row);
+  });
+}
+
+function renderMacroSettings() {
+  renderMacroSettingsCategoryList();
+  renderMacroSettingsMacroList();
+}
+
+function refreshMacroActionButtonState() {
+  const isPrinting = isPrintActiveForSystemActions();
+  const byName = new Map(getAllMacroRuntimeEntries().map((entry) => [entry.nameLower, entry]));
+
+  document.querySelectorAll(".macro-action-btn[data-macro-name]").forEach((button) => {
+    const macroName = normalizeMacroStorageName(button.getAttribute("data-macro-name"));
+    const macro = byName.get(macroName);
+    if (!macro) {
+      button.disabled = false;
+      return;
+    }
+
+    button.disabled = !!(macro.disabledWhilePrinting && isPrinting);
+  });
+}
+
+function renderMacroButtons(container, macroGroups) {
   if (!container) return;
 
+  const groups = Array.isArray(macroGroups) ? macroGroups : [];
   container.innerHTML = "";
-  if (!macroKeys.length) {
+
+  if (!groups.length) {
     const empty = document.createElement("p");
     empty.className = "muted";
     empty.textContent = "No macros found.";
@@ -8331,30 +9684,65 @@ function renderMacroButtons(container, macroKeys) {
     return;
   }
 
-  macroKeys.forEach((macro) => {
-    const name = macro.replace("gcode_macro ", "");
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "macro-action-btn";
-    button.textContent = name;
-    button.title = name;
-    button.addEventListener("click", async () => {
-      await executeGcodeAction(name, {
-        actionLabel: `Macro ${name}`,
+  const showGroupTitle = groups.length > 1 || groups.some((group) => String(group?.name || "").trim());
+
+  groups.forEach((group) => {
+    const section = document.createElement("section");
+    section.className = "macro-group";
+
+    if (showGroupTitle) {
+      const heading = document.createElement("h4");
+      heading.className = "macro-group-title";
+      heading.textContent = String(group.name || "Uncategorized").trim() || "Uncategorized";
+      section.appendChild(heading);
+    }
+
+    const list = document.createElement("div");
+    list.className = "macro-group-list";
+
+    group.macros.forEach((macro) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "macro-action-btn";
+      button.textContent = macro.alias || macro.name;
+      button.dataset.macroName = macro.nameLower;
+      button.title = macro.description
+        ? `${macro.name} | ${macro.description}`
+        : macro.name;
+
+      if (macro.color) {
+        button.style.setProperty("--macro-accent", macro.color);
+        button.style.setProperty("--macro-contrast", getMacroColorContrastText(macro.color));
+        button.classList.add("macro-action-btn-colored");
+      }
+
+      button.addEventListener("click", async () => {
+        await executeGcodeAction(macro.name, {
+          actionLabel: `Macro ${macro.name}`,
+        });
       });
+
+      list.appendChild(button);
     });
-    container.appendChild(button);
+
+    section.appendChild(list);
+    container.appendChild(section);
   });
+
+  refreshMacroActionButtonState();
 }
 
 function renderMacros(macroKeys) {
-  const normalized = Array.isArray(macroKeys) ? macroKeys : [];
+  state.macros.keys = mergeMacroKeys(Array.isArray(macroKeys) ? macroKeys : []);
+  ensureSelectedMacroCategory();
 
-  renderMacroButtons(els.macroList, normalized);
-  renderMacroButtons(els.dashboardMacroList, normalized);
+  const groups = getMacroGroupsForDashboard();
+  renderMacroButtons(els.macroList, groups);
+  renderMacroButtons(els.dashboardMacroList, groups);
+  renderMacroSettings();
+  refreshMacroActionButtonState();
   renderControlsPanel();
 }
-
 function normalizeGcodePath(path) {
   return String(path || "")
     .trim()
@@ -14415,8 +15803,7 @@ function wireEvents() {
   }, { passive: true });
 
   window.addEventListener("resize", () => {
-    if (state.activeView !== "settings") return;
-    queueSettingsSubnavSync();
+    handleDashboardViewportResize();
   });
 
   els.sidebarToggle?.addEventListener("click", toggleSidebar);
@@ -15166,6 +16553,97 @@ function wireEvents() {
     saveConsoleFilterFromEditor();
   });
 
+  els.settingsMacrosCategoryAdd?.addEventListener("click", () => {
+    addMacroCategory();
+  });
+
+  els.settingsMacrosSearch?.addEventListener("input", () => {
+    state.macros.searchQuery = String(els.settingsMacrosSearch?.value || "");
+    renderMacroSettingsMacroList();
+  });
+
+  els.settingsMacrosSearch?.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    event.preventDefault();
+    state.macros.searchQuery = "";
+    if (els.settingsMacrosSearch) {
+      els.settingsMacrosSearch.value = "";
+      els.settingsMacrosSearch.blur();
+    }
+    renderMacroSettingsMacroList();
+  });
+
+  els.settingsMacrosAllOn?.addEventListener("click", () => {
+    setSelectedMacrosVisibility(true);
+  });
+
+  els.settingsMacrosAllOff?.addEventListener("click", () => {
+    setSelectedMacrosVisibility(false);
+  });
+
+  els.settingsMacroColor?.addEventListener("input", () => {
+    els.settingsMacroColor.dataset.mode = "custom";
+  });
+
+  els.settingsMacroColorReset?.addEventListener("click", () => {
+    if (!els.settingsMacroColor) return;
+    els.settingsMacroColor.dataset.mode = "default";
+    els.settingsMacroColor.value = state.macros.dialogColorDefault || getMacroDialogDefaultColor();
+  });
+
+  els.settingsMacroClose?.addEventListener("click", () => {
+    closeMacroSettingsDialog();
+  });
+
+  els.settingsMacroCancel?.addEventListener("click", () => {
+    closeMacroSettingsDialog();
+  });
+
+  els.settingsMacroSave?.addEventListener("click", () => {
+    saveMacroSettingsDialog();
+  });
+
+  els.settingsMacroDialog?.addEventListener("click", (event) => {
+    if (event.target === els.settingsMacroDialog) {
+      closeMacroSettingsDialog();
+    }
+  });
+
+  els.settingsMacroDialog?.addEventListener("close", () => {
+    state.macros.dialogMacroName = "";
+  });
+
+  els.settingsDashboardViewportButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const viewport = normalizeDashboardViewport(button.dataset.dashboardViewport);
+      state.dashboard.settingsViewport = viewport;
+      renderSettingsDashboardLayout();
+    });
+  });
+
+  els.settingsDashboardReset?.addEventListener("click", () => {
+    const viewport = normalizeDashboardViewport(state.dashboard.settingsViewport);
+    resetDashboardLayoutForViewport(viewport);
+    renderSettingsDashboardLayout();
+    appendConsole(`Dashboard layout reset for ${viewport}.`, "info");
+  });
+
+  els.settingsWarningCpuThrottled?.addEventListener("change", () => {
+    state.warnings.warnOnCpuThrottled = !!els.settingsWarningCpuThrottled?.checked;
+    persistWarningsSettings();
+  });
+
+  els.settingsWarningStepperDriverOverheating?.addEventListener("change", () => {
+    state.warnings.warnOnStepperDriverOverheating = !!els.settingsWarningStepperDriverOverheating?.checked;
+    persistWarningsSettings();
+  });
+
+  els.settingsWarningReset?.addEventListener("click", () => {
+    state.warnings = normalizeWarningsSettings(WARNINGS_SETTINGS_DEFAULTS);
+    persistWarningsSettings();
+    syncWarningsSettingsControls();
+    appendConsole("Warning settings reset.", "info");
+  });
   els.settingsForm.addEventListener("submit", async (event) => {
     event.preventDefault();
 
@@ -15178,15 +16656,17 @@ function wireEvents() {
     state.interface.density = INTERFACE_DENSITIES.includes(els.interfaceDensity.value) ? els.interfaceDensity.value : "comfortable";
     state.interface.backgroundImageEnabled = !!els.interfaceBgImageEnabled?.checked;
     state.interface.backgroundImageUrl = normalizeInterfaceBackgroundImageUrl(els.interfaceBgImageUrl?.value || "");
-    state.dashboard.showPrintProgress = els.dashShowPrintProgress.checked;
-    state.dashboard.showTemperatures = els.dashShowTemperatures.checked;
-    state.dashboard.showMotion = els.dashShowMotion.checked;
-    state.dashboard.showQuickCommands = els.dashShowQuickCommands.checked;
-    state.dashboard.showMacros = els.dashShowMacros.checked;
-    state.dashboard.showMainCamera = els.dashShowMainCamera.checked;
-    state.dashboard.showToolheadCamera = els.dashShowToolheadCamera.checked;
-    state.dashboard.showConsole = !!els.dashShowConsole?.checked;
-    state.dashboard.showKlipperView = !!els.dashShowKlipperView?.checked;
+    state.warnings.warnOnCpuThrottled = !!els.settingsWarningCpuThrottled?.checked;
+    state.warnings.warnOnStepperDriverOverheating = !!els.settingsWarningStepperDriverOverheating?.checked;
+    state.dashboard.showPrintProgress = els.dashShowPrintProgress?.checked ?? state.dashboard.showPrintProgress;
+    state.dashboard.showTemperatures = els.dashShowTemperatures?.checked ?? state.dashboard.showTemperatures;
+    state.dashboard.showMotion = els.dashShowMotion?.checked ?? state.dashboard.showMotion;
+    state.dashboard.showQuickCommands = els.dashShowQuickCommands?.checked ?? state.dashboard.showQuickCommands;
+    state.dashboard.showMacros = els.dashShowMacros?.checked ?? state.dashboard.showMacros;
+    state.dashboard.showMainCamera = els.dashShowMainCamera?.checked ?? state.dashboard.showMainCamera;
+    state.dashboard.showToolheadCamera = els.dashShowToolheadCamera?.checked ?? state.dashboard.showToolheadCamera;
+    state.dashboard.showConsole = els.dashShowConsole?.checked ?? state.dashboard.showConsole;
+    state.dashboard.showKlipperView = els.dashShowKlipperView?.checked ?? state.dashboard.showKlipperView;
 
     state.camera.enabled = els.cameraEnabled.checked;
     state.camera.url = els.cameraUrl.value.trim();
@@ -15203,17 +16683,12 @@ function wireEvents() {
     localStorage.setItem("interface_density", state.interface.density);
     localStorage.setItem("interface_sidebar_collapsed", String(state.interface.sidebarCollapsed));
     localStorage.setItem(MACHINE_SIDE_COLLAPSED_STORAGE_KEY, String(state.interface.machineSideCollapsed));
-    localStorage.setItem("dashboard_show_print_progress", String(state.dashboard.showPrintProgress));
-    localStorage.setItem("dashboard_show_temperatures", String(state.dashboard.showTemperatures));
-    localStorage.setItem("dashboard_show_motion", String(state.dashboard.showMotion));
-    localStorage.setItem("dashboard_show_quick_commands", String(state.dashboard.showQuickCommands));
-    localStorage.setItem("dashboard_show_macros", String(state.dashboard.showMacros));
-    localStorage.setItem("dashboard_show_main_camera", String(state.dashboard.showMainCamera));
-    localStorage.setItem("dashboard_show_toolhead_camera", String(state.dashboard.showToolheadCamera));
-    localStorage.setItem("dashboard_show_console", String(state.dashboard.showConsole));
-    localStorage.setItem("dashboard_show_klipperview", String(state.dashboard.showKlipperView));
-    localStorage.setItem("dashboard_layout", JSON.stringify(state.dashboard.layout));
-    localStorage.setItem("dashboard_layout_order", JSON.stringify(flattenDashboardLayout(state.dashboard.layout)));
+    persistWarningsSettings();
+    persistDashboardVisibilityState();
+    persistDashboardLayoutsByViewport();
+    state.dashboard.layout = getRuntimeDashboardLegacyLayout();
+    localStorage.setItem(DASHBOARD_LAYOUT_LEGACY_STORAGE_KEY, JSON.stringify(state.dashboard.layout));
+    localStorage.setItem(DASHBOARD_LAYOUT_LEGACY_ORDER_STORAGE_KEY, JSON.stringify(flattenDashboardLayout(state.dashboard.layout)));
     localStorage.setItem("camera_enabled", String(state.camera.enabled));
     localStorage.setItem("camera_url", state.camera.url);
     localStorage.setItem("camera_render_mode", state.camera.renderMode);
@@ -15612,15 +17087,12 @@ async function init() {
   syncThemeEditorControls();
   els.interfaceCompact.checked = state.interface.compact;
   els.interfaceDensity.value = state.interface.density;
-  els.dashShowPrintProgress.checked = state.dashboard.showPrintProgress;
-  els.dashShowTemperatures.checked = state.dashboard.showTemperatures;
-  els.dashShowMotion.checked = state.dashboard.showMotion;
-  els.dashShowQuickCommands.checked = state.dashboard.showQuickCommands;
-  els.dashShowMacros.checked = state.dashboard.showMacros;
-  els.dashShowMainCamera.checked = state.dashboard.showMainCamera;
-  els.dashShowToolheadCamera.checked = state.dashboard.showToolheadCamera;
-  if (els.dashShowConsole) els.dashShowConsole.checked = state.dashboard.showConsole;
-  if (els.dashShowKlipperView) els.dashShowKlipperView.checked = state.dashboard.showKlipperView;
+  runtimeDashboardViewport = getDashboardRuntimeViewport();
+  state.dashboard.settingsViewport = runtimeDashboardViewport;
+  state.dashboard.layout = getRuntimeDashboardLegacyLayout(runtimeDashboardViewport);
+  syncDashboardVisibilityInputs();
+  syncWarningsSettingsControls();
+  renderSettingsDashboardLayout();
 
   els.cameraEnabled.checked = state.camera.enabled;
   els.cameraUrl.value = state.camera.url;
@@ -15707,6 +17179,7 @@ async function init() {
   syncConsoleSettingsControls();
   resetConsoleFilterEditor();
   applyConsoleDisplaySettings();
+  renderMacroSettings();
 
   switchView(state.activeView);
   syncConfigSelectionUi();
@@ -15754,6 +17227,56 @@ init().catch((error) => {
   setConnectionUi("error");
   appendConsole(`Init failed: ${message}`, "error");
 });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

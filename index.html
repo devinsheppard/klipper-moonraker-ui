@@ -160,6 +160,7 @@
         <p class="settings-subnav-title">Settings</p>
         <div class="settings-subnav-list" role="navigation" aria-label="Settings sections">
           <button type="button" class="settings-subnav-item" data-settings-anchor="general">General</button>
+          <button type="button" class="settings-subnav-item" data-settings-anchor="dashboard">Dashboard</button>
           <button type="button" class="settings-subnav-item" data-settings-anchor="warnings">Warnings</button>
           <button type="button" class="settings-subnav-item" data-settings-anchor="theme">Theme</button>
           <button type="button" class="settings-subnav-item" data-settings-anchor="auth">Authentication</button>
@@ -1313,6 +1314,20 @@
               <input id="moonraker-url" type="url" placeholder="http://127.0.0.1:7125" />
             </article>
 
+            <article class="card settings-dashboard-card" data-settings-section="dashboard">
+              <h3>Dashboard</h3>
+              <div class="settings-dashboard-viewport-toggle" role="tablist" aria-label="Dashboard viewport">
+                <button type="button" class="settings-dashboard-viewport-btn active" data-dashboard-viewport="mobile" aria-selected="false">Mobile</button>
+                <button type="button" class="settings-dashboard-viewport-btn" data-dashboard-viewport="tablet" aria-selected="false">Tablet</button>
+                <button type="button" class="settings-dashboard-viewport-btn" data-dashboard-viewport="desktop" aria-selected="true">Desktop</button>
+                <button type="button" class="settings-dashboard-viewport-btn" data-dashboard-viewport="widescreen" aria-selected="false">Widescreen</button>
+              </div>
+              <div id="settings-dashboard-columns" class="settings-dashboard-columns" data-dashboard-viewport="desktop" aria-live="polite"></div>
+              <div class="actions">
+                <button type="button" id="settings-dashboard-reset">Reset Layout</button>
+              </div>
+            </article>
+
             <article class="card" data-settings-section="camera">
               <h3>Camera Settings</h3>
 
@@ -1408,54 +1423,72 @@
               </select>
             </article>
 
-            <article class="card" data-settings-section="macros">
-              <h3>Dashboard Settings</h3>
-              <label class="checkbox-row" for="dash-show-print-progress">
-                <input id="dash-show-print-progress" type="checkbox" />
-                <span>Show Status</span>
-              </label>
-              <label class="checkbox-row" for="dash-show-temperatures">
-                <input id="dash-show-temperatures" type="checkbox" />
-                <span>Show Temperatures</span>
-              </label>
-              <label class="checkbox-row" for="dash-show-motion">
-                <input id="dash-show-motion" type="checkbox" />
-                <span>Show Motion</span>
-              </label>
-              <label class="checkbox-row" for="dash-show-quick-commands">
-                <input id="dash-show-quick-commands" type="checkbox" />
-                <span>Show Quick Commands</span>
-              </label>
-              <label class="checkbox-row" for="dash-show-macros">
-                <input id="dash-show-macros" type="checkbox" />
-                <span>Show Macros</span>
-              </label>
-              <label class="checkbox-row" for="dash-show-main-camera">
-                <input id="dash-show-main-camera" type="checkbox" />
-                <span>Show Main Camera</span>
-              </label>
-              <label class="checkbox-row" for="dash-show-toolhead-camera">
-                <input id="dash-show-toolhead-camera" type="checkbox" />
-                <span>Show Toolhead Cam</span>
-              </label>
-              <label class="checkbox-row" for="dash-show-console">
-                <input id="dash-show-console" type="checkbox" />
-                <span>Show Console</span>
-              </label>
-              <label class="checkbox-row" for="dash-show-klipperview">
-                <input id="dash-show-klipperview" type="checkbox" />
-                <span>Show KlipperView</span>
-              </label>
-              <div class="actions">
-                <button type="button" id="open-dashboard-layout">Customize Layout</button>
+            <article class="card settings-macros-card" data-settings-section="macros">
+              <h3>Macros</h3>
+              <p class="muted">Fluidd-style category and macro controls. Macro gcode definitions are not edited.</p>
+
+              <div class="settings-macros-layout">
+                <section class="settings-macros-pane">
+                  <div class="settings-macros-pane-head">
+                    <h4>Categories</h4>
+                    <button type="button" id="settings-macros-category-add">Add Category</button>
+                  </div>
+                  <div id="settings-macros-category-list" class="settings-macros-category-list">
+                    <p class="muted settings-macros-empty">No macro categories.</p>
+                  </div>
+                </section>
+
+                <section class="settings-macros-pane">
+                  <div class="settings-macros-pane-head">
+                    <h4 id="settings-macros-selected-category">Uncategorized Macros</h4>
+                    <div class="settings-inline-row">
+                      <button type="button" id="settings-macros-all-on">All On</button>
+                      <button type="button" id="settings-macros-all-off">All Off</button>
+                    </div>
+                  </div>
+
+                  <label for="settings-macros-search">Search macros</label>
+                  <input id="settings-macros-search" type="search" spellcheck="false" placeholder="Filter by macro name, alias, or description" />
+
+                  <div id="settings-macros-item-list" class="settings-macros-item-list">
+                    <p class="muted settings-macros-empty">No macros loaded yet.</p>
+                  </div>
+                </section>
               </div>
+
+              <p class="muted settings-macros-note">These preferences are stored locally in Forge only.</p>
             </article>
           </div>
 
           <div class="grid two-col settings-placeholder-grid">
-            <article class="card settings-placeholder-card" data-settings-section="warnings">
+            <article class="card settings-warnings-card" data-settings-section="warnings">
               <h3>Warnings</h3>
-              <p class="muted">Forge placeholder for Fluidd-compatible settings navigation.</p>
+
+              <div class="settings-warning-row">
+                <div class="settings-warning-copy">
+                  <p class="settings-warning-title">Warn if CPU throttling is detected</p>
+                  <p class="muted settings-warning-subtitle">CPU throttling can cause prints to fail.</p>
+                </div>
+                <label class="checkbox-row settings-warning-toggle" for="settings-warning-cpu-throttled">
+                  <input id="settings-warning-cpu-throttled" type="checkbox" />
+                  <span>Enabled</span>
+                </label>
+              </div>
+
+              <div class="settings-warning-row">
+                <div class="settings-warning-copy">
+                  <p class="settings-warning-title">Warn if stepper driver is over-heating</p>
+                  <p class="muted settings-warning-subtitle">Trinamic drivers only.</p>
+                </div>
+                <label class="checkbox-row settings-warning-toggle" for="settings-warning-stepper-driver-overheating">
+                  <input id="settings-warning-stepper-driver-overheating" type="checkbox" />
+                  <span>Enabled</span>
+                </label>
+              </div>
+
+              <div class="actions">
+                <button type="button" id="settings-warning-reset">Reset</button>
+              </div>
             </article>
 
             <article class="card settings-placeholder-card" data-settings-section="auth">
@@ -1560,6 +1593,44 @@
             </article>
           </div>
 
+          <dialog id="settings-macro-dialog" class="settings-macro-dialog">
+            <div class="settings-macro-dialog-card">
+              <div class="settings-macro-dialog-head">
+                <h3 id="settings-macro-dialog-title">Macro Settings</h3>
+                <button type="button" id="settings-macro-close" class="settings-macro-dialog-close" aria-label="Close macro settings">x</button>
+              </div>
+
+              <label for="settings-macro-alias">Alias</label>
+              <input id="settings-macro-alias" type="text" maxlength="64" placeholder="Optional display name" />
+
+              <label for="settings-macro-category">Category</label>
+              <select id="settings-macro-category">
+                <option value="0">Uncategorized</option>
+              </select>
+
+              <label for="settings-macro-color">Color</label>
+              <div class="settings-inline-row">
+                <input id="settings-macro-color" type="color" />
+                <button type="button" id="settings-macro-color-reset">Reset</button>
+              </div>
+
+              <label class="checkbox-row" for="settings-macro-disabled-while-printing">
+                <input id="settings-macro-disabled-while-printing" type="checkbox" />
+                <span>Disabled while printing</span>
+              </label>
+
+              <label class="checkbox-row" for="settings-macro-visible">
+                <input id="settings-macro-visible" type="checkbox" />
+                <span>Visible</span>
+              </label>
+
+              <div class="settings-inline-row">
+                <button type="button" id="settings-macro-save">Save</button>
+                <button type="button" id="settings-macro-cancel">Cancel</button>
+              </div>
+            </div>
+          </dialog>
+
           <article class="card settings-actions">
             <button type="submit">Save & Connect</button>
           </article>
@@ -1656,6 +1727,12 @@
   <script type="module" src="./src/app.js"></script>
 </body>
 </html>
+
+
+
+
+
+
 
 
 
