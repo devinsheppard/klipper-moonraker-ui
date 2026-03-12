@@ -282,7 +282,10 @@
           </article>
 
           <article class="card controls-card" id="card-motion">
-            <h3>Controls</h3>
+            <div class="controls-card-head">
+              <h3>Controls</h3>
+              <p id="controls-absolute-position" class="controls-absolute-position">X: ---, Y: ---, Z: ---</p>
+            </div>
             <div class="controls-grid">
               <div class="controls-column controls-column-left">
                 <section class="controls-section controls-move-section">
@@ -854,14 +857,6 @@
                   <div id="jobs-columns-list" class="jobs-columns-list"></div>
                 </div>
               </div>
-
-              <button type="button" id="jobs-search-toggle" class="jobs-feature-btn" aria-label="Focus search" title="Search files">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <circle cx="11" cy="11" r="6"></circle>
-                  <line x1="16" y1="16" x2="21" y2="21"></line>
-                </svg>
-              </button>
-
               <div class="jobs-menu-group">
                 <button
                   type="button"
@@ -912,7 +907,7 @@
                         <path d="M4 20h16"></path>
                       </svg>
                     </span>
-                    <span>Upload Files</span>
+                    <span>Upload</span>
                   </button>
                   <button type="button" id="jobs-upload-folder-btn" class="jobs-feature-menu-btn">
                     <span class="jobs-feature-menu-icon" aria-hidden="true">
@@ -933,17 +928,6 @@
                       </svg>
                     </span>
                     <span>Upload & Print</span>
-                  </button>
-                  <button type="button" id="jobs-add-file-btn" class="jobs-feature-menu-btn">
-                    <span class="jobs-feature-menu-icon" aria-hidden="true">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                        <polyline points="14 2 14 8 20 8"></polyline>
-                        <line x1="12" y1="12" x2="12" y2="18"></line>
-                        <line x1="9" y1="15" x2="15" y2="15"></line>
-                      </svg>
-                    </span>
-                    <span>Add File</span>
                   </button>
                   <button type="button" id="jobs-new-folder" class="jobs-feature-menu-btn">
                     <span class="jobs-feature-menu-icon" aria-hidden="true">
@@ -985,7 +969,6 @@
           <input id="jobs-upload-input" type="file" hidden multiple />
           <input id="jobs-upload-folder-input" type="file" hidden multiple webkitdirectory directory />
           <input id="jobs-upload-print-input" type="file" hidden accept=".gcode,.g,.gc,.gco,text/plain" />
-          <input id="jobs-add-file-input" type="file" hidden accept=".gcode,.g,.gc,.gco,text/plain" />
         </article>
       </section>
 
@@ -1370,10 +1353,24 @@
     <button type="button" id="camera-fullscreen-close" class="camera-dialog-close">Close</button>
     <div id="camera-fullscreen-content" class="camera-dialog-content"></div>
   </dialog>
-
+  <dialog id="jobs-move-file-dialog" class="jobs-move-dialog">
+    <article class="jobs-move-dialog-card">
+      <h3 id="jobs-move-file-title">Move File</h3>
+      <label class="jobs-move-dialog-label" for="jobs-move-file-select">Destination folder</label>
+      <select id="jobs-move-file-select" class="jobs-move-dialog-select" aria-label="Move file destination folder"></select>
+      <div class="actions jobs-move-dialog-actions">
+        <button type="button" id="jobs-move-file-cancel">Cancel</button>
+        <button type="button" id="jobs-move-file-confirm">Move</button>
+      </div>
+    </article>
+  </dialog>
   <script type="module" src="./src/app.js"></script>
 </body>
 </html>
+
+
+
+
 
 
 
