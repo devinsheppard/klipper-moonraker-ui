@@ -303,6 +303,23 @@ const JOBS_COLUMN_DEFINITIONS = [
 ];
 const JOBS_COLUMN_KEYS = JOBS_COLUMN_DEFINITIONS.map((entry) => entry.key);
 const JOBS_DEFAULT_VISIBLE_COLUMNS = ["size", "modified", "eta", "total_layers"];
+const JOBS_PREPARE_PRINT_MACRO_NAME = "PRINT_START";
+const JOBS_PREPARE_STAGE_ORDER = Object.freeze([
+  "file_loaded",
+  "heating_bed",
+  "heating_nozzle",
+  "homing",
+  "adaptive_mesh",
+  "starting_print",
+]);
+const JOBS_PREPARE_STAGE_TEXT = Object.freeze({
+  file_loaded: "File loaded",
+  heating_bed: "Heating bed",
+  heating_nozzle: "Heating nozzle to standby",
+  homing: "Homing",
+  adaptive_mesh: "Running adaptive bed mesh",
+  starting_print: "Starting print",
+});
 const PRINT_HISTORY_SEARCH_STORAGE_KEY = "print_history_search";
 const PRINT_HISTORY_STATUS_STORAGE_KEY = "print_history_status";
 const PRINT_HISTORY_SORT_STORAGE_KEY = "print_history_sort";
@@ -2654,6 +2671,8 @@ function createDefaultJobsState() {
     selectedType: "",
     listPrintPath: "",
     listPrintState: "",
+    workflowStatusMessage: "",
+    workflowStatusLevel: "info",
     uploadDragDepth: 0,
   };
 }
@@ -9915,6 +9934,8 @@ async function connectMoonraker() {
       state.logFiles.actionInFlight = false;
       state.jobs.isLoading = false;
       state.jobs.actionInFlight = false;
+      state.jobs.workflowStatusMessage = "";
+      state.jobs.workflowStatusLevel = "info";
       state.timelapseMedia.isLoading = false;
       state.timelapseMedia.actionInFlight = false;
       state.printHistory.isLoading = false;
@@ -9948,6 +9969,8 @@ async function connectMoonraker() {
       state.logFiles.actionInFlight = false;
       state.jobs.isLoading = false;
       state.jobs.actionInFlight = false;
+      state.jobs.workflowStatusMessage = "";
+      state.jobs.workflowStatusLevel = "info";
       state.timelapseMedia.isLoading = false;
       state.timelapseMedia.actionInFlight = false;
       state.printHistory.isLoading = false;
@@ -13860,9 +13883,7 @@ function renderJobsList() {
     const printButton = document.createElement("button");
     printButton.type = "button";
     printButton.className = "jobs-entry-btn";
-    printButton.textContent = state.jobs.actionInFlight && state.jobs.activePath === entry.path && state.jobs.actionLabel === "print"
-      ? "Printing..."
-      : "Print";
+    printButton.textContent = "Print";
     printButton.disabled = busy;
     printButton.addEventListener("click", async () => {
       await requestJobsFilePrint(entry.path);
@@ -13942,6 +13963,10 @@ function renderJobsSummary() {
 function renderJobsStatus() {
   if (!state.client) {
     setJobsStatusMessage("Connect to Moonraker to manage print files.", "warn");
+    return;
+  }
+  if (state.jobs.workflowStatusMessage) {
+    setJobsStatusMessage(state.jobs.workflowStatusMessage, state.jobs.workflowStatusLevel || "info");
     return;
   }
   if (state.jobs.actionInFlight) {
@@ -14438,6 +14463,315 @@ async function requestJobsFileSimulate(path) {
   }
 }
 
+function setJobsWorkflowStatus(message, level = "warn") {
+  state.jobs.workflowStatusMessage = String(message || "").trim();
+  state.jobs.workflowStatusLevel = level;
+  renderJobsCard();
+}
+
+function clearJobsWorkflowStatus() {
+  state.jobs.workflowStatusMessage = "";
+  state.jobs.workflowStatusLevel = "info";
+}
+
+function getJobsPrepareStageRank(stage) {
+  return JOBS_PREPARE_STAGE_ORDER.indexOf(String(stage || "").trim().toLowerCase());
+}
+
+function getJobsPrepareStageText(stage, normalizedPath = "") {
+  const normalizedStage = String(stage || "").trim().toLowerCase();
+  const baseText = JOBS_PREPARE_STAGE_TEXT[normalizedStage] || "Preparing print";
+  if (normalizedStage === "file_loaded" && normalizedPath) {
+    return `${baseText}: ${formatJobsRootPath(normalizedPath)}`;
+  }
+  return baseText;
+}
+
+function inferJobsPrepareStageFromResponseLine(line) {
+  const normalized = String(line || "").trim().toLowerCase();
+  if (!normalized) return "";
+
+  if (/\b(start(?:ing)?\s+print|prepare\s+complete|print\s+start\s+done)\b/.test(normalized)) {
+    return "starting_print";
+  }
+
+  if (/\b(adaptive|bed\s*mesh|mesh\s*calib|mesh|probe|probing)\b/.test(normalized)) {
+    return "adaptive_mesh";
+  }
+
+  if (/\b(home|homing|g28)\b/.test(normalized)) {
+    return "homing";
+  }
+
+  if (/\b(nozzle|hotend|extruder)\b/.test(normalized) && /\b(standby|heat|heating|preheat|temp|temperature|target)\b/.test(normalized)) {
+    return "heating_nozzle";
+  }
+
+  if (/\b(bed|heater_bed)\b/.test(normalized) && /\b(heat|heating|preheat|temp|temperature|target)\b/.test(normalized)) {
+    return "heating_bed";
+  }
+
+  return "";
+}
+
+function isJobsPrepareErrorLine(line) {
+  const normalized = String(line || "").trim();
+  if (!normalized) return false;
+  return normalized.startsWith("!!") || /^error\b/i.test(normalized);
+}
+
+function sanitizeJobsPrepareTemperature(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  return Math.max(0, Math.round(numeric));
+}
+
+async function resolveJobsPrepareTemperatures(path) {
+  const normalizedPath = normalizeGcodePath(path);
+  if (!normalizedPath) {
+    return { bedTemp: 0, hotendTemp: 0 };
+  }
+
+  if (!state.jobs.metadataByPath.has(normalizedPath)) {
+    await ensureJobsMetadata(normalizedPath);
+  }
+
+  const metadata = state.jobs.metadataByPath.get(normalizedPath) || {};
+  const metadataBed = sanitizeJobsPrepareTemperature(readFiniteNumber(metadata?.firstLayerBedTemp));
+  const metadataHotend = sanitizeJobsPrepareTemperature(readFiniteNumber(metadata?.firstLayerExtruderTemp));
+  const fallbackBed = sanitizeJobsPrepareTemperature(readFiniteNumber(state.temperatures?.bed?.target));
+  const fallbackHotend = sanitizeJobsPrepareTemperature(readFiniteNumber(state.temperatures?.hotend?.target));
+
+  const bedTemp = metadataBed ?? fallbackBed ?? 0;
+  const hotendTemp = metadataHotend ?? fallbackHotend ?? 0;
+
+  if (!(bedTemp > 0) || !(hotendTemp > 0)) {
+    appendConsole(`Prepare macro temperature fallback in use for ${formatJobsRootPath(normalizedPath)} (BED=${bedTemp}, HOTEND=${hotendTemp}).`, "warn");
+  }
+
+  return {
+    bedTemp,
+    hotendTemp,
+  };
+}
+
+function buildJobsPrepareMacroCommand({ bedTemp, hotendTemp, macroName = JOBS_PREPARE_PRINT_MACRO_NAME } = {}) {
+  const normalizedMacro = String(macroName || JOBS_PREPARE_PRINT_MACRO_NAME).trim() || JOBS_PREPARE_PRINT_MACRO_NAME;
+  const resolvedBedTemp = sanitizeJobsPrepareTemperature(bedTemp) ?? 0;
+  const resolvedHotendTemp = sanitizeJobsPrepareTemperature(hotendTemp) ?? 0;
+  return `${normalizedMacro} BED=${resolvedBedTemp} HOTEND=${resolvedHotendTemp}`;
+}
+
+function extractJobsSelectedFilenameFromSnapshot(snapshot) {
+  const status = snapshot?.result?.status || {};
+  const printStatsFilename = normalizeGcodePath(status?.print_stats?.filename);
+  const virtualSdPath = normalizeGcodePath(
+    status?.virtual_sdcard?.file_path
+      || status?.virtual_sdcard?.filepath
+      || status?.virtual_sdcard?.filename
+  );
+  return printStatsFilename || virtualSdPath || "";
+}
+
+function applyJobsPrepareStatusSnapshot(snapshot) {
+  const status = snapshot?.result?.status || {};
+  const virtualSd = mergeVirtualSdSnapshot(status?.virtual_sdcard || null);
+  renderStatusProgress(virtualSd);
+  updateStatusFileInfo(
+    status?.print_stats || {},
+    status?.gcode_move || null,
+    status?.motion_report || null,
+    status?.toolhead || null
+  );
+}
+
+async function queryJobsPrepareStatusSnapshot() {
+  if (!state.client) {
+    throw new Error("Moonraker is not connected.");
+  }
+
+  if (typeof state.client.queryPrinterObjects === "function") {
+    return state.client.queryPrinterObjects(["print_stats", "virtual_sdcard", "gcode_move", "motion_report", "toolhead", "idle_timeout"]);
+  }
+
+  return state.client.call("/printer/objects/query?print_stats&virtual_sdcard&gcode_move&motion_report&toolhead&idle_timeout");
+}
+
+async function verifyJobsSelectedFile(path, { attempts = 8, intervalMs = 220 } = {}) {
+  const expectedPath = normalizeGcodePath(path);
+  if (!expectedPath) return false;
+
+  const maxAttempts = Math.max(1, Number(attempts) || 1);
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const snapshot = await queryJobsPrepareStatusSnapshot();
+    applyJobsPrepareStatusSnapshot(snapshot);
+
+    const selectedPath = extractJobsSelectedFilenameFromSnapshot(snapshot);
+    if (selectedPath === expectedPath) {
+      return true;
+    }
+
+    if (attempt < maxAttempts - 1) {
+      await new Promise((resolve) => {
+        setTimeout(resolve, Math.max(100, Number(intervalMs) || 220));
+      });
+    }
+  }
+
+  throw new Error(`Printer did not report loaded file ${formatJobsRootPath(expectedPath)}.`);
+}
+
+async function waitForJobsPrepareReadyState(path, { intervalMs = 300 } = {}) {
+  const expectedPath = normalizeGcodePath(path);
+
+  while (true) {
+    if (!state.client || state.connectionStatus !== "connected") {
+      throw new Error("Moonraker disconnected during prepare sequence.");
+    }
+
+    const snapshot = await queryJobsPrepareStatusSnapshot();
+    applyJobsPrepareStatusSnapshot(snapshot);
+
+    const status = snapshot?.result?.status || {};
+    const printStats = status?.print_stats || {};
+    const printerState = normalizePrinterState(printStats?.state || printStats?.status || els.printerState?.dataset?.state || "unknown");
+    const idleState = String(status?.idle_timeout?.state || "").trim().toLowerCase();
+    const selectedPath = extractJobsSelectedFilenameFromSnapshot(snapshot) || normalizeGcodePath(state.printStatus.filename);
+
+    if (printerState === "error" || printerState === "disconnected") {
+      throw new Error(`Prepare sequence failed: printer entered ${printerState} state.`);
+    }
+
+    if (printerState === "cancelled") {
+      throw new Error("Prepare sequence was cancelled.");
+    }
+
+    if (printerState === "printing" || printerState === "paused") {
+      throw new Error("Prepare sequence was interrupted by an active print state.");
+    }
+
+    if (selectedPath && expectedPath && selectedPath !== expectedPath) {
+      throw new Error(`Prepare sequence switched to a different file: ${formatJobsRootPath(selectedPath)}.`);
+    }
+
+    const idleReady = !idleState || idleState === "ready" || idleState === "idle";
+    const printerReady = printerState === "ready" || printerState === "complete";
+
+    if (idleReady && printerReady) {
+      return true;
+    }
+
+    await new Promise((resolve) => {
+      setTimeout(resolve, Math.max(120, Number(intervalMs) || 300));
+    });
+  }
+}
+
+async function runJobsPrepareMacroWithProgress(path, macroCommand, { onStage = null } = {}) {
+  if (!state.client) {
+    throw new Error("Moonraker is not connected.");
+  }
+
+  let streamFailureMessage = "";
+
+  const stopMessageListener = state.client.onMessage((payload) => {
+    if (!payload || typeof payload !== "object") return;
+
+    if (payload.method === "notify_gcode_response") {
+      const [responseLine] = payload.params || [];
+      splitConsoleMessageLines(responseLine).forEach((line) => {
+        const stage = inferJobsPrepareStageFromResponseLine(line);
+        if (stage && typeof onStage === "function") {
+          onStage(stage);
+        }
+
+        if (!streamFailureMessage && isJobsPrepareErrorLine(line)) {
+          const cleanLine = String(line || "").replace(/^!!\s*/, "").trim();
+          streamFailureMessage = cleanLine
+            ? `Prepare sequence failed: ${cleanLine}`
+            : "Prepare sequence failed.";
+        }
+      });
+      return;
+    }
+
+    if (payload.method === "notify_status_update") {
+      const [status] = payload.params || [];
+      const printStats = status?.print_stats || {};
+      const printerState = normalizePrinterState(printStats?.state || printStats?.status || "");
+      if (!streamFailureMessage && (printerState === "error" || printerState === "cancelled")) {
+        streamFailureMessage = `Prepare sequence failed: printer entered ${printerState} state.`;
+      }
+    }
+  });
+
+  const stopConnectionListener = state.client.onConnectionState((status) => {
+    if (streamFailureMessage) return;
+    const normalized = String(status || "").trim().toLowerCase();
+    if (normalized === "disconnected" || normalized === "error") {
+      streamFailureMessage = "Moonraker disconnected during prepare sequence.";
+    }
+  });
+
+  try {
+    await state.client.runGcode(macroCommand);
+  } catch (error) {
+    const message = streamFailureMessage || error?.message || String(error);
+    throw new Error(message);
+  } finally {
+    stopMessageListener();
+    stopConnectionListener();
+  }
+
+  if (streamFailureMessage) {
+    throw new Error(streamFailureMessage);
+  }
+
+  await waitForJobsPrepareReadyState(path);
+}
+
+async function runJobsPrepareAndStartPrint(path, { startPrintAfterPrepare = true } = {}) {
+  const normalizedPath = normalizeGcodePath(path);
+  if (!normalizedPath || !state.client) return false;
+
+  setJobsEntrySelection(normalizedPath, "file");
+
+  const stageState = { rank: -1 };
+  const updateStage = (stageKey) => {
+    const stageRank = getJobsPrepareStageRank(stageKey);
+    if (stageRank < 0 || stageRank <= stageState.rank) return;
+    stageState.rank = stageRank;
+
+    const stageText = getJobsPrepareStageText(stageKey, normalizedPath);
+    setJobsWorkflowStatus(stageText, "warn");
+    appendConsole(`Prepare: ${stageText}`, "info");
+  };
+
+  await state.client.selectPrintFile(normalizedPath);
+  await verifyJobsSelectedFile(normalizedPath);
+  updateStage("file_loaded");
+
+  const temperatures = await resolveJobsPrepareTemperatures(normalizedPath);
+  const macroCommand = buildJobsPrepareMacroCommand(temperatures);
+
+  updateStage("heating_bed");
+  appendConsole(`Prepare macro started: ${macroCommand}`, "info");
+
+  await runJobsPrepareMacroWithProgress(normalizedPath, macroCommand, { onStage: updateStage });
+
+  if (!startPrintAfterPrepare) {
+    setJobsWorkflowStatus("Prepare completed.", "info");
+    appendConsole(`Prepare complete: ${formatJobsRootPath(normalizedPath)}`, "info");
+    return true;
+  }
+
+  updateStage("starting_print");
+  await state.client.startPrint(normalizedPath);
+  appendConsole(`Started print: ${formatJobsRootPath(normalizedPath)}`, "info");
+  return true;
+}
+
 async function requestJobsFilePrint(path) {
   const normalizedPath = normalizeGcodePath(path);
   if (!normalizedPath || !state.client) return false;
@@ -14455,26 +14789,27 @@ async function requestJobsFilePrint(path) {
   state.jobs.actionInFlight = true;
   state.jobs.actionLabel = "print";
   state.jobs.activePath = normalizedPath;
+  clearJobsWorkflowStatus();
   renderJobsCard();
 
   try {
-    await state.client.startPrint(normalizedPath);
+    await runJobsPrepareAndStartPrint(normalizedPath, { startPrintAfterPrepare: true });
     state.jobs.lastError = "";
-    appendConsole(`Started print: ${formatJobsRootPath(normalizedPath)}`, "info");
+    clearJobsWorkflowStatus();
     return true;
   } catch (error) {
     const message = error?.message || String(error);
     state.jobs.lastError = message;
-    appendConsole(`Start print failed (${normalizedPath}): ${message}`, "error");
+    appendConsole(`Prepare and print failed (${normalizedPath}): ${message}`, "error");
     return false;
   } finally {
     state.jobs.actionInFlight = false;
     state.jobs.actionLabel = "";
     state.jobs.activePath = "";
+    clearJobsWorkflowStatus();
     renderJobsCard();
   }
 }
-
 function normalizeJobsUploadRelativePath(file) {
   const candidate = String(file?.webkitRelativePath || file?.name || "").trim();
   return candidate
@@ -20017,16 +20352,4 @@ async function requestTimelapseMediaCreateFolder() {
     renderTimelapseMediaCard();
   }
 }
-
-
-
-
-
-
-
-
-
-
-
-
 

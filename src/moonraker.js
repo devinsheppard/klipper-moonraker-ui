@@ -332,6 +332,57 @@ export class MoonrakerClient {
     return this.call(`/server/files/metadata?filename=${encodeURIComponent(normalizedPath)}`);
   }
 
+  async queryPrinterObjects(objects = []) {
+    const objectList = Array.isArray(objects)
+      ? objects
+      : String(objects || "")
+        .split(/[,&]/)
+        .map((entry) => String(entry || "").trim())
+        .filter(Boolean);
+
+    const query = objectList
+      .map((entry) => String(entry || "").trim())
+      .filter(Boolean)
+      .join("&");
+
+    if (!query) {
+      throw new Error("At least one printer object is required.");
+    }
+
+    return this.call(`/printer/objects/query?${query}`);
+  }
+
+  async selectPrintFile(path) {
+    const normalizedPath = normalizePathSegments(path).join("/");
+    if (!normalizedPath) {
+      throw new Error("A print file path is required.");
+    }
+
+    const escapedPath = normalizedPath.replace(/\"/g, "\\\"");
+    const attempts = [
+      `M23 "${escapedPath}"`,
+      `M23 ${normalizedPath}`,
+      `M23 /${normalizedPath}`,
+    ];
+
+    let lastError = null;
+
+    for (const command of attempts) {
+      try {
+        await this.runGcode(command);
+        return true;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    if (lastError instanceof Error) {
+      throw lastError;
+    }
+
+    throw new Error(`Failed to select print file: ${normalizedPath}`);
+  }
+
   async startPrint(path) {
     const normalizedPath = normalizePathSegments(path).join("/");
     if (!normalizedPath) {
@@ -1154,11 +1205,4 @@ export class MoonrakerClient {
     return this.deleteFile("logs", path);
   }
 }
-
-
-
-
-
-
-
 
