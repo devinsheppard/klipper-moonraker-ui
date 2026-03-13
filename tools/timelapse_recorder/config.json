@@ -1,0 +1,14 @@
+{
+  "moonraker_url": "http://127.0.0.1:7125",
+  "camera_url": "http://127.0.0.1/webcam/?action=stream",
+  "output_dir": "~/forge_timelapse",
+  "poll_seconds": 2.0,
+  "timelapse_target_seconds": 45.0,
+  "timelapse_fps": 30,
+  "keep_raw_video": true,
+  "ffmpeg_path": "ffmpeg",
+  "ffprobe_path": "ffprobe",
+  "video_codec": "libx264",
+  "video_crf": 23,
+  "video_preset": "veryfast"
+}

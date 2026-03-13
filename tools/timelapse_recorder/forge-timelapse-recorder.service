@@ -1,0 +1,15 @@
+[Unit]
+Description=Forge Moonraker Timelapse Recorder
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/forge-ui
+ExecStart=/usr/bin/python3 /home/pi/forge-ui/tools/timelapse_recorder/moonraker_timelapse_recorder.py --config /home/pi/forge-ui/tools/timelapse_recorder/config.json
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

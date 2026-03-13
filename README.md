@@ -71,6 +71,23 @@ npm run preview
 - UI state/event wiring is in `src/app.js`.
 - Styling direction is in `src/styles.css`.
 
+## Print Video + Timelapse App
+
+A companion recorder service is available at:
+
+- `tools/timelapse_recorder/moonraker_timelapse_recorder.py`
+
+It monitors Moonraker print state, records full print video from your camera stream, and auto-generates a timelapse when the print ends.
+
+Quick start:
+
+```bash
+cp tools/timelapse_recorder/config.example.json tools/timelapse_recorder/config.json
+python3 tools/timelapse_recorder/moonraker_timelapse_recorder.py --config tools/timelapse_recorder/config.json
+```
+
+See `tools/timelapse_recorder/README.md` for setup details and systemd service instructions.
+
 ## Licensing
 
 - Third-party license tracking is maintained in `THIRD_PARTY_LICENSES.md`.
@@ -90,3 +107,7 @@ If your Moonraker server serves this UI from built files, deploy from `dist/` on
 4. After deploy, hard refresh the browser once to clear old cached entry HTML.
 
 Tip: `npm run verify:dist` can be run by itself to validate `dist/index.html` -> `dist/assets/*` references before copying to your server.
+
+
+
+

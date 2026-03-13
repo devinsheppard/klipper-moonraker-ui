@@ -134,6 +134,16 @@
           </span>
           <span class="nav-item-label">Print History</span>
         </button>
+        <button data-view="timelapse" class="nav-item" title="Timelapse">
+          <span class="nav-item-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="4" width="18" height="14" rx="2"></rect>
+              <path d="m10 9 5 3-5 3z"></path>
+              <path d="M8 20h8"></path>
+            </svg>
+          </span>
+          <span class="nav-item-label">Timelapse</span>
+        </button>
         <button data-view="pretty-gcode" class="nav-item" title="KlipperView">
           <span class="nav-item-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -163,17 +173,12 @@
           <button type="button" class="settings-subnav-item" data-settings-anchor="dashboard">Dashboard</button>
           <button type="button" class="settings-subnav-item" data-settings-anchor="warnings">Warnings</button>
           <button type="button" class="settings-subnav-item" data-settings-anchor="theme">Theme</button>
-          <button type="button" class="settings-subnav-item" data-settings-anchor="auth">Authentication</button>
           <button type="button" class="settings-subnav-item" data-settings-anchor="console">Console</button>
-          <button type="button" class="settings-subnav-item" data-settings-anchor="browser">File Browser</button>
-          <button type="button" class="settings-subnav-item" data-settings-anchor="editor">File Editor</button>
           <button type="button" class="settings-subnav-item" data-settings-anchor="macros">Macros</button>
           <button type="button" class="settings-subnav-item" data-settings-anchor="camera">Camera</button>
           <button type="button" class="settings-subnav-item" data-settings-anchor="toolhead">Tool</button>
           <button type="button" class="settings-subnav-item" data-settings-anchor="presets">Thermal Presets</button>
-          <button type="button" class="settings-subnav-item" data-settings-anchor="gcodePreview">GCode Preview</button>
           <button type="button" class="settings-subnav-item" data-settings-anchor="timelapse">Timelapse</button>
-          <button type="button" class="settings-subnav-item" data-settings-anchor="mmu">MMU</button>
           <button type="button" class="settings-subnav-item" data-settings-anchor="spoolman">Spoolman</button>
           <button type="button" class="settings-subnav-item" data-settings-anchor="versions">Versions</button>
         </div>
@@ -1305,6 +1310,49 @@
           <input id="pretty-gcode-load-input" type="file" hidden accept=".gcode,.g,.gc,.gco,text/plain" />
         </article>
       </section>
+
+      <section id="view-timelapse" class="view">
+        <div class="grid">
+          <article class="card timelapse-control-card" id="timelapse-control-card">
+            <div class="card-head">
+              <h3>Timelapse Recorder</h3>
+              <div class="card-head-actions">
+                <button type="button" id="timelapse-service-refresh" class="timelapse-service-refresh">Refresh</button>
+              </div>
+            </div>
+
+            <p class="muted timelapse-control-note">Control the background recorder service that captures full-print videos and builds timelapses.</p>
+
+            <label for="timelapse-control-mode">Control Mode</label>
+            <select id="timelapse-control-mode">
+              <option value="moonraker-service">Moonraker Service (Linux)</option>
+              <option value="external-recorder">External Recorder (Windows/Manual)</option>
+            </select>
+
+            <label id="timelapse-service-name-label" for="timelapse-service-name">Service Name</label>
+            <input id="timelapse-service-name" type="text" placeholder="forge-timelapse-recorder" />
+
+            <div class="timelapse-service-status-wrap">
+              <p class="timelapse-service-status-row">
+                <span class="timelapse-service-status-label">State</span>
+                <strong id="timelapse-service-status" class="timelapse-service-status" data-state="unknown">Unknown</strong>
+              </p>
+              <p id="timelapse-service-detail" class="muted timelapse-service-detail">Connect to Moonraker to query service state.</p>
+            </div>
+
+            <p id="timelapse-external-note" class="muted timelapse-control-note" hidden>External recorder mode skips Moonraker service checks. Run the recorder script from your host terminal.</p>
+
+            <div id="timelapse-service-actions" class="actions timelapse-service-actions">
+              <button type="button" id="timelapse-service-start">Start</button>
+              <button type="button" id="timelapse-service-restart">Restart</button>
+              <button type="button" id="timelapse-service-stop" class="danger">Stop</button>
+            </div>
+
+            <p id="timelapse-service-message" class="muted timelapse-service-message">Recorder output folders are configured in your timelapse recorder JSON config.</p>
+          </article>
+        </div>
+      </section>
+
       <section id="view-settings" class="view">
         <form id="settings-form" class="settings-layout">
           <div class="grid two-col">
@@ -1491,11 +1539,6 @@
               </div>
             </article>
 
-            <article class="card settings-placeholder-card" data-settings-section="auth">
-              <h3>Authentication</h3>
-              <p class="muted">Forge placeholder for Fluidd-compatible settings navigation.</p>
-            </article>
-
             <article class="card settings-console-card" data-settings-section="console">
               <h3>Console</h3>
 
@@ -1552,33 +1595,19 @@
               </div>
             </article>
 
-            <article class="card settings-placeholder-card" data-settings-section="browser">
-              <h3>File Browser</h3>
-              <p class="muted">Forge placeholder for Fluidd-compatible settings navigation.</p>
-            </article>
-
-            <article class="card settings-placeholder-card" data-settings-section="editor">
-              <h3>File Editor</h3>
-              <p class="muted">Forge placeholder for Fluidd-compatible settings navigation.</p>
-            </article>
-
-            <article class="card settings-placeholder-card" data-settings-section="presets">
+            <article class="card settings-presets-card" data-settings-section="presets">
               <h3>Thermal Presets</h3>
-              <p class="muted">Forge placeholder for Fluidd-compatible settings navigation.</p>
-            </article>
-
-            <article class="card settings-placeholder-card" data-settings-section="gcodePreview">
-              <h3>GCode Preview</h3>
-              <p class="muted">Forge placeholder for Fluidd-compatible settings navigation.</p>
+              <div class="settings-presets-head">
+                <button type="button" id="settings-thermal-preset-add" class="settings-presets-add">Add Preset</button>
+              </div>
+              <p class="muted settings-presets-note">Create reusable hotend and bed target profiles.</p>
+              <div id="settings-thermal-preset-list" class="settings-thermal-preset-list">
+                <p class="muted settings-presets-empty">No thermal presets configured.</p>
+              </div>
             </article>
 
             <article class="card settings-placeholder-card" data-settings-section="timelapse">
               <h3>Timelapse</h3>
-              <p class="muted">Forge placeholder for Fluidd-compatible settings navigation.</p>
-            </article>
-
-            <article class="card settings-placeholder-card" data-settings-section="mmu">
-              <h3>MMU</h3>
               <p class="muted">Forge placeholder for Fluidd-compatible settings navigation.</p>
             </article>
 
@@ -1631,6 +1660,51 @@
             </div>
           </dialog>
 
+          <dialog id="settings-thermal-preset-dialog" class="settings-thermal-preset-dialog">
+            <div class="settings-thermal-preset-dialog-card">
+              <div class="settings-thermal-preset-dialog-head">
+                <h3 id="settings-thermal-preset-dialog-title">Add Thermal Preset</h3>
+                <button type="button" id="settings-thermal-preset-close" class="settings-thermal-preset-close" aria-label="Close thermal preset dialog">x</button>
+              </div>
+
+              <label for="settings-thermal-preset-name">Preset Name</label>
+              <input id="settings-thermal-preset-name" type="text" maxlength="64" placeholder="e.g. PLA" />
+
+              <div class="settings-thermal-preset-fields">
+                <section class="settings-thermal-preset-field">
+                  <div class="settings-thermal-preset-field-head">
+                    <h4>Hotend</h4>
+                    <label class="checkbox-row" for="settings-thermal-preset-hotend-active">
+                      <input id="settings-thermal-preset-hotend-active" type="checkbox" checked />
+                      <span>Active</span>
+                    </label>
+                  </div>
+                  <label for="settings-thermal-preset-hotend-value">Target (&deg;C)</label>
+                  <input id="settings-thermal-preset-hotend-value" type="number" min="0" max="400" step="1" value="0" />
+                </section>
+
+                <section class="settings-thermal-preset-field">
+                  <div class="settings-thermal-preset-field-head">
+                    <h4>Bed</h4>
+                    <label class="checkbox-row" for="settings-thermal-preset-bed-active">
+                      <input id="settings-thermal-preset-bed-active" type="checkbox" checked />
+                      <span>Active</span>
+                    </label>
+                  </div>
+                  <label for="settings-thermal-preset-bed-value">Target (&deg;C)</label>
+                  <input id="settings-thermal-preset-bed-value" type="number" min="0" max="200" step="1" value="0" />
+                </section>
+              </div>
+
+              <label for="settings-thermal-preset-gcode">G-code (optional)</label>
+              <textarea id="settings-thermal-preset-gcode" rows="3" spellcheck="false" placeholder="Optional command(s)"></textarea>
+
+              <div class="settings-inline-row">
+                <button type="button" id="settings-thermal-preset-save">Save</button>
+                <button type="button" id="settings-thermal-preset-cancel">Cancel</button>
+              </div>
+            </div>
+          </dialog>
           <article class="card settings-actions">
             <button type="submit">Save & Connect</button>
           </article>
@@ -1727,6 +1801,15 @@
   <script type="module" src="./src/app.js"></script>
 </body>
 </html>
+
+
+
+
+
+
+
+
+
 
 
 

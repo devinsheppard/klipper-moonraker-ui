@@ -225,6 +225,7 @@ const VIEW_TITLES = {
   configuration: "Machine",
   files: "GCode Files",
   history: "Print History",
+  timelapse: "Timelapse",
   "pretty-gcode": "KlipperView",
   settings: "Settings",
 };
@@ -233,17 +234,12 @@ const SETTINGS_SUBNAV_ANCHORS = [
   "dashboard",
   "warnings",
   "theme",
-  "auth",
   "console",
-  "browser",
-  "editor",
   "macros",
   "camera",
   "toolhead",
   "presets",
-  "gcodePreview",
   "timelapse",
-  "mmu",
   "spoolman",
   "versions",
 ];
@@ -252,6 +248,11 @@ const CONFIG_SELECTED_PATH_STORAGE_KEY = "config_selected_path";
 const CONFIG_FILE_FILTER_STORAGE_KEY = "config_file_type_filter";
 const CONFIG_FILE_SEARCH_STORAGE_KEY = "config_file_search_filter";
 const MACHINE_SIDE_COLLAPSED_STORAGE_KEY = "interface_machine_side_collapsed";
+const TIMELAPSE_SERVICE_NAME_STORAGE_KEY = "timelapse_service_name_v1";
+const TIMELAPSE_SERVICE_NAME_DEFAULT = "forge-timelapse-recorder";
+const TIMELAPSE_CONTROL_MODE_STORAGE_KEY = "timelapse_control_mode_v1";
+const TIMELAPSE_CONTROL_MODE_SERVICE = "moonraker-service";
+const TIMELAPSE_CONTROL_MODE_EXTERNAL = "external-recorder";
 const WARNINGS_SETTINGS_DEFAULTS = Object.freeze({
   warnOnCpuThrottled: true,
   warnOnStepperDriverOverheating: true,
@@ -391,6 +392,16 @@ const CONSOLE_HELPER_FALLBACK = ["STATUS", "GET_POSITION", "QUERY_ENDSTOPS", "RE
 const TEMPERATURE_PRESETS = {
   hotend: [0, 170, 200, 215, 240, 260],
   bed: [0, 45, 60, 80, 100],
+};
+const THERMAL_PRESETS_STORAGE_KEY = "thermal_presets_v1";
+const THERMAL_PRESET_SENSOR_KEYS = ["hotend", "bed"];
+const THERMAL_PRESET_SENSOR_LABELS = {
+  hotend: "Hotend",
+  bed: "Bed",
+};
+const THERMAL_PRESET_MAX_VALUES = {
+  hotend: 400,
+  bed: 200,
 };
 const TEMPERATURE_DEFAULT_MAX = 250;
 const TEMPERATURE_POLL_INTERVAL_MS = 800;
@@ -532,6 +543,18 @@ const els = {
   toolsPowerList: document.getElementById("tools-power-list"),
   toolsServicesStatus: document.getElementById("tools-services-status"),
   toolsServicesList: document.getElementById("tools-services-list"),
+  timelapseControlMode: document.getElementById("timelapse-control-mode"),
+  timelapseServiceNameLabel: document.getElementById("timelapse-service-name-label"),
+  timelapseServiceName: document.getElementById("timelapse-service-name"),
+  timelapseServiceStatus: document.getElementById("timelapse-service-status"),
+  timelapseServiceDetail: document.getElementById("timelapse-service-detail"),
+  timelapseServiceMessage: document.getElementById("timelapse-service-message"),
+  timelapseServiceRefresh: document.getElementById("timelapse-service-refresh"),
+  timelapseServiceActions: document.getElementById("timelapse-service-actions"),
+  timelapseExternalNote: document.getElementById("timelapse-external-note"),
+  timelapseServiceStart: document.getElementById("timelapse-service-start"),
+  timelapseServiceRestart: document.getElementById("timelapse-service-restart"),
+  timelapseServiceStop: document.getElementById("timelapse-service-stop"),
   pageTitle: document.getElementById("page-title"),
   connectionPill: document.getElementById("connection-pill"),
   connectionText: document.getElementById("connection-text"),
@@ -803,6 +826,19 @@ const els = {
   settingsConsoleFilterSave: document.getElementById("settings-console-filter-save"),
   settingsConsoleFilterCancel: document.getElementById("settings-console-filter-cancel"),
   settingsConsoleFilterList: document.getElementById("settings-console-filter-list"),
+  settingsThermalPresetAdd: document.getElementById("settings-thermal-preset-add"),
+  settingsThermalPresetList: document.getElementById("settings-thermal-preset-list"),
+  settingsThermalPresetDialog: document.getElementById("settings-thermal-preset-dialog"),
+  settingsThermalPresetDialogTitle: document.getElementById("settings-thermal-preset-dialog-title"),
+  settingsThermalPresetClose: document.getElementById("settings-thermal-preset-close"),
+  settingsThermalPresetName: document.getElementById("settings-thermal-preset-name"),
+  settingsThermalPresetHotendActive: document.getElementById("settings-thermal-preset-hotend-active"),
+  settingsThermalPresetHotendValue: document.getElementById("settings-thermal-preset-hotend-value"),
+  settingsThermalPresetBedActive: document.getElementById("settings-thermal-preset-bed-active"),
+  settingsThermalPresetBedValue: document.getElementById("settings-thermal-preset-bed-value"),
+  settingsThermalPresetGcode: document.getElementById("settings-thermal-preset-gcode"),
+  settingsThermalPresetSave: document.getElementById("settings-thermal-preset-save"),
+  settingsThermalPresetCancel: document.getElementById("settings-thermal-preset-cancel"),
   settingsMacrosCategoryAdd: document.getElementById("settings-macros-category-add"),
   settingsMacrosCategoryList: document.getElementById("settings-macros-category-list"),
   settingsMacrosSelectedCategory: document.getElementById("settings-macros-selected-category"),
@@ -1297,6 +1333,307 @@ function syncWarningsSettingsControls() {
   if (els.settingsWarningStepperDriverOverheating) {
     els.settingsWarningStepperDriverOverheating.checked = !!state.warnings.warnOnStepperDriverOverheating;
   }
+}
+function normalizeThermalPresetTemperature(valueCandidate, sensorKey) {
+  const max = THERMAL_PRESET_MAX_VALUES[sensorKey] || TEMPERATURE_DEFAULT_MAX;
+  const numeric = Number(valueCandidate);
+  if (!Number.isFinite(numeric)) return 0;
+  return Math.max(0, Math.min(max, Math.round(numeric)));
+}
+
+function normalizeThermalPresetEntry(candidate, index = 0) {
+  const source = candidate && typeof candidate === "object" ? candidate : {};
+  const sourceValues = source.values && typeof source.values === "object" ? source.values : {};
+  const fallbackId = Date.now() + index;
+  const idCandidate = Number(source.id);
+
+  const values = {
+    hotend: {
+      type: "heater",
+      active: sourceValues.hotend?.active !== false,
+      value: normalizeThermalPresetTemperature(sourceValues.hotend?.value, "hotend"),
+    },
+    bed: {
+      type: "heater",
+      active: sourceValues.bed?.active !== false,
+      value: normalizeThermalPresetTemperature(sourceValues.bed?.value, "bed"),
+    },
+  };
+
+  return {
+    id: Number.isFinite(idCandidate) ? idCandidate : fallbackId,
+    name: String(source.name || "").trim().slice(0, 64),
+    values,
+    gcode: String(source.gcode || "").trim().slice(0, 4000),
+  };
+}
+
+function cloneThermalPresetEntry(entry) {
+  const normalized = normalizeThermalPresetEntry(entry);
+  return {
+    id: normalized.id,
+    name: normalized.name,
+    values: {
+      hotend: { ...normalized.values.hotend },
+      bed: { ...normalized.values.bed },
+    },
+    gcode: normalized.gcode,
+  };
+}
+
+function createBlankThermalPresetEntry() {
+  return {
+    id: -1,
+    name: "",
+    values: {
+      hotend: { type: "heater", active: true, value: 0 },
+      bed: { type: "heater", active: true, value: 0 },
+    },
+    gcode: "",
+  };
+}
+
+function loadStoredThermalPresets() {
+  const raw = localStorage.getItem(THERMAL_PRESETS_STORAGE_KEY);
+  if (!raw) return [];
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((entry, index) => normalizeThermalPresetEntry(entry, index));
+  } catch {
+    return [];
+  }
+}
+
+function persistThermalPresets() {
+  const normalized = (Array.isArray(state.thermalPresets) ? state.thermalPresets : [])
+    .map((entry, index) => normalizeThermalPresetEntry(entry, index));
+
+  state.thermalPresets = normalized;
+  localStorage.setItem(THERMAL_PRESETS_STORAGE_KEY, JSON.stringify(normalized));
+}
+
+function buildThermalPresetSummary(preset) {
+  const parts = [];
+
+  THERMAL_PRESET_SENSOR_KEYS.forEach((sensorKey) => {
+    const entry = preset?.values?.[sensorKey];
+    if (!entry?.active) return;
+    const value = normalizeThermalPresetTemperature(entry.value, sensorKey);
+    parts.push(`${THERMAL_PRESET_SENSOR_LABELS[sensorKey]}: ${value}\u00B0C`);
+  });
+
+  return parts.length ? parts.join(" | ") : "No active targets.";
+}
+
+function renderThermalPresetSettingsList() {
+  const list = els.settingsThermalPresetList;
+  if (!list) return;
+
+  list.replaceChildren();
+
+  const presets = Array.isArray(state.thermalPresets) ? state.thermalPresets : [];
+  if (!presets.length) {
+    const empty = document.createElement("p");
+    empty.className = "muted settings-presets-empty";
+    empty.textContent = "No thermal presets configured.";
+    list.appendChild(empty);
+    return;
+  }
+
+  presets.forEach((preset) => {
+    const row = document.createElement("div");
+    row.className = "settings-thermal-preset-item";
+
+    const meta = document.createElement("button");
+    meta.type = "button";
+    meta.className = "settings-thermal-preset-meta";
+
+    const title = document.createElement("strong");
+    title.textContent = preset.name || "Untitled preset";
+
+    const subtitle = document.createElement("span");
+    subtitle.textContent = buildThermalPresetSummary(preset);
+
+    meta.append(title, subtitle);
+    meta.addEventListener("click", () => {
+      openThermalPresetDialog(preset.id);
+    });
+
+    const actions = document.createElement("div");
+    actions.className = "settings-thermal-preset-actions";
+
+    const edit = document.createElement("button");
+    edit.type = "button";
+    edit.textContent = "Edit";
+    edit.addEventListener("click", () => {
+      openThermalPresetDialog(preset.id);
+    });
+
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "danger";
+    remove.textContent = "Delete";
+    remove.addEventListener("click", () => {
+      deleteThermalPreset(preset.id);
+    });
+
+    actions.append(edit, remove);
+    row.append(meta, actions);
+    list.appendChild(row);
+  });
+}
+
+function syncThermalPresetDialogInputs() {
+  const draft = state.thermalPresetDialogDraft;
+  if (!draft) return;
+
+  if (els.settingsThermalPresetName) {
+    els.settingsThermalPresetName.value = draft.name || "";
+  }
+
+  const hotendActive = !!draft.values?.hotend?.active;
+  const bedActive = !!draft.values?.bed?.active;
+
+  if (els.settingsThermalPresetHotendActive) {
+    els.settingsThermalPresetHotendActive.checked = hotendActive;
+  }
+
+  if (els.settingsThermalPresetBedActive) {
+    els.settingsThermalPresetBedActive.checked = bedActive;
+  }
+
+  if (els.settingsThermalPresetHotendValue) {
+    els.settingsThermalPresetHotendValue.value = String(normalizeThermalPresetTemperature(draft.values?.hotend?.value, "hotend"));
+    els.settingsThermalPresetHotendValue.disabled = !hotendActive;
+  }
+
+  if (els.settingsThermalPresetBedValue) {
+    els.settingsThermalPresetBedValue.value = String(normalizeThermalPresetTemperature(draft.values?.bed?.value, "bed"));
+    els.settingsThermalPresetBedValue.disabled = !bedActive;
+  }
+
+  if (els.settingsThermalPresetGcode) {
+    els.settingsThermalPresetGcode.value = draft.gcode || "";
+  }
+}
+
+function updateThermalPresetDraftFromInputs() {
+  const draft = state.thermalPresetDialogDraft;
+  if (!draft) return null;
+
+  draft.name = String(els.settingsThermalPresetName?.value || "").trim().slice(0, 64);
+  draft.gcode = String(els.settingsThermalPresetGcode?.value || "").trim().slice(0, 4000);
+  draft.values.hotend.active = !!els.settingsThermalPresetHotendActive?.checked;
+  draft.values.bed.active = !!els.settingsThermalPresetBedActive?.checked;
+  draft.values.hotend.value = normalizeThermalPresetTemperature(els.settingsThermalPresetHotendValue?.value, "hotend");
+  draft.values.bed.value = normalizeThermalPresetTemperature(els.settingsThermalPresetBedValue?.value, "bed");
+  return draft;
+}
+
+function openThermalPresetDialog(presetId = null) {
+  if (!els.settingsThermalPresetDialog) return;
+
+  const numericId = Number(presetId);
+  const source = Number.isFinite(numericId)
+    ? state.thermalPresets.find((preset) => preset.id === numericId)
+    : null;
+
+  state.thermalPresetDialogPresetId = source ? source.id : null;
+  state.thermalPresetDialogDraft = source
+    ? cloneThermalPresetEntry(source)
+    : createBlankThermalPresetEntry();
+
+  if (els.settingsThermalPresetDialogTitle) {
+    els.settingsThermalPresetDialogTitle.textContent = source ? "Edit Thermal Preset" : "Add Thermal Preset";
+  }
+
+  syncThermalPresetDialogInputs();
+
+  if (typeof els.settingsThermalPresetDialog.showModal === "function") {
+    if (!els.settingsThermalPresetDialog.open) {
+      els.settingsThermalPresetDialog.showModal();
+    }
+  } else {
+    els.settingsThermalPresetDialog.setAttribute("open", "open");
+  }
+}
+
+function closeThermalPresetDialog() {
+  if (!els.settingsThermalPresetDialog) return;
+
+  if (els.settingsThermalPresetDialog.open && typeof els.settingsThermalPresetDialog.close === "function") {
+    els.settingsThermalPresetDialog.close();
+  } else {
+    els.settingsThermalPresetDialog.removeAttribute("open");
+    state.thermalPresetDialogPresetId = null;
+    state.thermalPresetDialogDraft = null;
+  }
+}
+
+function saveThermalPresetDialog() {
+  const draft = updateThermalPresetDraftFromInputs();
+  if (!draft) return;
+
+  if (!draft.name) {
+    appendConsole("Thermal preset name is required.", "warn");
+    els.settingsThermalPresetName?.focus();
+    return;
+  }
+
+  if (!draft.values.hotend.active && !draft.values.bed.active) {
+    appendConsole("Enable at least one target (hotend or bed).", "warn");
+    return;
+  }
+
+  const id = Number.isFinite(state.thermalPresetDialogPresetId)
+    ? state.thermalPresetDialogPresetId
+    : Date.now();
+
+  const normalized = normalizeThermalPresetEntry({
+    ...draft,
+    id,
+  });
+
+  const existingIndex = state.thermalPresets.findIndex((preset) => preset.id === normalized.id);
+
+  if (existingIndex >= 0) {
+    state.thermalPresets[existingIndex] = normalized;
+  } else {
+    state.thermalPresets.push(normalized);
+  }
+
+  persistThermalPresets();
+  renderThermalPresetSettingsList();
+  buildTemperatureTargetMenus();
+  closeThermalPresetDialog();
+
+  appendConsole(
+    existingIndex >= 0
+      ? `Thermal preset updated: ${normalized.name}.`
+      : `Thermal preset added: ${normalized.name}.`,
+    "info"
+  );
+}
+
+function deleteThermalPreset(presetId) {
+  const numericId = Number(presetId);
+  if (!Number.isFinite(numericId)) return;
+
+  const preset = state.thermalPresets.find((entry) => entry.id === numericId);
+  if (!preset) return;
+
+  const presetName = preset.name || "Untitled preset";
+  const confirmed = window.confirm(`Delete thermal preset "${presetName}"?`);
+  if (!confirmed) return;
+
+  state.thermalPresets = state.thermalPresets.filter((entry) => entry.id !== numericId);
+  persistThermalPresets();
+  renderThermalPresetSettingsList();
+  buildTemperatureTargetMenus();
+
+  appendConsole(`Thermal preset deleted: ${presetName}.`, "info");
 }
 function persistConfigViewState() {
   localStorage.setItem(CONFIG_SELECTED_PATH_STORAGE_KEY, state.config.selectedPath || "");
@@ -2119,6 +2456,67 @@ function createDefaultMachineLoadsState() {
   };
 }
 
+function normalizeTimelapseServiceName(value) {
+  return String(value || "").trim();
+}
+
+function normalizeTimelapseControlMode(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === TIMELAPSE_CONTROL_MODE_EXTERNAL) {
+    return TIMELAPSE_CONTROL_MODE_EXTERNAL;
+  }
+  return TIMELAPSE_CONTROL_MODE_SERVICE;
+}
+
+function loadStoredTimelapseControlMode() {
+  return normalizeTimelapseControlMode(localStorage.getItem(TIMELAPSE_CONTROL_MODE_STORAGE_KEY));
+}
+
+function normalizeTimelapseServiceLookupKey(value) {
+  return normalizeTimelapseServiceName(value).toLowerCase().replace(/\.service$/, "");
+}
+
+function getTimelapseServiceLookupCandidates(serviceName) {
+  const normalizedName = normalizeTimelapseServiceName(serviceName).toLowerCase();
+  if (!normalizedName) return [];
+
+  const baseName = normalizeTimelapseServiceLookupKey(normalizedName);
+  const candidates = [];
+
+  const pushCandidate = (name) => {
+    if (!name || candidates.includes(name)) return;
+    candidates.push(name);
+  };
+
+  pushCandidate(normalizedName);
+  pushCandidate(baseName);
+  pushCandidate(`${baseName}.service`);
+
+  return candidates;
+}
+
+function loadStoredTimelapseServiceName() {
+  const stored = normalizeTimelapseServiceName(localStorage.getItem(TIMELAPSE_SERVICE_NAME_STORAGE_KEY));
+  return stored || TIMELAPSE_SERVICE_NAME_DEFAULT;
+}
+
+function createDefaultTimelapseControlState() {
+  const controlMode = loadStoredTimelapseControlMode();
+  return {
+    controlMode,
+    serviceName: loadStoredTimelapseServiceName(),
+    resolvedServiceName: "",
+    serviceState: controlMode === TIMELAPSE_CONTROL_MODE_EXTERNAL ? "external" : "unknown",
+    serviceSubState: "",
+    loading: false,
+    actionInFlight: false,
+    lastUpdatedMs: null,
+    lastError: "",
+    statusMessage: controlMode === TIMELAPSE_CONTROL_MODE_EXTERNAL
+      ? "External recorder mode enabled. Moonraker service checks are disabled."
+      : "Connect to Moonraker to query service state.",
+  };
+}
 function createDefaultToolsMenuState() {
   return {
     open: false,
@@ -2297,6 +2695,9 @@ const state = {
   interface: createInterfaceState(),
   warnings: normalizeWarningsSettings(loadStoredWarningsSettings()),
   macros: createMacroState(),
+  thermalPresets: loadStoredThermalPresets(),
+  thermalPresetDialogPresetId: null,
+  thermalPresetDialogDraft: null,
   dashboard: {
     showPrintProgress: loadStoredBool(DASHBOARD_VISIBILITY_STORAGE_KEYS["card-print-progress"], true),
     showTemperatures: loadStoredBool(DASHBOARD_VISIBILITY_STORAGE_KEYS["card-temperatures"], true),
@@ -2355,6 +2756,7 @@ const state = {
   },
   machineLoads: createDefaultMachineLoadsState(),
   toolsMenu: createDefaultToolsMenuState(),
+  timelapse: createDefaultTimelapseControlState(),
   updateManager: createDefaultUpdateManagerState(),
   endstops: createDefaultEndstopsState(),
   logFiles: createDefaultMachineLogFilesState(),
@@ -4532,6 +4934,270 @@ async function runToolsServiceAction(serviceName, action) {
   }
 }
 
+function getTimelapseServiceEntry(systemInfo, serviceName) {
+  const lookupCandidates = getTimelapseServiceLookupCandidates(serviceName);
+  if (!lookupCandidates.length) return null;
+
+  const services = normalizeToolsMenuServices(systemInfo);
+  const exactMatch = services.find((entry) => lookupCandidates.includes(entry.name.toLowerCase()));
+  if (exactMatch) return exactMatch;
+
+  const lookupKeys = new Set(lookupCandidates.map((entry) => normalizeTimelapseServiceLookupKey(entry)));
+  return services.find((entry) => lookupKeys.has(normalizeTimelapseServiceLookupKey(entry.name))) || null;
+}
+
+function formatTimelapseServiceState(activeState, subState) {
+  const normalizedState = String(activeState || "unknown").trim().toLowerCase() || "unknown";
+  const normalizedSub = String(subState || "").trim().toLowerCase();
+  return normalizedSub ? `${normalizedState} (${normalizedSub})` : normalizedState;
+}
+
+function renderTimelapseControlView() {
+  const connected = !!state.client && state.connectionStatus === "connected";
+  const controlMode = normalizeTimelapseControlMode(state.timelapse.controlMode);
+  const usingServiceMode = controlMode === TIMELAPSE_CONTROL_MODE_SERVICE;
+  state.timelapse.controlMode = controlMode;
+
+  const serviceName = normalizeTimelapseServiceName(state.timelapse.serviceName) || TIMELAPSE_SERVICE_NAME_DEFAULT;
+  state.timelapse.serviceName = serviceName;
+
+  if (els.timelapseControlMode && document.activeElement !== els.timelapseControlMode) {
+    els.timelapseControlMode.value = controlMode;
+  }
+
+  if (els.timelapseServiceName && document.activeElement !== els.timelapseServiceName) {
+    els.timelapseServiceName.value = serviceName;
+  }
+
+  if (els.timelapseServiceNameLabel) {
+    els.timelapseServiceNameLabel.hidden = !usingServiceMode;
+  }
+  if (els.timelapseServiceName) {
+    els.timelapseServiceName.hidden = !usingServiceMode;
+  }
+  if (els.timelapseServiceRefresh) {
+    els.timelapseServiceRefresh.hidden = !usingServiceMode;
+  }
+  if (els.timelapseServiceActions) {
+    els.timelapseServiceActions.hidden = !usingServiceMode;
+  }
+  if (els.timelapseExternalNote) {
+    els.timelapseExternalNote.hidden = usingServiceMode;
+  }
+
+  const activeState = usingServiceMode
+    ? (String(state.timelapse.serviceState || "unknown").trim().toLowerCase() || "unknown")
+    : "external";
+  const subState = usingServiceMode ? String(state.timelapse.serviceSubState || "").trim().toLowerCase() : "";
+  const busy = usingServiceMode && !!(state.timelapse.loading || state.timelapse.actionInFlight);
+  const printBusy = isPrintActiveForSystemActions();
+
+  if (els.timelapseServiceStatus) {
+    els.timelapseServiceStatus.textContent = formatTimelapseServiceState(activeState, subState);
+    els.timelapseServiceStatus.dataset.state = activeState;
+  }
+
+  if (els.timelapseServiceDetail) {
+    if (!usingServiceMode) {
+      els.timelapseServiceDetail.textContent = "External recorder mode is active. Forge will not query Moonraker service state.";
+    } else if (!connected) {
+      els.timelapseServiceDetail.textContent = "Connect to Moonraker to query service state.";
+    } else if (state.timelapse.loading) {
+      els.timelapseServiceDetail.textContent = `Refreshing service "${serviceName}"...`;
+    } else if (activeState === "missing") {
+      els.timelapseServiceDetail.textContent = `Service "${serviceName}" was not found on this host.`;
+    } else if (state.timelapse.lastUpdatedMs) {
+      const stamp = new Date(state.timelapse.lastUpdatedMs).toLocaleTimeString();
+      els.timelapseServiceDetail.textContent = `Last update: ${stamp}`;
+    } else {
+      els.timelapseServiceDetail.textContent = "Press Refresh to query the current service state.";
+    }
+  }
+
+  if (els.timelapseServiceMessage) {
+    const hideExternalInfoMessage = !usingServiceMode && !state.timelapse.lastError;
+    els.timelapseServiceMessage.hidden = hideExternalInfoMessage;
+    els.timelapseServiceMessage.textContent = hideExternalInfoMessage
+      ? ""
+      : (state.timelapse.lastError
+        ? `Last error: ${state.timelapse.lastError}`
+        : (state.timelapse.statusMessage || (usingServiceMode
+          ? "Recorder output folders are configured in your timelapse recorder JSON config."
+          : "Run the timelapse recorder script on your host to capture prints and generate timelapses.")));
+  }
+
+  if (els.timelapseServiceRefresh) {
+    els.timelapseServiceRefresh.disabled = !usingServiceMode || busy;
+  }
+
+  if (!usingServiceMode) {
+    if (els.timelapseServiceStart) {
+      els.timelapseServiceStart.disabled = true;
+    }
+    if (els.timelapseServiceRestart) {
+      els.timelapseServiceRestart.disabled = true;
+    }
+    if (els.timelapseServiceStop) {
+      els.timelapseServiceStop.disabled = true;
+    }
+    return;
+  }
+
+  const missing = activeState === "missing";
+  const inactive = activeState === "inactive";
+
+  if (els.timelapseServiceStart) {
+    els.timelapseServiceStart.disabled = !connected || busy || missing || !inactive;
+  }
+
+  if (els.timelapseServiceRestart) {
+    els.timelapseServiceRestart.disabled = !connected || busy || missing || printBusy;
+  }
+
+  if (els.timelapseServiceStop) {
+    els.timelapseServiceStop.disabled = !connected || busy || missing || inactive || printBusy;
+  }
+}
+
+async function refreshTimelapseControlState({ silent = false } = {}) {
+  const controlMode = normalizeTimelapseControlMode(state.timelapse.controlMode);
+  const usingServiceMode = controlMode === TIMELAPSE_CONTROL_MODE_SERVICE;
+  state.timelapse.controlMode = controlMode;
+
+  if (!usingServiceMode) {
+    state.timelapse.loading = false;
+    state.timelapse.resolvedServiceName = "";
+    state.timelapse.serviceState = "external";
+    state.timelapse.serviceSubState = "";
+    state.timelapse.lastUpdatedMs = Date.now();
+    state.timelapse.lastError = "";
+    state.timelapse.statusMessage = "External recorder mode enabled. Moonraker service checks are disabled.";
+    renderTimelapseControlView();
+    return;
+  }
+
+  const connected = !!state.client && state.connectionStatus === "connected";
+
+  if (!connected) {
+    state.timelapse.loading = false;
+    state.timelapse.resolvedServiceName = "";
+    state.timelapse.serviceState = "unknown";
+    state.timelapse.serviceSubState = "";
+    state.timelapse.lastUpdatedMs = null;
+    if (!silent) {
+      state.timelapse.lastError = "";
+      state.timelapse.statusMessage = "Connect to Moonraker to query service state.";
+    }
+    renderTimelapseControlView();
+    return;
+  }
+
+  state.timelapse.loading = true;
+  if (!silent) {
+    state.timelapse.lastError = "";
+  }
+  renderTimelapseControlView();
+
+  try {
+    const response = await state.client.getMachineSystemInfo();
+    const systemInfo = response?.result?.system_info || response?.result || null;
+    state.machineLoads.systemInfo = systemInfo;
+    state.toolsMenu.services = normalizeToolsMenuServices(systemInfo);
+
+    const serviceEntry = getTimelapseServiceEntry(systemInfo, state.timelapse.serviceName);
+    if (serviceEntry) {
+      const configuredName = normalizeTimelapseServiceName(state.timelapse.serviceName).toLowerCase();
+      const resolvedName = normalizeTimelapseServiceName(serviceEntry.name);
+      state.timelapse.serviceState = serviceEntry.activeState;
+      state.timelapse.serviceSubState = serviceEntry.subState;
+      state.timelapse.resolvedServiceName = resolvedName;
+      state.timelapse.statusMessage = configuredName === resolvedName.toLowerCase()
+        ? `Service ready: ${resolvedName}`
+        : `Service ready: ${resolvedName} (matched from ${state.timelapse.serviceName})`;
+    } else {
+      const attempted = getTimelapseServiceLookupCandidates(state.timelapse.serviceName).join(", ");
+      state.timelapse.resolvedServiceName = "";
+      state.timelapse.serviceState = "missing";
+      state.timelapse.serviceSubState = "";
+      state.timelapse.statusMessage = attempted
+        ? `Service not found. Tried: ${attempted}`
+        : `Service not found: ${state.timelapse.serviceName}`;
+    }
+
+    state.timelapse.lastError = "";
+    state.timelapse.lastUpdatedMs = Date.now();
+  } catch (error) {
+    const message = error?.message || String(error);
+    state.timelapse.resolvedServiceName = "";
+    state.timelapse.serviceState = "unknown";
+    state.timelapse.serviceSubState = "";
+    state.timelapse.lastError = message;
+    state.timelapse.statusMessage = `Failed to refresh service state: ${message}`;
+    if (!silent) {
+      appendConsole(`Timelapse service refresh failed: ${message}`, "error");
+    }
+  } finally {
+    state.timelapse.loading = false;
+    renderTimelapseControlView();
+  }
+}
+
+async function runTimelapseServiceAction(action) {
+  const normalizedAction = String(action || "").trim().toLowerCase();
+  if (!["start", "restart", "stop"].includes(normalizedAction)) return;
+
+  const controlMode = normalizeTimelapseControlMode(state.timelapse.controlMode);
+  if (controlMode !== TIMELAPSE_CONTROL_MODE_SERVICE) {
+    state.timelapse.statusMessage = "Service actions are disabled in External Recorder mode.";
+    appendConsole("Timelapse service actions are disabled in External Recorder mode.", "warn");
+    renderTimelapseControlView();
+    return;
+  }
+
+  const serviceName = normalizeTimelapseServiceName(state.timelapse.resolvedServiceName) || normalizeTimelapseServiceName(state.timelapse.serviceName);
+  if (!serviceName) {
+    state.timelapse.lastError = "Service name is required.";
+    state.timelapse.statusMessage = "Enter a service name before running actions.";
+    renderTimelapseControlView();
+    return;
+  }
+
+  const connected = !!state.client && state.connectionStatus === "connected";
+  if (!connected) {
+    appendConsole("Connect to Moonraker before running timelapse service actions.", "warn");
+    return;
+  }
+
+  if (isPrintActiveForSystemActions() && ["restart", "stop"].includes(normalizedAction)) {
+    appendConsole("Timelapse service restart/stop is disabled while printing or paused.", "warn");
+    return;
+  }
+
+  const needsConfirm = ["restart", "stop"].includes(normalizedAction);
+  if (needsConfirm) {
+    const confirmed = window.confirm(`${normalizedAction.toUpperCase()} service "${serviceName}"?`);
+    if (!confirmed) return;
+  }
+
+  state.timelapse.actionInFlight = true;
+  state.timelapse.lastError = "";
+  state.timelapse.statusMessage = `Sending ${normalizedAction} to ${serviceName}...`;
+  renderTimelapseControlView();
+
+  try {
+    await state.client.runMachineServiceAction(serviceName, normalizedAction);
+    appendConsole(`Timelapse service ${normalizedAction} requested: ${serviceName}`, "info");
+    state.timelapse.statusMessage = `Requested ${normalizedAction} for ${serviceName}.`;
+  } catch (error) {
+    const message = error?.message || String(error);
+    state.timelapse.lastError = message;
+    state.timelapse.statusMessage = `Action failed: ${message}`;
+    appendConsole(`Timelapse service ${normalizedAction} failed: ${message}`, "error");
+  } finally {
+    state.timelapse.actionInFlight = false;
+    await refreshTimelapseControlState({ silent: true });
+  }
+}
 async function runToolsPowerAction(deviceName, action) {
   const normalizedDevice = String(deviceName || "").trim();
   const normalizedAction = String(action || "").trim().toLowerCase();
@@ -4647,6 +5313,10 @@ function setConnectionUi(status) {
   }
 
   renderToolsMenu();
+  renderTimelapseControlView();
+  if (status === "connected" && state.activeView === "timelapse") {
+    void refreshTimelapseControlState({ silent: true });
+  }
 
   if (isPrettyGcodeViewerVisible()) {
     renderPrettyGcodeView();
@@ -5285,12 +5955,48 @@ function fanSpeedPercentToPwm(percent) {
 }
 
 function normalizeHomedAxes(value) {
-  const normalized = String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^xyz]/g, "");
+  const axes = new Set();
 
-  return new Set(normalized.split("").filter(Boolean));
+  const addFromString = (raw) => {
+    const normalized = String(raw || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[^xyz]/g, "");
+
+    normalized.split("").forEach((axis) => {
+      if (axis) {
+        axes.add(axis);
+      }
+    });
+  };
+
+  if (value == null) {
+    return axes;
+  }
+
+  if (Array.isArray(value)) {
+    value.forEach((entry) => addFromString(entry));
+    return axes;
+  }
+
+  if (value instanceof Set) {
+    value.forEach((entry) => addFromString(entry));
+    return axes;
+  }
+
+  if (typeof value === "object") {
+    Object.entries(value).forEach(([key, raw]) => {
+      const normalizedRaw = String(raw || "").trim().toLowerCase();
+      const enabled = raw === true || raw === 1 || normalizedRaw === "true" || normalizedRaw === "homed";
+      if (enabled) {
+        addFromString(key);
+      }
+    });
+    return axes;
+  }
+
+  addFromString(value);
+  return axes;
 }
 
 function setControlsHomingClass(element, isHomed) {
@@ -5466,7 +6172,8 @@ function getControlsCurrentZOffset() {
   return Math.round(value * 1000) / 1000;
 }
 function getControlsHomedAxesRaw() {
-  return String(state.printStatus.lastToolhead?.homed_axes || "").trim().toLowerCase();
+  const homedAxes = normalizeHomedAxes(state.printStatus.lastToolhead?.homed_axes);
+  return ["x", "y", "z"].filter((axis) => homedAxes.has(axis)).join("");
 }
 function controlsShouldUseMoveFlag() {
   return getControlsHomedAxesRaw() === "xyz";
@@ -5887,6 +6594,81 @@ async function sendControlJogCommand(axis, directionMultiplier) {
   });
 }
 
+async function refreshControlsToolheadSnapshot({ silent = true } = {}) {
+  if (!state.client || state.connectionStatus !== "connected") {
+    return normalizeHomedAxes(state.printStatus.lastToolhead?.homed_axes);
+  }
+
+  try {
+    const response = await state.client.call("/printer/objects/query?toolhead");
+    const toolhead = response?.result?.status?.toolhead || response?.result?.toolhead || null;
+
+    if (toolhead && typeof toolhead === "object") {
+      state.printStatus.lastToolhead = {
+        ...state.printStatus.lastToolhead,
+        ...toolhead,
+      };
+      renderControlsPanel();
+    }
+  } catch (error) {
+    if (!silent) {
+      const message = error?.message || String(error);
+      appendConsole(`Toolhead refresh failed after homing: ${message}`, "warn");
+    }
+  }
+
+  return normalizeHomedAxes(state.printStatus.lastToolhead?.homed_axes);
+}
+
+function getExpectedHomedAxesForHomeTarget(target) {
+  const normalized = String(target || "").trim().toLowerCase();
+
+  if (normalized === "xy") {
+    return new Set(["x", "y"]);
+  }
+
+  if (normalized === "z") {
+    return new Set(["z"]);
+  }
+
+  return new Set(["x", "y", "z"]);
+}
+
+function controlsHomedAxesMatch(homedAxes, expectedAxes) {
+  if (!(expectedAxes instanceof Set) || !expectedAxes.size) return true;
+
+  for (const axis of expectedAxes) {
+    if (!homedAxes.has(axis)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+async function waitForControlsHomingState(target, { timeoutMs = 15000, intervalMs = 500 } = {}) {
+  const expectedAxes = getExpectedHomedAxesForHomeTarget(target);
+  const deadline = Date.now() + Math.max(1000, timeoutMs);
+
+  let homedAxes = await refreshControlsToolheadSnapshot({ silent: true });
+  if (controlsHomedAxesMatch(homedAxes, expectedAxes)) {
+    return true;
+  }
+
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => {
+      setTimeout(resolve, Math.max(100, intervalMs));
+    });
+
+    homedAxes = await refreshControlsToolheadSnapshot({ silent: true });
+    if (controlsHomedAxesMatch(homedAxes, expectedAxes)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 async function sendControlHomeCommand(target) {
   const normalized = String(target || "").trim().toLowerCase();
   let script = "G28";
@@ -5897,9 +6679,21 @@ async function sendControlHomeCommand(target) {
     script = "G28 Z";
   }
 
-  await executeGcodeAction(script, {
+  const sent = await executeGcodeAction(script, {
     actionLabel: `Home ${normalized || "all"}`,
   });
+
+  if (!sent) return;
+
+  const updated = await waitForControlsHomingState(normalized || "all");
+  const detectedHomedAxes = getControlsHomedAxesRaw() || "(none)";
+  if (!updated) {
+    appendConsole(`Home command finished but homed axes did not fully update yet. Detected: ${detectedHomedAxes}`, "warn");
+    void refreshControlsToolheadSnapshot({ silent: false });
+    return;
+  }
+
+  appendConsole(`Homed axes detected: ${detectedHomedAxes}`, "info");
 }
 
 async function sendFeedRateCommand() {
@@ -7909,6 +8703,22 @@ function buildTargetPresetIcon() {
   `;
 }
 
+function getTemperatureTargetPresetValues(sensorKey) {
+  const key = sensorKey === "bed" ? "bed" : "hotend";
+  const dynamicValues = (Array.isArray(state.thermalPresets) ? state.thermalPresets : [])
+    .map((preset) => preset?.values?.[key])
+    .filter((value) => value?.active)
+    .map((value) => normalizeThermalPresetTemperature(value.value, key));
+
+  if (dynamicValues.length) {
+    const unique = [...new Set([0, ...dynamicValues])];
+    return unique.sort((a, b) => a - b);
+  }
+
+  const fallback = Array.isArray(TEMPERATURE_PRESETS[key]) ? TEMPERATURE_PRESETS[key] : [0];
+  const uniqueFallback = [...new Set(fallback.map((value) => normalizeThermalPresetTemperature(value, key)))];
+  return uniqueFallback.sort((a, b) => a - b);
+}
 function buildTemperatureTargetMenu(sensorKey) {
   const menu = sensorKey === "hotend" ? els.tempHotendTargetMenu : els.tempBedTargetMenu;
   if (!menu) return;
@@ -7916,7 +8726,7 @@ function buildTemperatureTargetMenu(sensorKey) {
   menu.innerHTML = "";
   const currentTarget = Math.round(state.temperatures[sensorKey].target || 0);
 
-  TEMPERATURE_PRESETS[sensorKey].forEach((preset) => {
+  getTemperatureTargetPresetValues(sensorKey).forEach((preset) => {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "target-preset-item";
@@ -15507,6 +16317,16 @@ async function requestViewChange(viewName) {
 
     return;
   }
+  if (viewName === "timelapse") {
+    renderTimelapseControlView();
+
+    if (!state.client || state.connectionStatus !== "connected") {
+      return;
+    }
+
+    await refreshTimelapseControlState({ silent: true });
+    return;
+  }
   if (viewName === "pretty-gcode") {
     updatePrettyGcodeToolhead({ skipRender: true });
 
@@ -15797,6 +16617,56 @@ function wireEvents() {
     });
   });
 
+  els.timelapseServiceRefresh?.addEventListener("click", async () => {
+    await refreshTimelapseControlState();
+  });
+
+  els.timelapseControlMode?.addEventListener("change", () => {
+    state.timelapse.controlMode = normalizeTimelapseControlMode(els.timelapseControlMode?.value);
+    localStorage.setItem(TIMELAPSE_CONTROL_MODE_STORAGE_KEY, state.timelapse.controlMode);
+    state.timelapse.resolvedServiceName = "";
+    state.timelapse.serviceSubState = "";
+    state.timelapse.serviceState = state.timelapse.controlMode === TIMELAPSE_CONTROL_MODE_EXTERNAL ? "external" : "unknown";
+    state.timelapse.lastError = "";
+    state.timelapse.statusMessage = state.timelapse.controlMode === TIMELAPSE_CONTROL_MODE_EXTERNAL
+      ? "External recorder mode enabled. Moonraker service checks are disabled."
+      : "Connect to Moonraker to query service state.";
+    if (state.timelapse.controlMode === TIMELAPSE_CONTROL_MODE_EXTERNAL) {
+      appendConsole("Timelapse switched to External Recorder mode.", "info");
+    }
+    renderTimelapseControlView();
+    void refreshTimelapseControlState({ silent: true });
+  });
+
+  els.timelapseServiceName?.addEventListener("change", () => {
+    state.timelapse.serviceName = normalizeTimelapseServiceName(els.timelapseServiceName?.value) || TIMELAPSE_SERVICE_NAME_DEFAULT;
+    state.timelapse.resolvedServiceName = "";
+    localStorage.setItem(TIMELAPSE_SERVICE_NAME_STORAGE_KEY, state.timelapse.serviceName);
+    state.timelapse.lastError = "";
+    renderTimelapseControlView();
+    if (state.connectionStatus === "connected") {
+      void refreshTimelapseControlState({ silent: true });
+    }
+  });
+
+  els.timelapseServiceName?.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    els.timelapseServiceName?.blur();
+    els.timelapseServiceName?.dispatchEvent(new Event("change"));
+  });
+
+  els.timelapseServiceStart?.addEventListener("click", async () => {
+    await runTimelapseServiceAction("start");
+  });
+
+  els.timelapseServiceRestart?.addEventListener("click", async () => {
+    await runTimelapseServiceAction("restart");
+  });
+
+  els.timelapseServiceStop?.addEventListener("click", async () => {
+    await runTimelapseServiceAction("stop");
+  });
   window.addEventListener("scroll", () => {
     if (state.activeView !== "settings") return;
     queueSettingsSubnavSync();
@@ -16644,6 +17514,78 @@ function wireEvents() {
     syncWarningsSettingsControls();
     appendConsole("Warning settings reset.", "info");
   });
+  els.settingsThermalPresetAdd?.addEventListener("click", () => {
+    openThermalPresetDialog();
+  });
+
+  els.settingsThermalPresetClose?.addEventListener("click", () => {
+    closeThermalPresetDialog();
+  });
+
+  els.settingsThermalPresetCancel?.addEventListener("click", () => {
+    closeThermalPresetDialog();
+  });
+
+  els.settingsThermalPresetSave?.addEventListener("click", () => {
+    saveThermalPresetDialog();
+  });
+
+  els.settingsThermalPresetName?.addEventListener("input", () => {
+    if (!state.thermalPresetDialogDraft) return;
+    state.thermalPresetDialogDraft.name = String(els.settingsThermalPresetName?.value || "").trim().slice(0, 64);
+  });
+
+  els.settingsThermalPresetGcode?.addEventListener("input", () => {
+    if (!state.thermalPresetDialogDraft) return;
+    state.thermalPresetDialogDraft.gcode = String(els.settingsThermalPresetGcode?.value || "").trim().slice(0, 4000);
+  });
+
+  els.settingsThermalPresetHotendActive?.addEventListener("change", () => {
+    if (!state.thermalPresetDialogDraft) return;
+    state.thermalPresetDialogDraft.values.hotend.active = !!els.settingsThermalPresetHotendActive?.checked;
+    syncThermalPresetDialogInputs();
+  });
+
+  els.settingsThermalPresetBedActive?.addEventListener("change", () => {
+    if (!state.thermalPresetDialogDraft) return;
+    state.thermalPresetDialogDraft.values.bed.active = !!els.settingsThermalPresetBedActive?.checked;
+    syncThermalPresetDialogInputs();
+  });
+
+  els.settingsThermalPresetHotendValue?.addEventListener("input", () => {
+    if (!state.thermalPresetDialogDraft) return;
+    state.thermalPresetDialogDraft.values.hotend.value = normalizeThermalPresetTemperature(
+      els.settingsThermalPresetHotendValue?.value,
+      "hotend"
+    );
+  });
+
+  els.settingsThermalPresetBedValue?.addEventListener("input", () => {
+    if (!state.thermalPresetDialogDraft) return;
+    state.thermalPresetDialogDraft.values.bed.value = normalizeThermalPresetTemperature(
+      els.settingsThermalPresetBedValue?.value,
+      "bed"
+    );
+  });
+
+  [els.settingsThermalPresetHotendValue, els.settingsThermalPresetBedValue].forEach((input) => {
+    input?.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      saveThermalPresetDialog();
+    });
+  });
+
+  els.settingsThermalPresetDialog?.addEventListener("click", (event) => {
+    if (event.target === els.settingsThermalPresetDialog) {
+      closeThermalPresetDialog();
+    }
+  });
+
+  els.settingsThermalPresetDialog?.addEventListener("close", () => {
+    state.thermalPresetDialogPresetId = null;
+    state.thermalPresetDialogDraft = null;
+  });
   els.settingsForm.addEventListener("submit", async (event) => {
     event.preventDefault();
 
@@ -17093,6 +18035,8 @@ async function init() {
   syncDashboardVisibilityInputs();
   syncWarningsSettingsControls();
   renderSettingsDashboardLayout();
+  renderThermalPresetSettingsList();
+  renderTimelapseControlView();
 
   els.cameraEnabled.checked = state.camera.enabled;
   els.cameraUrl.value = state.camera.url;
@@ -17227,6 +18171,23 @@ init().catch((error) => {
   setConnectionUi("error");
   appendConsole(`Init failed: ${message}`, "error");
 });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
