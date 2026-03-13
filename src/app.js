@@ -648,6 +648,7 @@ const els = {
   jobsUploadFolderInput: document.getElementById("jobs-upload-folder-input"),
   jobsUploadPrintInput: document.getElementById("jobs-upload-print-input"),
   jobsNewFolder: document.getElementById("jobs-new-folder"),
+  jobsNewFolderDirect: document.getElementById("jobs-new-folder-direct"),
   jobsSummary: document.getElementById("jobs-summary"),
   jobsFeaturePanel: document.getElementById("jobs-feature-panel"),
   jobsPathDisplay: document.getElementById("jobs-path-display"),
@@ -946,6 +947,7 @@ const els = {
 };
 
 let runtimeDashboardViewport = getDashboardRuntimeViewport();
+let hasWiredGlobalEvents = false;
 let layoutDraggedCardId = null;
 let layoutDraggedFromColumn = null;
 let temperaturePollTimer = null;
@@ -2597,6 +2599,10 @@ function createDefaultJobsState() {
     visibleColumns: loadStoredJobsVisibleColumns(),
     metadataByPath: new Map(),
     metadataLoading: new Set(),
+    selectedPath: "",
+    selectedType: "",
+    listPrintPath: "",
+    listPrintState: "",
     uploadDragDepth: 0,
   };
 }
@@ -5865,6 +5871,28 @@ async function syncStatusFileMetadata(filename) {
   }
 }
 
+function updateJobsListPrintSnapshot() {
+  const current = getCurrentJobsPrintState();
+  state.jobs.listPrintPath = normalizeGcodePath(current.filename);
+  state.jobs.listPrintState = normalizePrinterState(current.state);
+}
+
+function shouldRenderJobsListFromStatusUpdate() {
+  if (state.activeView !== "files") return false;
+
+  const current = getCurrentJobsPrintState();
+  const nextPath = normalizeGcodePath(current.filename);
+  const nextState = normalizePrinterState(current.state);
+
+  const changed = nextPath !== state.jobs.listPrintPath || nextState !== state.jobs.listPrintState;
+  if (changed) {
+    state.jobs.listPrintPath = nextPath;
+    state.jobs.listPrintState = nextState;
+  }
+
+  return changed;
+}
+
 function updateStatusFileInfo(printStats, gcodeMove = null, motionReport = null, toolhead = null) {
   const stats = mergePrintStatsSnapshot(printStats);
   const rawFilename = typeof stats.filename === "string" ? stats.filename : "";
@@ -5907,7 +5935,7 @@ function updateStatusFileInfo(printStats, gcodeMove = null, motionReport = null,
       updatePrettyGcodeToolhead({ skipRender: !isPrettyGcodeViewerVisible() });
     }
 
-    if (state.activeView === "files") {
+    if (shouldRenderJobsListFromStatusUpdate()) {
       renderJobsList();
     }
 
@@ -5926,7 +5954,7 @@ function updateStatusFileInfo(printStats, gcodeMove = null, motionReport = null,
     updatePrettyGcodeToolhead({ skipRender: !isPrettyGcodeViewerVisible() });
   }
 
-  if (state.activeView === "files") {
+  if (shouldRenderJobsListFromStatusUpdate()) {
     renderJobsList();
   }
 
@@ -12292,6 +12320,64 @@ function addJobsDirectoryWithParents(directorySet, directoryPath) {
   });
 }
 
+function ensureJobsDirectoryVisible(directoryPath, { openDirectory = false } = {}) {
+  const normalizedDirectory = normalizeJobsDirectory(directoryPath);
+  if (!normalizedDirectory) return;
+
+  const directorySet = new Set(state.jobs.directories || []);
+  addJobsDirectoryWithParents(directorySet, normalizedDirectory);
+  state.jobs.directories = [...directorySet].sort((a, b) => a.localeCompare(b));
+
+  if (openDirectory) {
+    state.jobs.currentDirectory = normalizedDirectory;
+  }
+}
+
+function mergeJobsDirectoriesFromDirectoryResponse(listing, directoryResponse, baseDirectory = "") {
+  const files = Array.isArray(listing?.files) ? listing.files : [];
+  const directories = new Set(Array.isArray(listing?.directories) ? listing.directories : []);
+  const base = normalizeJobsDirectory(baseDirectory);
+
+  const payload = directoryResponse?.result ?? directoryResponse ?? {};
+  const rawDirs = Array.isArray(payload?.dirs)
+    ? payload.dirs
+    : Array.isArray(payload?.directories)
+      ? payload.directories
+      : [];
+
+  rawDirs.forEach((entry) => {
+    let candidatePath = typeof entry === "string"
+      ? entry
+      : String(entry?.dirname ?? entry?.path ?? entry?.filename ?? "").trim();
+
+    candidatePath = normalizeJobsDirectory(candidatePath);
+    if (!candidatePath) return;
+
+    const lowerPath = candidatePath.toLowerCase();
+    if (lowerPath === "gcodes") return;
+
+    if (lowerPath.startsWith("gcodes/")) {
+      candidatePath = normalizeJobsDirectory(candidatePath.slice("gcodes/".length));
+    }
+
+    if (!candidatePath) return;
+
+    let fullPath = "";
+    if (base && (candidatePath === base || candidatePath.startsWith(`${base}/`))) {
+      fullPath = candidatePath;
+    } else {
+      fullPath = base ? normalizeJobsDirectory(`${base}/${candidatePath}`) : candidatePath;
+    }
+
+    if (!fullPath) return;
+    addJobsDirectoryWithParents(directories, fullPath);
+  });
+
+  return {
+    files,
+    directories: [...directories].sort((a, b) => a.localeCompare(b)),
+  };
+}
 function extractJobsListing(fileResponse) {
   const result = fileResponse?.result;
   const rawFiles = Array.isArray(fileResponse)
@@ -12598,7 +12684,7 @@ async function ensureJobsMetadata(path) {
 
 async function prefetchJobsMetadata(entries, { concurrency = 4 } = {}) {
   if (!Array.isArray(entries) || !entries.length) return;
-  if (!state.client || state.connectionStatus !== "connected") return;
+  if (!state.client) return;
 
   const pending = entries
     .map((entry) => normalizeGcodePath(typeof entry === "string" ? entry : entry?.path))
@@ -13158,10 +13244,96 @@ function formatJobsRootPath(path) {
   return normalized ? `gcodes/${normalized}` : "gcodes/";
 }
 
-function renderJobsList() {
+function normalizeJobsSelectionType(type) {
+  const normalized = String(type || "").trim().toLowerCase();
+  return normalized === "directory" || normalized === "file" ? normalized : "";
+}
+
+function normalizeJobsSelectionPath(path, type) {
+  const normalizedType = normalizeJobsSelectionType(type);
+  if (!normalizedType) return "";
+
+  const rawPath = String(path ?? "").trim();
+  if (normalizedType === "directory") {
+    const normalizedDirectory = normalizeJobsDirectory(rawPath);
+    if (normalizedDirectory) return normalizedDirectory;
+
+    const lowered = rawPath.toLowerCase();
+    if (!rawPath || rawPath === "/" || lowered === "gcodes" || lowered === "gcodes/") {
+      return "/";
+    }
+
+    return "";
+  }
+
+  return normalizeGcodePath(rawPath);
+}
+
+function isJobsEntrySelected(path, type) {
+  const normalizedType = normalizeJobsSelectionType(type);
+  if (!normalizedType) return false;
+
+  const selectedType = normalizeJobsSelectionType(state.jobs.selectedType);
+  if (selectedType !== normalizedType) return false;
+
+  const selectedPath = normalizeJobsSelectionPath(state.jobs.selectedPath, selectedType);
+  const candidatePath = normalizeJobsSelectionPath(path, normalizedType);
+  return !!selectedPath && !!candidatePath && selectedPath === candidatePath;
+}
+
+function setJobsEntrySelection(path, type) {
+  const normalizedType = normalizeJobsSelectionType(type);
+  const normalizedPath = normalizeJobsSelectionPath(path, normalizedType);
+
+  if (!normalizedType || !normalizedPath) {
+    state.jobs.selectedType = "";
+    state.jobs.selectedPath = "";
+    return;
+  }
+
+  state.jobs.selectedType = normalizedType;
+  state.jobs.selectedPath = normalizedPath;
+}
+
+function applyJobsRowSelection(row, path, type) {
+  setJobsEntrySelection(path, type);
+
   if (!els.fileList) return;
 
-  const isConnected = state.connectionStatus === "connected";
+  els.fileList.querySelectorAll(".jobs-entry.is-selected").forEach((entry) => {
+    entry.classList.remove("is-selected");
+  });
+
+  if (row && row.classList) {
+    row.classList.add("is-selected");
+  }
+}
+
+
+function bindJobsRowSelection(row, path, type) {
+  if (!row) return;
+
+  let selectedOnPointerDown = false;
+
+  row.addEventListener("pointerdown", (event) => {
+    if (Number(event?.button) !== 0) return;
+    selectedOnPointerDown = true;
+    applyJobsRowSelection(row, path, type);
+  });
+
+  row.addEventListener("click", () => {
+    if (selectedOnPointerDown) {
+      selectedOnPointerDown = false;
+      return;
+    }
+
+    applyJobsRowSelection(row, path, type);
+  });
+}
+function renderJobsList() {
+  if (!els.fileList) return;
+  updateJobsListPrintSnapshot();
+  const hasJobsClient = !!state.client;
   const busy = state.jobs.isLoading || state.jobs.actionInFlight;
   const query = String(state.jobs.searchQuery || "").trim().toLowerCase();
   const typeFilter = normalizeJobsTypeFilter(state.jobs.typeFilter);
@@ -13185,11 +13357,10 @@ function renderJobsList() {
   const showParentEntry = !!currentDirectory && !query && typeFilter !== "files";
 
   els.fileList.innerHTML = "";
-
-  if (!isConnected) {
+  if (!hasJobsClient) {
     const empty = document.createElement("p");
     empty.className = "muted";
-    empty.textContent = "Print files are unavailable while disconnected.";
+    empty.textContent = "Connect to Moonraker to browse print files.";
     els.fileList.appendChild(empty);
     return;
   }
@@ -13215,6 +13386,12 @@ function renderJobsList() {
   if (showParentEntry) {
     const row = document.createElement("article");
     row.className = "jobs-entry jobs-entry-folder jobs-entry-parent";
+
+    if (isJobsEntrySelected(parentDirectory, "directory")) {
+      row.classList.add("is-selected");
+    }
+
+    bindJobsRowSelection(row, parentDirectory, "directory");
 
     const body = document.createElement("div");
     body.className = "jobs-entry-body";
@@ -13250,6 +13427,12 @@ function renderJobsList() {
     const row = document.createElement("article");
     row.className = "jobs-entry jobs-entry-folder";
 
+    if (isJobsEntrySelected(entry.path, "directory")) {
+      row.classList.add("is-selected");
+    }
+
+    bindJobsRowSelection(row, entry.path, "directory");
+
     const body = document.createElement("div");
     body.className = "jobs-entry-body";
 
@@ -13276,6 +13459,7 @@ function renderJobsList() {
     openButton.textContent = "Open";
     openButton.disabled = busy;
     openButton.addEventListener("click", () => {
+      applyJobsRowSelection(row, entry.path, "directory");
       setJobsDirectory(entry.path);
     });
 
@@ -13316,6 +13500,12 @@ function renderJobsList() {
   filteredFiles.forEach((entry) => {
     const row = document.createElement("article");
     row.className = "jobs-entry jobs-entry-file";
+
+    if (isJobsEntrySelected(entry.path, "file")) {
+      row.classList.add("is-selected");
+    }
+
+    bindJobsRowSelection(row, entry.path, "file");
 
     if (currentPrintPath && currentPrintPath === entry.path) {
       row.classList.add("is-active-job");
@@ -13451,35 +13641,28 @@ function renderJobsStatus() {
     setJobsStatusMessage("Connect to Moonraker to manage print files.", "warn");
     return;
   }
-
-  if (state.connectionStatus !== "connected") {
-    setJobsStatusMessage("Moonraker disconnected. Reconnect to manage print files.", "warn");
-    return;
-  }
-
-  if (state.jobs.isLoading) {
-    setJobsStatusMessage("Loading print files...", "info");
-    return;
-  }
-
   if (state.jobs.actionInFlight) {
     setJobsStatusMessage("Running print file action...", "warn");
     return;
   }
-
   if (state.jobs.lastError) {
     setJobsStatusMessage(`Print files action failed: ${state.jobs.lastError}`, "error");
     return;
   }
-
+  if (state.jobs.isLoading) {
+    setJobsStatusMessage("Loading print files...", "info");
+    return;
+  }
+  if (state.connectionStatus !== "connected") {
+    setJobsStatusMessage("Moonraker websocket is disconnected. File actions are running in degraded mode.", "warn");
+    return;
+  }
   if (state.jobs.lastUpdatedMs) {
     setJobsStatusMessage(`Last refreshed: ${new Date(state.jobs.lastUpdatedMs).toLocaleTimeString()}`, "info");
     return;
   }
-
   setJobsStatusMessage("Press Refresh to load print files.", "info");
 }
-
 function renderJobsCard() {
   if (els.jobsSearch && els.jobsSearch.value !== state.jobs.searchQuery) {
     els.jobsSearch.value = state.jobs.searchQuery;
@@ -13521,11 +13704,11 @@ function renderJobsCard() {
     els.historyLengthKm.checked = !!state.printHistory.lengthInKilometers;
   }
 
-  const isConnected = state.connectionStatus === "connected";
+  const hasJobsClient = !!state.client;
   const busy = state.jobs.isLoading || state.jobs.actionInFlight;
 
   if (els.jobsRefresh) {
-    els.jobsRefresh.disabled = !isConnected || busy;
+    els.jobsRefresh.disabled = !hasJobsClient || busy;
     els.jobsRefresh.classList.toggle("is-loading", state.jobs.isLoading);
     els.jobsRefresh.title = state.jobs.isLoading ? "Loading..." : "Refresh";
     els.jobsRefresh.setAttribute("aria-label", state.jobs.isLoading ? "Loading print files" : "Refresh file list");
@@ -13544,30 +13727,34 @@ function renderJobsCard() {
   }
 
   if (els.jobsAddToggle) {
-    els.jobsAddToggle.disabled = !isConnected || busy;
+    els.jobsAddToggle.disabled = !hasJobsClient || busy;
   }
 
   if (els.jobsUploadBtn) {
-    els.jobsUploadBtn.disabled = !isConnected || busy;
+    els.jobsUploadBtn.disabled = !hasJobsClient || busy;
   }
 
   if (els.jobsUploadFolderBtn) {
-    els.jobsUploadFolderBtn.disabled = !isConnected || busy;
+    els.jobsUploadFolderBtn.disabled = !hasJobsClient || busy;
   }
 
   if (els.jobsUploadPrintBtn) {
-    els.jobsUploadPrintBtn.disabled = !isConnected || busy;
+    els.jobsUploadPrintBtn.disabled = !hasJobsClient || busy;
   }
 
   if (els.jobsNewFolder) {
-    els.jobsNewFolder.disabled = !isConnected || busy;
+    els.jobsNewFolder.disabled = !hasJobsClient || busy;
+  }
+
+  if (els.jobsNewFolderDirect) {
+    els.jobsNewFolderDirect.disabled = !hasJobsClient || busy;
   }
 
   if (els.jobsSearch) {
     els.jobsSearch.disabled = busy;
   }
 
-  if (!isConnected || busy) {
+  if (!hasJobsClient || busy) {
     closeJobsToolbarMenus();
     state.jobs.uploadDragDepth = 0;
     updateJobsDragTarget(false);
@@ -13589,7 +13776,7 @@ function renderFiles(files) {
 }
 
 async function loadJobsFiles({ source = "user", silent = false } = {}) {
-  if (!state.client || state.connectionStatus !== "connected") {
+  if (!state.client) {
     renderJobsCard();
     return [];
   }
@@ -13604,7 +13791,25 @@ async function loadJobsFiles({ source = "user", silent = false } = {}) {
 
   try {
     const response = await state.client.getGcodeFiles();
-    const listing = extractJobsListing(response);
+    let listing = extractJobsListing(response);
+
+    const directoryTargets = [""];
+    const currentDirectory = normalizeJobsDirectory(state.jobs.currentDirectory);
+    if (currentDirectory) {
+      directoryTargets.push(currentDirectory);
+    }
+
+    for (const target of directoryTargets) {
+      try {
+        const directoryResponse = await state.client.getGcodeDirectory(target, { extended: true });
+        listing = mergeJobsDirectoriesFromDirectoryResponse(listing, directoryResponse, target);
+      } catch (directoryError) {
+        log.debug("GCode directory lookup failed during file refresh.", {
+          directory: target || "gcodes",
+          error: directoryError?.message || String(directoryError),
+        });
+      }
+    }
 
     applyJobsListing(listing);
     state.jobs.lastError = "";
@@ -13636,7 +13841,7 @@ async function loadJobsFiles({ source = "user", silent = false } = {}) {
 
 async function requestJobsFileDownload(path) {
   const normalizedPath = normalizeGcodePath(path);
-  if (!normalizedPath || !state.client || state.connectionStatus !== "connected") return false;
+  if (!normalizedPath || !state.client) return false;
 
   state.jobs.actionInFlight = true;
   state.jobs.actionLabel = "download";
@@ -13704,7 +13909,7 @@ async function requestJobsPathMove(sourcePath, destinationPath, { entryType = "f
   const source = normalize(sourcePath);
   const destination = normalize(destinationPath);
 
-  if (!source || !destination || !state.client || state.connectionStatus !== "connected") return false;
+  if (!source || !destination || !state.client) return false;
   if (source === destination) return false;
 
   if (entryType === "directory" && destination.startsWith(`${source}/`)) {
@@ -13826,7 +14031,7 @@ async function requestJobsFolderMove(path) {
 
 async function requestJobsFileDelete(path) {
   const normalizedPath = normalizeGcodePath(path);
-  if (!normalizedPath || !state.client || state.connectionStatus !== "connected") return false;
+  if (!normalizedPath || !state.client) return false;
 
   const confirmed = window.confirm(`Delete print file ${formatJobsRootPath(normalizedPath)}? This cannot be undone.`);
   if (!confirmed) return false;
@@ -13858,7 +14063,7 @@ async function requestJobsFileDelete(path) {
 
 async function requestJobsFolderDelete(path) {
   const normalizedPath = normalizeJobsDirectory(path);
-  if (!normalizedPath || !state.client || state.connectionStatus !== "connected") return false;
+  if (!normalizedPath || !state.client) return false;
 
   const confirmed = window.confirm(`Delete folder ${formatJobsRootPath(normalizedPath)} and its contents? This cannot be undone.`);
   if (!confirmed) return false;
@@ -13897,7 +14102,7 @@ async function requestJobsFolderDelete(path) {
 
 async function requestJobsFileSimulate(path) {
   const normalizedPath = normalizeGcodePath(path);
-  if (!normalizedPath || !state.client || state.connectionStatus !== "connected") return false;
+  if (!normalizedPath || !state.client) return false;
 
   state.jobs.actionInFlight = true;
   state.jobs.actionLabel = "simulate";
@@ -13932,7 +14137,7 @@ async function requestJobsFileSimulate(path) {
 
 async function requestJobsFilePrint(path) {
   const normalizedPath = normalizeGcodePath(path);
-  if (!normalizedPath || !state.client || state.connectionStatus !== "connected") return false;
+  if (!normalizedPath || !state.client) return false;
 
   const current = getCurrentJobsPrintState();
   const hasActiveJob = current.state === "printing" || current.state === "paused";
@@ -14036,7 +14241,7 @@ async function uploadJobsFileToDirectory(file, directoryPath, filename) {
 }
 
 async function requestJobsUpload(files, { preserveRelativePaths = false, printAfterUpload = false, mode = "upload" } = {}) {
-  if (!state.client || state.connectionStatus !== "connected") return false;
+  if (!state.client) return false;
 
   const fileList = Array.isArray(files) ? files : [...(files || [])];
   if (!fileList.length) return false;
@@ -14098,12 +14303,138 @@ async function requestJobsUpload(files, { preserveRelativePaths = false, printAf
   }
 }
 
+function openJobsTextInputDialog({ title = "", label = "", confirmLabel = "Save", defaultValue = "" } = {}) {
+  return new Promise((resolve) => {
+    if (!document?.body) {
+      resolve(null);
+      return;
+    }
+
+    const dialog = document.createElement("dialog");
+    dialog.className = "jobs-move-dialog";
+
+    const card = document.createElement("article");
+    card.className = "jobs-move-dialog-card";
+
+    const heading = document.createElement("h3");
+    heading.textContent = String(title || "Input");
+
+    const inputId = "jobs-text-input-" + Date.now() + "-" + Math.round(Math.random() * 1000);
+
+    const labelEl = document.createElement("label");
+    labelEl.className = "jobs-move-dialog-label";
+    labelEl.htmlFor = inputId;
+    labelEl.textContent = String(label || "Value");
+
+    const input = document.createElement("input");
+    input.id = inputId;
+    input.type = "text";
+    input.className = "jobs-move-dialog-select";
+    input.value = String(defaultValue || "");
+    input.autocomplete = "off";
+
+    const actions = document.createElement("div");
+    actions.className = "actions jobs-move-dialog-actions";
+
+    const cancelButton = document.createElement("button");
+    cancelButton.type = "button";
+    cancelButton.textContent = "Cancel";
+
+    const confirmButton = document.createElement("button");
+    confirmButton.type = "button";
+    confirmButton.textContent = String(confirmLabel || "Save");
+
+    actions.append(cancelButton, confirmButton);
+    card.append(heading, labelEl, input, actions);
+    dialog.appendChild(card);
+    document.body.appendChild(dialog);
+
+    let settled = false;
+    const closeWith = (value) => {
+      if (settled) return;
+      settled = true;
+      try {
+        dialog.close();
+      } catch {}
+      dialog.remove();
+      resolve(value);
+    };
+
+    cancelButton.addEventListener("click", () => closeWith(null));
+    confirmButton.addEventListener("click", () => closeWith(String(input.value || "")));
+
+    dialog.addEventListener("cancel", (event) => {
+      event.preventDefault();
+      closeWith(null);
+    });
+
+    dialog.addEventListener("click", (event) => {
+      if (event.target === dialog) {
+        closeWith(null);
+      }
+    });
+
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        closeWith(String(input.value || ""));
+      }
+
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeWith(null);
+      }
+    });
+
+    const openPromptFallback = () => {
+      const requested = typeof window.prompt === "function"
+        ? window.prompt(String(title || "Input"), String(defaultValue || ""))
+        : null;
+      closeWith(requested === null ? null : String(requested));
+    };
+    if (typeof dialog.showModal === "function") {
+      try {
+        dialog.showModal();
+        setTimeout(() => {
+          input.focus();
+          input.select();
+        }, 0);
+        return;
+      } catch (error) {
+        log.warn("Jobs text dialog failed to open, using prompt fallback.", {
+          error: error?.message || String(error),
+        });
+      }
+    }
+    openPromptFallback();
+  });
+}
 async function requestJobsCreateFolder() {
-  if (!state.client || state.connectionStatus !== "connected") return false;
+  if (!state.client) {
+    setJobsStatusMessage("Moonraker client is unavailable.", "warn");
+    return false;
+  }
 
   const targetDefault = "new-folder";
-  const requested = window.prompt("Enter the new folder name (relative to current directory):", targetDefault);
-  if (requested === null) return false;
+  let requested = null;
+  try {
+    requested = await openJobsTextInputDialog({
+      title: "Create Folder",
+      label: "Folder name (relative to current directory)",
+      confirmLabel: "Create",
+      defaultValue: targetDefault,
+    });
+  } catch (error) {
+    const message = error?.message || String(error);
+    state.jobs.lastError = message;
+    appendConsole(`Create folder prompt failed: ${message}`, "error");
+    renderJobsCard();
+    return false;
+  }
+  if (requested === null) {
+    setJobsStatusMessage("Folder creation canceled.", "info");
+    return false;
+  }
 
   const normalizedName = normalizeJobsDirectory(requested);
   if (!normalizedName) {
@@ -14123,11 +14454,24 @@ async function requestJobsCreateFolder() {
     await state.client.createDirectory("gcodes", fullPath);
     state.jobs.lastError = "";
     appendConsole(`Created folder: ${formatJobsRootPath(fullPath)}`, "info");
-    state.jobs.currentDirectory = normalizeJobsDirectory(fullPath);
-    persistJobsViewState();
+    setJobsStatusMessage(`Created folder: ${formatJobsRootPath(fullPath)}`, "info");
     await loadJobsFiles({ source: "mkdir", silent: true });
+    ensureJobsDirectoryVisible(fullPath, { openDirectory: true });
+    persistJobsViewState();
+    renderJobsCard();
     return true;
   } catch (error) {
+    if (isJobsDirectoryAlreadyExistsError(error)) {
+      state.jobs.lastError = "";
+      appendConsole(`Folder already exists: ${formatJobsRootPath(fullPath)}`, "warn");
+      setJobsStatusMessage(`Folder already exists: ${formatJobsRootPath(fullPath)}`, "warn");
+      await loadJobsFiles({ source: "mkdir", silent: true });
+      ensureJobsDirectoryVisible(fullPath, { openDirectory: true });
+      persistJobsViewState();
+      renderJobsCard();
+      return true;
+    }
+
     const message = error?.message || String(error);
     state.jobs.lastError = message;
     appendConsole(`Create folder failed (${fullPath}): ${message}`, "error");
@@ -14153,7 +14497,7 @@ function updateJobsDragTarget(active) {
 }
 
 async function handleJobsDropUpload(event) {
-  if (!state.client || state.connectionStatus !== "connected") return;
+  if (!state.client) return;
 
   if (!jobsDataTransferHasFiles(event.dataTransfer)) {
     return;
@@ -14169,7 +14513,7 @@ async function handleJobsDropUpload(event) {
   await requestJobsUpload(files, { mode: "drop-upload" });
 }
 async function requestJobsPrintAction(action) {
-  if (!state.client || state.connectionStatus !== "connected") return false;
+  if (!state.client) return false;
 
   const normalizedAction = String(action || "").trim().toLowerCase();
   if (!["pause", "resume", "cancel"].includes(normalizedAction)) return false;
@@ -15503,7 +15847,7 @@ function schedulePrintHistoryRefresh(delayMs = 320) {
 
   printHistoryRefreshTimer = setTimeout(() => {
     printHistoryRefreshTimer = null;
-    if (!state.client || state.connectionStatus !== "connected") return;
+    if (!state.client) return;
     void loadPrintHistory({ source: "notify", silent: true });
     void loadPrintHistoryTotals({ silent: true });
   }, Math.max(80, Number(delayMs) || 320));
@@ -16333,7 +16677,7 @@ async function requestViewChange(viewName) {
   switchView(viewName);
 
   if (viewName === "files") {
-    if (!state.client || state.connectionStatus !== "connected") {
+    if (!state.client) {
       renderJobsCard();
       return;
     }
@@ -16642,7 +16986,51 @@ async function executeGcodeAction(script, { actionLabel = script, successMessage
   }
 }
 
+async function runButtonPendingAction(button, action, { pendingText = "", minPendingMs = 250 } = {}) {
+  if (typeof action !== "function") return false;
+
+  const isButton = button instanceof HTMLButtonElement;
+  if (isButton && button.dataset.actionPending === "true") {
+    return false;
+  }
+
+  const originalText = isButton ? button.textContent : "";
+  const startedAt = Date.now();
+
+  if (isButton) {
+    button.dataset.actionPending = "true";
+    button.classList.add("is-pending");
+    button.setAttribute("aria-busy", "true");
+    if (pendingText) {
+      button.textContent = pendingText;
+    }
+  }
+
+  try {
+    return await action();
+  } finally {
+    const elapsed = Date.now() - startedAt;
+    const minDelay = Math.max(0, Number(minPendingMs) || 0);
+    if (elapsed < minDelay) {
+      await new Promise((resolve) => {
+        setTimeout(resolve, minDelay - elapsed);
+      });
+    }
+
+    if (isButton && button.isConnected) {
+      if (pendingText) {
+        button.textContent = originalText;
+      }
+      button.classList.remove("is-pending");
+      button.removeAttribute("aria-busy");
+      delete button.dataset.actionPending;
+    }
+  }
+}
+
 function wireEvents() {
+  if (hasWiredGlobalEvents) return;
+  hasWiredGlobalEvents = true;
   els.navItems.forEach((btn) => {
     btn.addEventListener("click", async () => {
       await requestViewChange(btn.dataset.view);
@@ -16763,16 +17151,28 @@ function wireEvents() {
     clearStatusFileFromCard();
   });
 
-  els.statusPrintPause?.addEventListener("click", async () => {
-    await requestJobsPrintAction("pause");
+  els.statusPrintPause?.addEventListener("click", async (event) => {
+    const button = event.currentTarget;
+    await runButtonPendingAction(button, () => requestJobsPrintAction("pause"), {
+      pendingText: "Pausing...",
+      minPendingMs: 300,
+    });
   });
 
-  els.statusPrintResume?.addEventListener("click", async () => {
-    await requestJobsPrintAction("resume");
+  els.statusPrintResume?.addEventListener("click", async (event) => {
+    const button = event.currentTarget;
+    await runButtonPendingAction(button, () => requestJobsPrintAction("resume"), {
+      pendingText: "Resuming...",
+      minPendingMs: 300,
+    });
   });
 
-  els.statusPrintCancel?.addEventListener("click", async () => {
-    await requestJobsPrintAction("cancel");
+  els.statusPrintCancel?.addEventListener("click", async (event) => {
+    const button = event.currentTarget;
+    await runButtonPendingAction(button, () => requestJobsPrintAction("cancel"), {
+      pendingText: "Canceling...",
+      minPendingMs: 300,
+    });
   });
 
   els.configRefresh?.addEventListener("click", async () => {
@@ -17112,8 +17512,15 @@ function wireEvents() {
     openFileInputPicker(els.jobsUploadPrintInput);
   });
 
-  els.headerUploadPrintBtn?.addEventListener("click", () => {
-    openFileInputPicker(els.jobsUploadPrintInput);
+  els.headerUploadPrintBtn?.addEventListener("click", async (event) => {
+    const button = event.currentTarget;
+    await runButtonPendingAction(button, async () => {
+      openFileInputPicker(els.jobsUploadPrintInput);
+      return true;
+    }, {
+      pendingText: "Opening...",
+      minPendingMs: 180,
+    });
   });
 
   els.jobsUploadInput?.addEventListener("change", async (event) => {
@@ -17143,7 +17550,7 @@ function wireEvents() {
 
   els.jobsCard?.addEventListener("dragenter", (event) => {
     if (!jobsDataTransferHasFiles(event.dataTransfer)) return;
-    if (!state.client || state.connectionStatus !== "connected") return;
+    if (!state.client) return;
 
     event.preventDefault();
     state.jobs.uploadDragDepth += 1;
@@ -17152,7 +17559,7 @@ function wireEvents() {
 
   els.jobsCard?.addEventListener("dragover", (event) => {
     if (!jobsDataTransferHasFiles(event.dataTransfer)) return;
-    if (!state.client || state.connectionStatus !== "connected") return;
+    if (!state.client) return;
 
     event.preventDefault();
     event.dataTransfer.dropEffect = "copy";
@@ -17172,6 +17579,11 @@ function wireEvents() {
   });
 
   els.jobsNewFolder?.addEventListener("click", async () => {
+    closeJobsToolbarMenus();
+    await requestJobsCreateFolder();
+  });
+
+  els.jobsNewFolderDirect?.addEventListener("click", async () => {
     closeJobsToolbarMenus();
     await requestJobsCreateFolder();
   });
@@ -17214,16 +17626,28 @@ function wireEvents() {
     renderJobsCard();
   });
 
-  els.jobsPause?.addEventListener("click", async () => {
-    await requestJobsPrintAction("pause");
+  els.jobsPause?.addEventListener("click", async (event) => {
+    const button = event.currentTarget;
+    await runButtonPendingAction(button, () => requestJobsPrintAction("pause"), {
+      pendingText: "Pausing...",
+      minPendingMs: 300,
+    });
   });
 
-  els.jobsResume?.addEventListener("click", async () => {
-    await requestJobsPrintAction("resume");
+  els.jobsResume?.addEventListener("click", async (event) => {
+    const button = event.currentTarget;
+    await runButtonPendingAction(button, () => requestJobsPrintAction("resume"), {
+      pendingText: "Resuming...",
+      minPendingMs: 300,
+    });
   });
 
-  els.jobsCancel?.addEventListener("click", async () => {
-    await requestJobsPrintAction("cancel");
+  els.jobsCancel?.addEventListener("click", async (event) => {
+    const button = event.currentTarget;
+    await runButtonPendingAction(button, () => requestJobsPrintAction("cancel"), {
+      pendingText: "Canceling...",
+      minPendingMs: 300,
+    });
   });
 
   els.configSearchInput?.addEventListener("input", () => {
@@ -17844,8 +18268,12 @@ function wireEvents() {
     btn.addEventListener("click", async () => {
       const command = btn.dataset.gcode;
       if (!command) return;
-      await executeGcodeAction(command, {
+
+      await runButtonPendingAction(btn, () => executeGcodeAction(command, {
         actionLabel: `Quick command ${command}`,
+      }), {
+        pendingText: "Sending...",
+        minPendingMs: 300,
       });
     });
   });
@@ -18184,6 +18612,7 @@ async function init() {
   renderJobsCard();
   renderPrintHistoryCard();
   renderPrettyGcodeView();
+  wireEvents();
 
   try {
     await restoreTemperatureHistoryForSession();
@@ -18200,7 +18629,6 @@ async function init() {
   renderControlsPanel();
   renderManualProbeDialog();
   setToolsMenuOpen(false, { refresh: false });
-  wireEvents();
 
   connectMoonraker().catch((error) => {
     const message = error?.message || String(error);
@@ -18216,137 +18644,6 @@ init().catch((error) => {
   setConnectionUi("error");
   appendConsole(`Init failed: ${message}`, "error");
 });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 

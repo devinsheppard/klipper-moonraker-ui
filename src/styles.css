@@ -862,3 +862,24 @@
     align-items: flex-start;
   }
 }
+
+.jobs-entry {
+  cursor: pointer;
+}
+
+.jobs-entry.is-selected {
+  border-color: color-mix(in srgb, var(--accent) 82%, #ffffff 18%);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 56%, transparent), 0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent);
+  background: linear-gradient(120deg, color-mix(in srgb, var(--accent) 18%, transparent), color-mix(in srgb, var(--accent-2) 12%, transparent));
+}
+
+button.is-pending,
+.jobs-entry-btn.is-pending,
+.status-job-action.is-pending,
+.global-header-file-btn.is-pending,
+.global-header-quick-btn.is-pending,
+.jobs-job-action.is-pending {
+  opacity: 0.85;
+  cursor: progress;
+  filter: saturate(0.9);
+}

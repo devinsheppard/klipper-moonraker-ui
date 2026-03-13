@@ -88,6 +88,117 @@ export class MoonrakerClient {
     }
   }
 
+  async callJsonRpc(method, params = {}) {
+    const response = await fetch(`${this.baseUrl}/server/jsonrpc`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: JSONRPC,
+        method,
+        params,
+        id: ++this.requestId,
+      }),
+    });
+
+    const rawBody = await response.text().catch(() => "");
+    let payload = null;
+    if (rawBody) {
+      try {
+        payload = JSON.parse(rawBody);
+      } catch {
+        payload = null;
+      }
+    }
+
+    if (!response.ok) {
+      const details = payload?.error?.message || (rawBody ? rawBody.slice(0, 200) : "");
+      const suffix = details ? `: ${details}` : "";
+      throw new Error(`Moonraker JSON-RPC failed (${response.status}): ${method}${suffix}`);
+    }
+
+    if (payload?.error) {
+      const message = payload?.error?.message || "Unknown error";
+      const error = new Error(`Moonraker JSON-RPC failed: ${method}: ${message}`);
+      error.code = payload?.error?.code;
+      throw error;
+    }
+
+    if (payload && Object.prototype.hasOwnProperty.call(payload, "result")) {
+      return payload.result;
+    }
+
+    return payload;
+  }
+
+  async callWebSocketJsonRpc(method, params = {}, { timeoutMs = 5000 } = {}) {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      throw new Error(`Moonraker websocket is not connected: ${method}`);
+    }
+
+    const requestId = ++this.requestId;
+
+    return new Promise((resolve, reject) => {
+      let done = false;
+
+      const cleanup = () => {
+        if (timer) {
+          clearTimeout(timer);
+        }
+        unsubscribe();
+      };
+
+      const finishResolve = (value) => {
+        if (done) return;
+        done = true;
+        cleanup();
+        resolve(value);
+      };
+
+      const finishReject = (error) => {
+        if (done) return;
+        done = true;
+        cleanup();
+        reject(error);
+      };
+
+      const unsubscribe = this.onMessage((payload) => {
+        if (!payload || payload.id !== requestId) {
+          return;
+        }
+
+        if (payload.error) {
+          const message = payload?.error?.message || "Unknown error";
+          const rpcError = new Error(`Moonraker websocket JSON-RPC failed: ${method}: ${message}`);
+          rpcError.code = payload?.error?.code;
+          finishReject(rpcError);
+          return;
+        }
+
+        if (Object.prototype.hasOwnProperty.call(payload, "result")) {
+          finishResolve(payload.result);
+          return;
+        }
+
+        finishResolve(payload);
+      });
+
+      const timer = setTimeout(() => {
+        finishReject(new Error(`Moonraker websocket JSON-RPC timed out: ${method}`));
+      }, Math.max(1000, Number(timeoutMs) || 5000));
+
+      try {
+        this.ws.send(JSON.stringify({
+          jsonrpc: JSONRPC,
+          method,
+          params,
+          id: requestId,
+        }));
+      } catch (error) {
+        finishReject(error);
+      }
+    });
+  }
+
   connectWebSocket() {
     const wsUrl = this.baseUrl.replace("http://", "ws://").replace("https://", "wss://") + "/websocket";
     this.ws = new WebSocket(wsUrl);
@@ -156,6 +267,60 @@ export class MoonrakerClient {
 
   async getGcodeFiles() {
     return this.getFilesByRoot("gcodes");
+  }
+
+  async getDirectory(path, { extended = true } = {}) {
+    const normalizedPath = normalizePathSegments(path).join("/");
+    if (!normalizedPath) {
+      throw new Error("A directory path is required.");
+    }
+
+    let lastError = null;
+    const query = `path=${encodeURIComponent(normalizedPath)}${extended ? "&extended=true" : ""}`;
+
+    try {
+      return await this.call(`/server/files/directory?${query}`);
+    } catch (error) {
+      lastError = error;
+    }
+
+    if (extended) {
+      try {
+        return await this.call(`/server/files/directory?path=${encodeURIComponent(normalizedPath)}`);
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    const rpcParams = extended
+      ? { path: normalizedPath, extended: true }
+      : { path: normalizedPath };
+
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      try {
+        return await this.callWebSocketJsonRpc("server.files.get_directory", rpcParams);
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    try {
+      return await this.callJsonRpc("server.files.get_directory", rpcParams);
+    } catch (error) {
+      lastError = error;
+    }
+
+    if (lastError instanceof Error) {
+      throw lastError;
+    }
+
+    throw new Error(`Failed to read directory: ${normalizedPath}`);
+  }
+
+  async getGcodeDirectory(path = "", options = {}) {
+    const normalizedPath = normalizePathSegments(path).join("/");
+    const prefixedPath = normalizedPath ? `gcodes/${normalizedPath}` : "gcodes";
+    return this.getDirectory(prefixedPath, options);
   }
 
   async getFileMetadata(path) {
@@ -571,6 +736,8 @@ export class MoonrakerClient {
     }
 
     const prefixedPath = `${normalizedRoot}/${normalizedPath}`;
+    const { directory: parentPath, filename: directoryName } = splitPath(normalizedPath);
+    const prefixedParentPath = parentPath ? `${normalizedRoot}/${parentPath}` : normalizedRoot;
 
     const attempts = [
       {
@@ -578,10 +745,26 @@ export class MoonrakerClient {
         method: "POST",
       },
       {
+        path: `/server/files/directory?path=${encodeURIComponent(prefixedParentPath)}&dirname=${encodeURIComponent(directoryName)}`,
+        method: "POST",
+      },
+      {
         path: "/server/files/directory",
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ path: prefixedPath }),
+      },
+      {
+        path: "/server/files/directory",
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: prefixedParentPath, dirname: directoryName }),
+      },
+      {
+        path: "/server/files/directory",
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ root: normalizedRoot, path: parentPath, dirname: directoryName }),
       },
       {
         path: `/server/files/mkdir?path=${encodeURIComponent(prefixedPath)}`,
@@ -609,7 +792,36 @@ export class MoonrakerClient {
           return true;
         }
 
-        lastError = new Error(`Moonraker call failed: ${attempt.method} ${attempt.path}`);
+        const detailsText = await response.text().catch(() => "");
+        const details = detailsText ? `: ${detailsText.slice(0, 200)}` : "";
+        lastError = new Error(`Moonraker call failed (${response.status}): ${attempt.method} ${attempt.path}${details}`);
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    const rpcAttempts = [
+      { method: "server.files.post_directory", params: { path: prefixedPath } },
+      { method: "server.files.post_directory", params: { path: `${prefixedPath}/` } },
+      { method: "server.files.post_directory", params: { path: prefixedParentPath, dirname: directoryName } },
+      { method: "server.files.post_directory", params: { path: prefixedPath, make_parents: true } },
+    ];
+
+    const canUseWebSocketRpc = !!this.ws && this.ws.readyState === WebSocket.OPEN;
+
+    for (const attempt of rpcAttempts) {
+      if (canUseWebSocketRpc) {
+        try {
+          await this.callWebSocketJsonRpc(attempt.method, attempt.params);
+          return true;
+        } catch (error) {
+          lastError = error;
+        }
+      }
+
+      try {
+        await this.callJsonRpc(attempt.method, attempt.params);
+        return true;
       } catch (error) {
         lastError = error;
       }
@@ -621,7 +833,6 @@ export class MoonrakerClient {
 
     throw new Error(`Failed to create directory: ${prefixedPath}`);
   }
-
   async moveFile(root, sourcePath, destinationPath) {
     const normalizedRoot = String(root || "").trim();
     const normalizedSource = normalizePathSegments(sourcePath).join("/");
@@ -688,6 +899,30 @@ export class MoonrakerClient {
         }
 
         lastError = new Error(`Moonraker call failed: ${attempt.method} ${attempt.path}`);
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    const rpcAttempts = [
+      {
+        method: "server.files.move",
+        params: { source: prefixedSource, dest: prefixedDestination },
+      },
+      {
+        method: "server.files.move",
+        params: { source: normalizedSource, dest: normalizedDestination, root: normalizedRoot },
+      },
+      {
+        method: "server.files.move",
+        params: { src: prefixedSource, dst: prefixedDestination },
+      },
+    ];
+
+    for (const attempt of rpcAttempts) {
+      try {
+        await this.callJsonRpc(attempt.method, attempt.params);
+        return true;
       } catch (error) {
         lastError = error;
       }
@@ -774,6 +1009,26 @@ export class MoonrakerClient {
       }
     }
 
+    const rpcAttempts = [
+      {
+        method: "server.files.delete_directory",
+        params: { path: prefixedPath, force: !!force },
+      },
+      {
+        method: "server.files.delete_directory",
+        params: { path: normalizedPath, root: normalizedRoot, force: !!force },
+      },
+    ];
+
+    for (const attempt of rpcAttempts) {
+      try {
+        await this.callJsonRpc(attempt.method, attempt.params);
+        return true;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
     if (lastError instanceof Error) {
       throw lastError;
     }
@@ -831,6 +1086,26 @@ export class MoonrakerClient {
       }
     }
 
+    const rpcAttempts = [
+      {
+        method: "server.files.delete_file",
+        params: { path: prefixedPath },
+      },
+      {
+        method: "server.files.delete_file",
+        params: { path: normalizedPath, root: normalizedRoot },
+      },
+    ];
+
+    for (const attempt of rpcAttempts) {
+      try {
+        await this.callJsonRpc(attempt.method, attempt.params);
+        return true;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
     if (lastError instanceof Error) {
       throw lastError;
     }
@@ -846,6 +1121,8 @@ export class MoonrakerClient {
     return this.deleteFile("logs", path);
   }
 }
+
+
 
 
 
