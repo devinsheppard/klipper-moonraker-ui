@@ -1325,8 +1325,51 @@
         </article>
       </section>
 
-      <section id="view-timelapse" class="view">
-        <div class="grid">
+            <section id="view-timelapse" class="view">
+        <div class="grid two-col timelapse-grid">
+          <article class="card timelapse-media-card" id="timelapse-media-card">
+            <div class="card-head timelapse-media-head">
+              <h3>Video Library</h3>
+              <div class="card-head-actions">
+                <button type="button" id="timelapse-media-new-folder" class="jobs-feature-btn">New Folder</button>
+                <button type="button" id="timelapse-media-refresh" class="jobs-feature-btn jobs-refresh-btn" aria-label="Refresh video list" title="Refresh">
+                  <svg viewBox="0 0 20 20" aria-hidden="true">
+                    <path d="M10 3a7 7 0 1 1-6.93 8h2.04A5 5 0 1 0 10 5c1.39 0 2.65.57 3.56 1.5L11 9h6V3l-2.01 2.01A6.95 6.95 0 0 0 10 3z"></path>
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <p id="timelapse-media-summary" class="muted jobs-summary">Connect to Moonraker to load videos and timelapses.</p>
+
+            <div class="timelapse-media-toolbar">
+              <p id="timelapse-media-path-display" class="jobs-path-display">/</p>
+              <label class="timelapse-media-sort-wrap" for="timelapse-media-sort">
+                Sort
+                <select id="timelapse-media-sort" aria-label="Sort videos and timelapses">
+                  <option value="modified_desc">Date (Newest)</option>
+                  <option value="modified_asc">Date (Oldest)</option>
+                  <option value="name_asc">Name (A-Z)</option>
+                  <option value="name_desc">Name (Z-A)</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="timelapse-media-layout">
+              <aside class="timelapse-media-folders">
+                <p class="timelapse-media-folders-title">Folders</p>
+                <div id="timelapse-media-folder-list" class="timelapse-media-folder-list"></div>
+              </aside>
+
+              <section class="timelapse-media-list-wrap">
+                <nav id="timelapse-media-breadcrumbs" class="jobs-breadcrumbs" aria-label="Current video directory"></nav>
+                <div id="timelapse-media-file-list" class="file-list jobs-list"></div>
+              </section>
+            </div>
+
+            <p id="timelapse-media-status" class="muted jobs-status">Connect to Moonraker to manage videos and timelapses.</p>
+          </article>
+
           <article class="card timelapse-control-card" id="timelapse-control-card">
             <div class="card-head">
               <h3>Timelapse Recorder</h3>
@@ -1815,6 +1858,7 @@
   <script type="module" src="./src/app.js"></script>
 </body>
 </html>
+
 
 
 

@@ -669,6 +669,39 @@ export class MoonrakerClient {
     });
   }
 
+  async createDatabaseBackup(filename) {
+    const normalizedFilename = String(filename || "").trim();
+    if (!normalizedFilename) {
+      throw new Error("A backup filename is required.");
+    }
+
+    let lastError = null;
+
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      try {
+        return await this.callWebSocketJsonRpc("server.database.post_backup", {
+          filename: normalizedFilename,
+        });
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    try {
+      return await this.callJsonRpc("server.database.post_backup", {
+        filename: normalizedFilename,
+      });
+    } catch (error) {
+      lastError = error;
+    }
+
+    if (lastError instanceof Error) {
+      throw lastError;
+    }
+
+    throw new Error(`Failed to create database backup: ${normalizedFilename}`);
+  }
+
   async getFileText(root, path) {
     const normalizedRoot = String(root || "").trim();
     const encodedPath = encodePathForUrl(path);
@@ -1121,6 +1154,7 @@ export class MoonrakerClient {
     return this.deleteFile("logs", path);
   }
 }
+
 
 
 

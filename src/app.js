@@ -254,6 +254,14 @@ const TIMELAPSE_CONTROL_MODE_STORAGE_KEY = "timelapse_control_mode_v1";
 const STATUS_CLEARED_FILENAME_STORAGE_KEY = "status_cleared_filename_v1";
 const TIMELAPSE_CONTROL_MODE_SERVICE = "moonraker-service";
 const TIMELAPSE_CONTROL_MODE_EXTERNAL = "external-recorder";
+const TIMELAPSE_MEDIA_SORT_STORAGE_KEY = "timelapse_media_sort";
+const TIMELAPSE_MEDIA_DIRECTORY_STORAGE_KEY = "timelapse_media_directory";
+const TIMELAPSE_MEDIA_SORT_VALUES = [
+  "modified_desc",
+  "modified_asc",
+  "name_asc",
+  "name_desc",
+];
 const WARNINGS_SETTINGS_DEFAULTS = Object.freeze({
   warnOnCpuThrottled: true,
   warnOnStepperDriverOverheating: true,
@@ -445,6 +453,10 @@ const CONFIG_FILE_TYPE_RANK = {
 const CONFIG_FILE_HIDDEN_ROOTS = new Set(["gcodes", "timelapse", "timelapse_frames"]);
 const CONFIG_FILE_FALLBACK_ROOTS = ["config", "logs", "docs", "config_example", "config_examples"];
 const UPDATE_MANAGER_PRIMARY_ORDER = ["system", "klipper", "moonraker", "fluidd", "mainsail"];
+const UPDATE_MANAGER_BACKUP_BASE_DIR = "backups/update-manager";
+const UPDATE_MANAGER_BACKUP_FILES_DIRNAME = "files";
+const UPDATE_MANAGER_BACKUP_MANIFEST_FILENAME = "manifest.json";
+const UPDATE_MANAGER_DB_BACKUP_PREFIX = "update-manager";
 const PRETTY_GCODE_MAX_SEGMENTS = 150000;
 const PRETTY_GCODE_SIM_TICK_MS = 120;
 const PRETTY_GCODE_SIM_STEP_DELTA = 0.05;
@@ -556,6 +568,16 @@ const els = {
   timelapseServiceStart: document.getElementById("timelapse-service-start"),
   timelapseServiceRestart: document.getElementById("timelapse-service-restart"),
   timelapseServiceStop: document.getElementById("timelapse-service-stop"),
+  timelapseMediaCard: document.getElementById("timelapse-media-card"),
+  timelapseMediaRefresh: document.getElementById("timelapse-media-refresh"),
+  timelapseMediaNewFolder: document.getElementById("timelapse-media-new-folder"),
+  timelapseMediaSort: document.getElementById("timelapse-media-sort"),
+  timelapseMediaSummary: document.getElementById("timelapse-media-summary"),
+  timelapseMediaPathDisplay: document.getElementById("timelapse-media-path-display"),
+  timelapseMediaFolderList: document.getElementById("timelapse-media-folder-list"),
+  timelapseMediaBreadcrumbs: document.getElementById("timelapse-media-breadcrumbs"),
+  timelapseMediaFileList: document.getElementById("timelapse-media-file-list"),
+  timelapseMediaStatus: document.getElementById("timelapse-media-status"),
   pageTitle: document.getElementById("page-title"),
   connectionPill: document.getElementById("connection-pill"),
   connectionText: document.getElementById("connection-text"),
@@ -1146,6 +1168,18 @@ function loadStoredConfigFileSearchQuery() {
   return String(localStorage.getItem(CONFIG_FILE_SEARCH_STORAGE_KEY) || "").trim();
 }
 
+function normalizeTimelapseMediaSort(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return TIMELAPSE_MEDIA_SORT_VALUES.includes(normalized) ? normalized : "modified_desc";
+}
+
+function loadStoredTimelapseMediaSort() {
+  return normalizeTimelapseMediaSort(localStorage.getItem(TIMELAPSE_MEDIA_SORT_STORAGE_KEY));
+}
+
+function loadStoredTimelapseMediaDirectory() {
+  return normalizeTimelapseMediaDirectory(localStorage.getItem(TIMELAPSE_MEDIA_DIRECTORY_STORAGE_KEY));
+}
 function normalizeJobsSort(value) {
   const normalized = String(value || "").trim().toLowerCase();
   return JOBS_SORT_VALUES.includes(normalized) ? normalized : "modified_desc";
@@ -2536,6 +2570,23 @@ function createDefaultTimelapseControlState() {
       : "Connect to Moonraker to query service state.",
   };
 }
+
+function createDefaultTimelapseMediaState() {
+  return {
+    files: [],
+    directories: [],
+    isLoading: false,
+    actionInFlight: false,
+    actionLabel: "",
+    activePath: "",
+    lastError: "",
+    lastUpdatedMs: null,
+    sortMode: loadStoredTimelapseMediaSort(),
+    currentDirectory: loadStoredTimelapseMediaDirectory(),
+    selectedPath: "",
+    selectedType: "",
+  };
+}
 function createDefaultToolsMenuState() {
   return {
     open: false,
@@ -2782,6 +2833,7 @@ const state = {
   machineLoads: createDefaultMachineLoadsState(),
   toolsMenu: createDefaultToolsMenuState(),
   timelapse: createDefaultTimelapseControlState(),
+  timelapseMedia: createDefaultTimelapseMediaState(),
   updateManager: createDefaultUpdateManagerState(),
   endstops: createDefaultEndstopsState(),
   logFiles: createDefaultMachineLogFilesState(),
@@ -5340,7 +5392,11 @@ function setConnectionUi(status) {
 
   renderToolsMenu();
   renderTimelapseControlView();
+  renderTimelapseMediaCard();
   if (status === "connected" && state.activeView === "timelapse") {
+    if (!state.timelapseMedia.files.length && !state.timelapseMedia.directories.length && !state.timelapseMedia.isLoading) {
+      void loadTimelapseMediaFiles({ source: "connect", silent: true });
+    }
     void refreshTimelapseControlState({ silent: true });
   }
 
@@ -8091,6 +8147,205 @@ function toArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
+function sanitizeUpdateManagerBackupSegment(value, fallback = "all") {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return normalized || fallback;
+}
+
+function buildUpdateManagerBackupTimestamp(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  const seconds = String(date.getSeconds()).padStart(2, "0");
+  return `${year}${month}${day}-${hours}${minutes}${seconds}`;
+}
+
+function formatUpdateManagerBackupRootPath(path) {
+  const normalized = normalizeConfigPath(path);
+  return normalized ? `config/${normalized}` : "config";
+}
+
+function extractRootFilePaths(fileResponse, rootName = "config") {
+  const result = fileResponse?.result;
+  const rawFiles = Array.isArray(result)
+    ? result
+    : Array.isArray(result?.files)
+      ? result.files
+      : [];
+
+  const paths = new Set();
+
+  rawFiles.forEach((entry) => {
+    if (!entry) return;
+
+    if (typeof entry === "object" && String(entry.type || "").toLowerCase() === "directory") {
+      return;
+    }
+
+    const candidatePath = typeof entry === "string"
+      ? entry
+      : typeof entry.path === "string"
+        ? entry.path
+        : [entry.dirname, entry.filename].filter(Boolean).join("/");
+
+    const relativePath = normalizeRootRelativePath(candidatePath, rootName);
+    const normalizedPath = normalizeConfigPath(relativePath);
+    if (!normalizedPath || normalizedPath.endsWith("/")) return;
+
+    paths.add(normalizedPath);
+  });
+
+  return [...paths].sort((a, b) => a.localeCompare(b));
+}
+
+async function ensureUpdateManagerBackupDirectory(path) {
+  if (!state.client) {
+    throw new Error("Connect to Moonraker before creating backups.");
+  }
+
+  const normalizedPath = normalizeConfigPath(path);
+  if (!normalizedPath) return;
+
+  try {
+    await state.client.createDirectory("config", normalizedPath);
+  } catch (error) {
+    const message = error?.message || String(error);
+    if (/already exists|exists|eexist/i.test(message)) {
+      return;
+    }
+
+    throw new Error(`Failed to create backup directory ${formatUpdateManagerBackupRootPath(normalizedPath)}: ${message}`);
+  }
+}
+
+async function ensureUpdateManagerBackupDirectoryTree(path) {
+  const normalizedPath = normalizeConfigPath(path);
+  if (!normalizedPath) return;
+
+  const segments = normalizedPath.split("/").filter(Boolean);
+  let cursor = "";
+
+  for (const segment of segments) {
+    cursor = cursor ? `${cursor}/${segment}` : segment;
+    await ensureUpdateManagerBackupDirectory(cursor);
+  }
+}
+
+async function createUpdateManagerPreflightBackup(name = null) {
+  if (!state.client) {
+    throw new Error("Connect to Moonraker before creating backups.");
+  }
+
+  const normalizedName = normalizeUpdaterName(name);
+  const targetSegment = sanitizeUpdateManagerBackupSegment(normalizedName || "all", "all");
+  const startedAt = new Date();
+  const backupId = `${buildUpdateManagerBackupTimestamp(startedAt)}-${targetSegment}`;
+  const backupDirectory = `${UPDATE_MANAGER_BACKUP_BASE_DIR}/${backupId}`;
+  const filesDirectory = `${backupDirectory}/${UPDATE_MANAGER_BACKUP_FILES_DIRNAME}`;
+  const dbBackupFilename = `${UPDATE_MANAGER_DB_BACKUP_PREFIX}-${backupId}.db`;
+
+  appendUpdateManagerActivity(`Creating pre-update backup (${backupId})...`);
+  setUpdateManagerStatusMessage("Creating pre-update backup...", "warn");
+
+  await ensureUpdateManagerBackupDirectoryTree(backupDirectory);
+  await ensureUpdateManagerBackupDirectoryTree(filesDirectory);
+
+  let databaseBackupPath = "";
+  let databaseBackupError = "";
+
+  if (typeof state.client.createDatabaseBackup === "function") {
+    try {
+      const databaseBackup = await state.client.createDatabaseBackup(dbBackupFilename);
+      databaseBackupPath = String(databaseBackup?.backup_path || dbBackupFilename).trim();
+    } catch (error) {
+      databaseBackupError = error?.message || String(error);
+      appendUpdateManagerActivity(`Moonraker DB backup skipped: ${databaseBackupError}`, "warn");
+      log.warn("Update manager preflight database backup failed.", {
+        filename: dbBackupFilename,
+        error: databaseBackupError,
+      });
+    }
+  } else {
+    databaseBackupError = "Moonraker database backup method unavailable.";
+    appendUpdateManagerActivity("Moonraker DB backup skipped: client method unavailable.", "warn");
+  }
+
+  const configFilesResponse = await state.client.getConfigFiles();
+  const backupPrefix = `${UPDATE_MANAGER_BACKUP_BASE_DIR}/`;
+  const configFiles = extractRootFilePaths(configFilesResponse, "config")
+    .filter((path) => path !== UPDATE_MANAGER_BACKUP_BASE_DIR && !path.startsWith(backupPrefix));
+
+  const ensuredDirectories = new Set([filesDirectory]);
+
+  for (const path of configFiles) {
+    const sourcePath = normalizeConfigPath(path);
+    if (!sourcePath) continue;
+
+    const sourceDirectory = getConfigDirectory(sourcePath);
+    const targetDirectory = sourceDirectory
+      ? `${filesDirectory}/${sourceDirectory}`
+      : filesDirectory;
+
+    if (!ensuredDirectories.has(targetDirectory)) {
+      await ensureUpdateManagerBackupDirectoryTree(targetDirectory);
+      ensuredDirectories.add(targetDirectory);
+    }
+
+    const filename = sourcePath.split("/").pop();
+    if (!filename) continue;
+
+    try {
+      const blob = await state.client.getFileBlob("config", sourcePath);
+      await state.client.uploadFile("config", blob, targetDirectory, filename);
+    } catch (error) {
+      const message = error?.message || String(error);
+      throw new Error(`Failed to back up config/${sourcePath}: ${message}`);
+    }
+  }
+
+  const manifest = {
+    type: "update-manager-preflight-backup",
+    created_at: startedAt.toISOString(),
+    backup_id: backupId,
+    requested_updater: normalizedName || "all",
+    config_backup_path: formatUpdateManagerBackupRootPath(filesDirectory),
+    config_file_count: configFiles.length,
+    database_backup: {
+      filename: dbBackupFilename,
+      backup_path: databaseBackupPath || null,
+      error: databaseBackupPath ? null : (databaseBackupError || "Not available"),
+    },
+    files: configFiles,
+  };
+
+  await state.client.uploadFile(
+    "config",
+    new Blob([JSON.stringify(manifest, null, 2)], { type: "application/json" }),
+    backupDirectory,
+    UPDATE_MANAGER_BACKUP_MANIFEST_FILENAME
+  );
+
+  const successMessage = `Backup ready at ${formatUpdateManagerBackupRootPath(backupDirectory)} (${configFiles.length} file${configFiles.length === 1 ? "" : "s"}).`;
+  appendUpdateManagerActivity(successMessage);
+  setUpdateManagerStatusMessage(successMessage, "info");
+
+  return {
+    backupId,
+    backupDirectory,
+    filesDirectory,
+    manifestPath: `${backupDirectory}/${UPDATE_MANAGER_BACKUP_MANIFEST_FILENAME}`,
+    fileCount: configFiles.length,
+    databaseBackupPath,
+  };
+}
+
 function deriveUpdateManagerEntries() {
   const versionInfo = state.updateManager.versionInfo;
   if (!versionInfo || typeof versionInfo !== "object") return [];
@@ -8635,6 +8890,11 @@ async function requestUpdateManagerUpgrade(name = null) {
     : "Update all components";
 
   return runUpdateManagerAction(actionLabel, async () => {
+    const backupSummary = await createUpdateManagerPreflightBackup(name);
+    appendUpdateManagerActivity(
+      `Pre-update backup created: ${formatUpdateManagerBackupRootPath(backupSummary.backupDirectory)}`
+    );
+    setUpdateManagerStatusMessage("Backup complete. Sending update request...", "warn");
     await state.client.upgradeMachineUpdates(name);
   });
 }
@@ -9634,6 +9894,9 @@ async function connectMoonraker() {
       if (state.activeView === "history") {
         void loadPrintHistory({ source: "connect", silent: true });
       }
+      if (state.activeView === "timelapse") {
+        void loadTimelapseMediaFiles({ source: "connect", silent: true });
+      }
       log.info("Moonraker websocket connected.");
       return;
     }
@@ -9652,6 +9915,8 @@ async function connectMoonraker() {
       state.logFiles.actionInFlight = false;
       state.jobs.isLoading = false;
       state.jobs.actionInFlight = false;
+      state.timelapseMedia.isLoading = false;
+      state.timelapseMedia.actionInFlight = false;
       state.printHistory.isLoading = false;
       state.printHistory.isTotalsLoading = false;
       state.printHistory.actionInFlight = false;
@@ -9663,7 +9928,8 @@ async function connectMoonraker() {
       renderEndstopsCard();
       renderMachineLogFilesCard();
       renderJobsCard();
-      renderPrintHistoryCard();
+  renderTimelapseMediaCard();
+  renderPrintHistoryCard();
       log.warn("Moonraker websocket disconnected.");
       return;
     }
@@ -9682,6 +9948,8 @@ async function connectMoonraker() {
       state.logFiles.actionInFlight = false;
       state.jobs.isLoading = false;
       state.jobs.actionInFlight = false;
+      state.timelapseMedia.isLoading = false;
+      state.timelapseMedia.actionInFlight = false;
       state.printHistory.isLoading = false;
       state.printHistory.isTotalsLoading = false;
       state.printHistory.actionInFlight = false;
@@ -9693,7 +9961,8 @@ async function connectMoonraker() {
       renderEndstopsCard();
       renderMachineLogFilesCard();
       renderJobsCard();
-      renderPrintHistoryCard();
+  renderTimelapseMediaCard();
+  renderPrintHistoryCard();
       log.error("Moonraker websocket error.");
       return;
     }
@@ -10652,6 +10921,40 @@ function getGcodeDisplayName(path) {
   return parts.length ? parts[parts.length - 1] : normalized;
 }
 
+function normalizeTimelapseMediaPath(path) {
+  return String(path || "")
+    .trim()
+    .replace(/\\/g, "/")
+    .replace(/^\/+/, "")
+    .replace(/^timelapse\//i, "")
+    .replace(/\/+$/, "");
+}
+
+function normalizeTimelapseMediaDirectory(path) {
+  return normalizeTimelapseMediaPath(path);
+}
+
+function getTimelapseMediaDirectory(path) {
+  const normalized = normalizeTimelapseMediaPath(path);
+  if (!normalized) return "";
+
+  const parts = normalized.split("/").filter(Boolean);
+  if (parts.length <= 1) return "";
+  return parts.slice(0, -1).join("/");
+}
+
+function getTimelapseMediaDisplayName(path) {
+  const normalized = normalizeTimelapseMediaPath(path);
+  if (!normalized) return "";
+
+  const parts = normalized.split("/").filter(Boolean);
+  return parts.length ? parts[parts.length - 1] : normalized;
+}
+
+function formatTimelapseMediaRootPath(path) {
+  const normalized = normalizeTimelapseMediaDirectory(path);
+  return normalized ? `timelapse/${normalized}` : "timelapse/";
+}
 function setPrettyGcodeStatus(message, level = "info") {
   if (!els.prettyGcodeStatus) return;
   els.prettyGcodeStatus.textContent = String(message || "").trim();
@@ -16708,9 +17011,17 @@ async function requestViewChange(viewName) {
   }
   if (viewName === "timelapse") {
     renderTimelapseControlView();
+    renderTimelapseMediaCard();
 
     if (!state.client || state.connectionStatus !== "connected") {
       return;
+    }
+
+    if (!state.timelapseMedia.files.length && !state.timelapseMedia.directories.length && !state.timelapseMedia.isLoading) {
+      await loadTimelapseMediaFiles({ source: "view", silent: true });
+    } else {
+      state.timelapseMedia.currentDirectory = normalizeTimelapseMediaCurrentDirectory(state.timelapseMedia.currentDirectory);
+      renderTimelapseMediaCard();
     }
 
     await refreshTimelapseControlState({ silent: true });
@@ -17100,6 +17411,21 @@ function wireEvents() {
   els.timelapseServiceStop?.addEventListener("click", async () => {
     await runTimelapseServiceAction("stop");
   });
+
+  els.timelapseMediaRefresh?.addEventListener("click", async () => {
+    await loadTimelapseMediaFiles({ source: "user" });
+  });
+
+  els.timelapseMediaNewFolder?.addEventListener("click", async () => {
+    await requestTimelapseMediaCreateFolder();
+  });
+
+  els.timelapseMediaSort?.addEventListener("change", () => {
+    state.timelapseMedia.sortMode = normalizeTimelapseMediaSort(els.timelapseMediaSort?.value);
+    persistTimelapseMediaViewState();
+    renderTimelapseMediaCard();
+  });
+
   window.addEventListener("scroll", () => {
     if (state.activeView !== "settings") return;
     queueSettingsSubnavSync();
@@ -18510,6 +18836,7 @@ async function init() {
   renderSettingsDashboardLayout();
   renderThermalPresetSettingsList();
   renderTimelapseControlView();
+  renderTimelapseMediaCard();
 
   els.cameraEnabled.checked = state.camera.enabled;
   els.cameraUrl.value = state.camera.url;
@@ -18610,6 +18937,7 @@ async function init() {
   renderEndstopsCard();
   renderMachineLogFilesCard();
   renderJobsCard();
+  renderTimelapseMediaCard();
   renderPrintHistoryCard();
   renderPrettyGcodeView();
   wireEvents();
@@ -18646,6 +18974,1049 @@ init().catch((error) => {
 });
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+function setTimelapseMediaStatusMessage(message, level = "info") {
+  if (!els.timelapseMediaStatus) return;
+  els.timelapseMediaStatus.textContent = String(message || "").trim();
+  els.timelapseMediaStatus.dataset.level = level;
+}
+
+function persistTimelapseMediaViewState() {
+  localStorage.setItem(TIMELAPSE_MEDIA_SORT_STORAGE_KEY, normalizeTimelapseMediaSort(state.timelapseMedia.sortMode));
+  localStorage.setItem(TIMELAPSE_MEDIA_DIRECTORY_STORAGE_KEY, normalizeTimelapseMediaDirectory(state.timelapseMedia.currentDirectory));
+}
+
+function addTimelapseMediaDirectoryWithParents(directorySet, directoryPath) {
+  const normalized = normalizeTimelapseMediaDirectory(directoryPath);
+  if (!normalized) return;
+
+  const segments = normalized.split("/").filter(Boolean);
+  if (!segments.length) return;
+
+  let prefix = "";
+  segments.forEach((segment) => {
+    prefix = prefix ? `${prefix}/${segment}` : segment;
+    directorySet.add(prefix);
+  });
+}
+
+function extractTimelapseMediaListing(fileResponse) {
+  const result = fileResponse?.result;
+  const rawFiles = Array.isArray(fileResponse)
+    ? fileResponse
+    : Array.isArray(result)
+      ? result
+      : Array.isArray(result?.files)
+        ? result.files
+        : [];
+
+  const byPath = new Map();
+  const directories = new Set();
+
+  rawFiles.forEach((entry) => {
+    if (!entry) return;
+
+    const entryType = normalizeJobsEntryType(entry?.type);
+    const candidatePath = typeof entry === "string"
+      ? entry
+      : typeof entry.path === "string"
+        ? entry.path
+        : [entry.dirname, entry.filename].filter(Boolean).join("/");
+
+    const normalizedPath = normalizeTimelapseMediaPath(candidatePath);
+    if (!normalizedPath) return;
+
+    const isDirectory = entryType === "directory" || String(candidatePath || "").trim().endsWith("/");
+    if (isDirectory) {
+      addTimelapseMediaDirectoryWithParents(directories, normalizedPath);
+      return;
+    }
+
+    const sizeValue = Number(entry?.size);
+    const size = Number.isFinite(sizeValue) && sizeValue >= 0 ? sizeValue : 0;
+    const modifiedMs = toGcodeTimestampMs(entry?.modified ?? entry?.mtime ?? entry?.date ?? entry?.time);
+
+    byPath.set(normalizedPath, {
+      path: normalizedPath,
+      displayName: getTimelapseMediaDisplayName(normalizedPath),
+      directory: getTimelapseMediaDirectory(normalizedPath),
+      size,
+      modifiedMs,
+    });
+
+    const parentDirectory = getTimelapseMediaDirectory(normalizedPath);
+    if (parentDirectory) {
+      addTimelapseMediaDirectoryWithParents(directories, parentDirectory);
+    }
+  });
+
+  const files = [...byPath.values()].sort((a, b) => {
+    const aModified = Number(a.modifiedMs) || 0;
+    const bModified = Number(b.modifiedMs) || 0;
+    if (aModified !== bModified) return bModified - aModified;
+    return a.path.localeCompare(b.path);
+  });
+
+  return {
+    files,
+    directories: [...directories].sort((a, b) => a.localeCompare(b)),
+  };
+}
+
+function mergeTimelapseMediaDirectoriesFromDirectoryResponse(listing, directoryResponse, baseDirectory = "") {
+  const files = Array.isArray(listing?.files) ? listing.files : [];
+  const directories = new Set(Array.isArray(listing?.directories) ? listing.directories : []);
+  const base = normalizeTimelapseMediaDirectory(baseDirectory);
+
+  const payload = directoryResponse?.result ?? directoryResponse ?? {};
+  const rawDirs = Array.isArray(payload?.dirs)
+    ? payload.dirs
+    : Array.isArray(payload?.directories)
+      ? payload.directories
+      : [];
+
+  rawDirs.forEach((entry) => {
+    let candidatePath = typeof entry === "string"
+      ? entry
+      : String(entry?.dirname ?? entry?.path ?? entry?.filename ?? "").trim();
+
+    candidatePath = normalizeTimelapseMediaDirectory(candidatePath);
+    if (!candidatePath) return;
+
+    const lowerPath = candidatePath.toLowerCase();
+    if (lowerPath === "timelapse") return;
+
+    if (lowerPath.startsWith("timelapse/")) {
+      candidatePath = normalizeTimelapseMediaDirectory(candidatePath.slice("timelapse/".length));
+    }
+
+    if (!candidatePath) return;
+
+    let fullPath = "";
+    if (base && (candidatePath === base || candidatePath.startsWith(`${base}/`))) {
+      fullPath = candidatePath;
+    } else {
+      fullPath = base ? normalizeTimelapseMediaDirectory(`${base}/${candidatePath}`) : candidatePath;
+    }
+
+    if (!fullPath) return;
+    addTimelapseMediaDirectoryWithParents(directories, fullPath);
+  });
+
+  return {
+    files,
+    directories: [...directories].sort((a, b) => a.localeCompare(b)),
+  };
+}
+
+function applyTimelapseMediaListing(listing) {
+  const files = Array.isArray(listing?.files) ? listing.files : [];
+  const directories = Array.isArray(listing?.directories) ? listing.directories : [];
+
+  state.timelapseMedia.files = files;
+  state.timelapseMedia.directories = directories;
+  state.timelapseMedia.currentDirectory = normalizeTimelapseMediaCurrentDirectory(state.timelapseMedia.currentDirectory);
+}
+
+function doesTimelapseMediaDirectoryExist(directory) {
+  const normalizedDirectory = normalizeTimelapseMediaDirectory(directory);
+  if (!normalizedDirectory) return true;
+
+  if ((state.timelapseMedia.directories || []).some((entry) => normalizeTimelapseMediaDirectory(entry) === normalizedDirectory)) {
+    return true;
+  }
+
+  return (state.timelapseMedia.files || []).some((entry) => {
+    const path = normalizeTimelapseMediaPath(entry.path);
+    return path.startsWith(`${normalizedDirectory}/`);
+  });
+}
+
+function normalizeTimelapseMediaCurrentDirectory(directoryCandidate = state.timelapseMedia.currentDirectory) {
+  let directory = normalizeTimelapseMediaDirectory(directoryCandidate);
+  if (!directory) return "";
+
+  while (directory && !doesTimelapseMediaDirectoryExist(directory)) {
+    const segments = directory.split("/");
+    segments.pop();
+    directory = segments.join("/");
+  }
+
+  return directory;
+}
+
+function setTimelapseMediaDirectory(directory, { persist = true } = {}) {
+  state.timelapseMedia.currentDirectory = normalizeTimelapseMediaCurrentDirectory(directory);
+
+  if (persist) {
+    persistTimelapseMediaViewState();
+  }
+
+  renderTimelapseMediaCard();
+}
+
+function deriveTimelapseMediaDirectoryEntries() {
+  const currentDirectory = normalizeTimelapseMediaDirectory(state.timelapseMedia.currentDirectory);
+  const directoryPrefix = currentDirectory ? `${currentDirectory}/` : "";
+  const directories = new Map();
+  const files = [];
+
+  const ensureDirectory = (path) => {
+    const normalizedPath = normalizeTimelapseMediaDirectory(path);
+    if (!normalizedPath) return;
+
+    const displayName = getTimelapseMediaDisplayName(normalizedPath) || normalizedPath;
+
+    if (!directories.has(normalizedPath)) {
+      directories.set(normalizedPath, {
+        path: normalizedPath,
+        displayName,
+        fileCount: 0,
+        size: 0,
+        modifiedMs: 0,
+      });
+    }
+  };
+
+  const getImmediateChildDirectory = (path) => {
+    const normalizedPath = normalizeTimelapseMediaDirectory(path);
+    if (!normalizedPath) return "";
+
+    if (currentDirectory) {
+      if (!normalizedPath.startsWith(directoryPrefix)) return "";
+      const remainder = normalizedPath.slice(directoryPrefix.length);
+      if (!remainder || remainder.startsWith("/")) return "";
+      const childName = remainder.split("/")[0];
+      if (!childName) return "";
+      return `${directoryPrefix}${childName}`;
+    }
+
+    const childName = normalizedPath.split("/")[0];
+    return childName || "";
+  };
+
+  (state.timelapseMedia.directories || []).forEach((directoryPath) => {
+    const childPath = getImmediateChildDirectory(directoryPath);
+    if (!childPath || childPath === currentDirectory) return;
+    ensureDirectory(childPath);
+  });
+
+  (state.timelapseMedia.files || []).forEach((entry) => {
+    const normalizedPath = normalizeTimelapseMediaPath(entry.path);
+    if (!normalizedPath) return;
+
+    if (currentDirectory && !normalizedPath.startsWith(directoryPrefix)) {
+      return;
+    }
+
+    const remainder = currentDirectory ? normalizedPath.slice(directoryPrefix.length) : normalizedPath;
+    if (!remainder || remainder.startsWith("/")) return;
+
+    const slashIndex = remainder.indexOf("/");
+    if (slashIndex >= 0) {
+      const childName = remainder.slice(0, slashIndex);
+      const childPath = directoryPrefix ? `${directoryPrefix}${childName}` : childName;
+      if (!childPath) return;
+
+      ensureDirectory(childPath);
+
+      const folderEntry = directories.get(childPath);
+      folderEntry.fileCount += 1;
+      folderEntry.size += Number(entry.size) || 0;
+      folderEntry.modifiedMs = Math.max(folderEntry.modifiedMs, Number(entry.modifiedMs) || 0);
+      return;
+    }
+
+    files.push(entry);
+  });
+
+  return {
+    directories: [...directories.values()],
+    files,
+  };
+}
+
+function sortTimelapseMediaDirectories(entries) {
+  return [...entries].sort((a, b) => a.path.localeCompare(b.path));
+}
+
+function sortTimelapseMediaFiles(entries) {
+  const sortMode = normalizeTimelapseMediaSort(state.timelapseMedia.sortMode);
+  const items = [...entries];
+
+  items.sort((a, b) => {
+    if (sortMode === "name_asc") {
+      return a.displayName.localeCompare(b.displayName) || a.path.localeCompare(b.path);
+    }
+
+    if (sortMode === "name_desc") {
+      return b.displayName.localeCompare(a.displayName) || b.path.localeCompare(a.path);
+    }
+
+    if (sortMode === "modified_asc") {
+      const delta = (Number(a.modifiedMs) || 0) - (Number(b.modifiedMs) || 0);
+      return delta || a.displayName.localeCompare(b.displayName);
+    }
+
+    const delta = (Number(b.modifiedMs) || 0) - (Number(a.modifiedMs) || 0);
+    return delta || a.displayName.localeCompare(b.displayName);
+  });
+
+  return items;
+}
+
+function getTimelapseMediaParentDirectory(path) {
+  const normalized = normalizeTimelapseMediaDirectory(path);
+  if (!normalized) return "";
+  const segments = normalized.split("/").filter(Boolean);
+  segments.pop();
+  return segments.join("/");
+}
+
+function normalizeTimelapseMediaSelectionType(type) {
+  const normalized = String(type || "").trim().toLowerCase();
+  return normalized === "directory" || normalized === "file" ? normalized : "";
+}
+
+function normalizeTimelapseMediaSelectionPath(path, type) {
+  const normalizedType = normalizeTimelapseMediaSelectionType(type);
+  if (!normalizedType) return "";
+
+  const rawPath = String(path ?? "").trim();
+  if (normalizedType === "directory") {
+    const normalizedDirectory = normalizeTimelapseMediaDirectory(rawPath);
+    if (normalizedDirectory) return normalizedDirectory;
+
+    const lowered = rawPath.toLowerCase();
+    if (!rawPath || rawPath === "/" || lowered === "timelapse" || lowered === "timelapse/") {
+      return "/";
+    }
+
+    return "";
+  }
+
+  return normalizeTimelapseMediaPath(rawPath);
+}
+
+function isTimelapseMediaEntrySelected(path, type) {
+  const normalizedType = normalizeTimelapseMediaSelectionType(type);
+  if (!normalizedType) return false;
+
+  const selectedType = normalizeTimelapseMediaSelectionType(state.timelapseMedia.selectedType);
+  if (selectedType !== normalizedType) return false;
+
+  const selectedPath = normalizeTimelapseMediaSelectionPath(state.timelapseMedia.selectedPath, selectedType);
+  const candidatePath = normalizeTimelapseMediaSelectionPath(path, normalizedType);
+  return !!selectedPath && !!candidatePath && selectedPath === candidatePath;
+}
+
+function setTimelapseMediaEntrySelection(path, type) {
+  const normalizedType = normalizeTimelapseMediaSelectionType(type);
+  const normalizedPath = normalizeTimelapseMediaSelectionPath(path, normalizedType);
+
+  if (!normalizedType || !normalizedPath) {
+    state.timelapseMedia.selectedType = "";
+    state.timelapseMedia.selectedPath = "";
+    return;
+  }
+
+  state.timelapseMedia.selectedType = normalizedType;
+  state.timelapseMedia.selectedPath = normalizedPath;
+}
+
+function applyTimelapseMediaRowSelection(row, path, type) {
+  setTimelapseMediaEntrySelection(path, type);
+
+  if (!els.timelapseMediaFileList) return;
+
+  els.timelapseMediaFileList.querySelectorAll(".jobs-entry.is-selected").forEach((entry) => {
+    entry.classList.remove("is-selected");
+  });
+
+  if (row && row.classList) {
+    row.classList.add("is-selected");
+  }
+}
+
+function bindTimelapseMediaRowSelection(row, path, type) {
+  if (!row) return;
+
+  let selectedOnPointerDown = false;
+
+  row.addEventListener("pointerdown", (event) => {
+    if (Number(event?.button) !== 0) return;
+    selectedOnPointerDown = true;
+    applyTimelapseMediaRowSelection(row, path, type);
+  });
+
+  row.addEventListener("click", () => {
+    if (selectedOnPointerDown) {
+      selectedOnPointerDown = false;
+      return;
+    }
+
+    applyTimelapseMediaRowSelection(row, path, type);
+  });
+}
+
+function renderTimelapseMediaSummary() {
+  if (!els.timelapseMediaSummary) return;
+
+  const totalFiles = state.timelapseMedia.files.length;
+  const totalFolders = state.timelapseMedia.directories.length;
+  const totalSize = state.timelapseMedia.files.reduce((sum, entry) => sum + (Number(entry.size) || 0), 0);
+  const directory = normalizeTimelapseMediaDirectory(state.timelapseMedia.currentDirectory);
+  const label = directory ? `timelapse/${directory}` : "timelapse/";
+  const sizeLabel = totalSize > 0 ? ` | Total: ${formatFileSize(totalSize)}` : "";
+
+  const fileLabel = `${totalFiles} media file${totalFiles === 1 ? "" : "s"}`;
+  const folderLabel = `${totalFolders} folder${totalFolders === 1 ? "" : "s"}`;
+  els.timelapseMediaSummary.textContent = `${fileLabel} | ${folderLabel} in ${label}${sizeLabel}`;
+}
+
+function renderTimelapseMediaPathDisplay() {
+  if (!els.timelapseMediaPathDisplay) return;
+  const directory = normalizeTimelapseMediaDirectory(state.timelapseMedia.currentDirectory);
+  const pathLabel = directory ? `/${directory}` : "/";
+  els.timelapseMediaPathDisplay.textContent = pathLabel;
+  els.timelapseMediaPathDisplay.title = formatTimelapseMediaRootPath(directory);
+}
+
+function renderTimelapseMediaBreadcrumbs() {
+  if (!els.timelapseMediaBreadcrumbs) return;
+
+  const breadcrumbs = [];
+  const currentDirectory = normalizeTimelapseMediaDirectory(state.timelapseMedia.currentDirectory);
+
+  breadcrumbs.push({ label: "timelapse", path: "" });
+
+  if (currentDirectory) {
+    const parts = currentDirectory.split("/").filter(Boolean);
+    let prefix = "";
+
+    parts.forEach((part) => {
+      prefix = prefix ? `${prefix}/${part}` : part;
+      breadcrumbs.push({ label: part, path: prefix });
+    });
+  }
+
+  els.timelapseMediaBreadcrumbs.innerHTML = "";
+
+  breadcrumbs.forEach((crumb, index) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "jobs-breadcrumb-btn";
+    button.textContent = crumb.label;
+    button.disabled = crumb.path === currentDirectory;
+    button.addEventListener("click", () => {
+      setTimelapseMediaDirectory(crumb.path);
+    });
+    els.timelapseMediaBreadcrumbs.appendChild(button);
+
+    if (index < breadcrumbs.length - 1) {
+      const separator = document.createElement("span");
+      separator.className = "jobs-breadcrumb-sep";
+      separator.textContent = "/";
+      els.timelapseMediaBreadcrumbs.appendChild(separator);
+    }
+  });
+}
+
+function renderTimelapseMediaSidebar() {
+  if (!els.timelapseMediaFolderList) return;
+
+  const container = els.timelapseMediaFolderList;
+  container.innerHTML = "";
+
+  if (!state.client) {
+    const empty = document.createElement("p");
+    empty.className = "muted";
+    empty.textContent = "Connect to Moonraker to browse folders.";
+    container.appendChild(empty);
+    return;
+  }
+
+  const busy = state.timelapseMedia.isLoading || state.timelapseMedia.actionInFlight;
+  const currentDirectory = normalizeTimelapseMediaDirectory(state.timelapseMedia.currentDirectory);
+
+  const appendFolderButton = (label, path, depth = 0) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "timelapse-media-folder-btn";
+    button.textContent = label;
+    button.title = formatTimelapseMediaRootPath(path);
+    button.disabled = busy;
+    button.style.setProperty("--folder-depth", String(Math.max(0, depth)));
+    button.classList.toggle("is-active", path === currentDirectory);
+    button.addEventListener("click", () => {
+      setTimelapseMediaDirectory(path);
+    });
+    container.appendChild(button);
+  };
+
+  appendFolderButton("timelapse/", "", 0);
+
+  const sorted = [...(state.timelapseMedia.directories || [])].sort((a, b) => a.localeCompare(b));
+  sorted.forEach((directoryPath) => {
+    const normalizedPath = normalizeTimelapseMediaDirectory(directoryPath);
+    if (!normalizedPath) return;
+
+    const depth = Math.max(0, normalizedPath.split("/").filter(Boolean).length);
+    const label = getTimelapseMediaDisplayName(normalizedPath) || normalizedPath;
+    appendFolderButton(label, normalizedPath, depth);
+  });
+}
+
+function renderTimelapseMediaList() {
+  if (!els.timelapseMediaFileList) return;
+
+  const list = els.timelapseMediaFileList;
+  const hasClient = !!state.client;
+  const busy = state.timelapseMedia.isLoading || state.timelapseMedia.actionInFlight;
+  const currentDirectory = normalizeTimelapseMediaDirectory(state.timelapseMedia.currentDirectory);
+  const parentDirectory = getTimelapseMediaParentDirectory(currentDirectory);
+
+  const { directories, files } = deriveTimelapseMediaDirectoryEntries();
+  const sortedDirectories = sortTimelapseMediaDirectories(directories);
+  const sortedFiles = sortTimelapseMediaFiles(files);
+  const showParentEntry = !!currentDirectory;
+
+  list.innerHTML = "";
+
+  if (!hasClient) {
+    const empty = document.createElement("p");
+    empty.className = "muted";
+    empty.textContent = "Connect to Moonraker to browse videos and timelapses.";
+    list.appendChild(empty);
+    return;
+  }
+
+  if (state.timelapseMedia.isLoading) {
+    const loading = document.createElement("p");
+    loading.className = "muted";
+    loading.textContent = "Loading videos and timelapses...";
+    list.appendChild(loading);
+    return;
+  }
+
+  if (!showParentEntry && !sortedDirectories.length && !sortedFiles.length) {
+    const empty = document.createElement("p");
+    empty.className = "muted";
+    empty.textContent = "No videos or timelapses found in this directory.";
+    list.appendChild(empty);
+    return;
+  }
+
+  if (showParentEntry) {
+    const row = document.createElement("article");
+    row.className = "jobs-entry jobs-entry-folder jobs-entry-parent";
+
+    if (isTimelapseMediaEntrySelected(parentDirectory, "directory")) {
+      row.classList.add("is-selected");
+    }
+
+    bindTimelapseMediaRowSelection(row, parentDirectory, "directory");
+
+    const body = document.createElement("div");
+    body.className = "jobs-entry-body";
+
+    const title = document.createElement("p");
+    title.className = "jobs-entry-title";
+    title.textContent = "..";
+
+    const detail = document.createElement("p");
+    detail.className = "jobs-entry-detail muted";
+    detail.textContent = `Up to ${formatTimelapseMediaRootPath(parentDirectory)}`;
+
+    body.append(title, detail);
+
+    const actions = document.createElement("div");
+    actions.className = "jobs-entry-actions";
+
+    const upButton = document.createElement("button");
+    upButton.type = "button";
+    upButton.className = "jobs-entry-btn";
+    upButton.textContent = "^";
+    upButton.disabled = busy;
+    upButton.addEventListener("click", () => {
+      setTimelapseMediaDirectory(parentDirectory);
+    });
+
+    actions.append(upButton);
+    row.append(body, actions);
+    list.appendChild(row);
+  }
+
+  sortedDirectories.forEach((entry) => {
+    const row = document.createElement("article");
+    row.className = "jobs-entry jobs-entry-folder";
+
+    if (isTimelapseMediaEntrySelected(entry.path, "directory")) {
+      row.classList.add("is-selected");
+    }
+
+    bindTimelapseMediaRowSelection(row, entry.path, "directory");
+
+    const body = document.createElement("div");
+    body.className = "jobs-entry-body";
+
+    const title = document.createElement("p");
+    title.className = "jobs-entry-title";
+    title.textContent = entry.displayName;
+    title.title = formatTimelapseMediaRootPath(entry.path);
+
+    const detail = document.createElement("p");
+    detail.className = "jobs-entry-detail muted";
+    const fileWord = entry.fileCount === 1 ? "file" : "files";
+    const sizeLabel = formatFileSize(entry.size) || "--";
+    const latest = entry.modifiedMs ? formatJobsTimestamp(entry.modifiedMs) : "--";
+    detail.textContent = `${entry.fileCount} ${fileWord} | ${sizeLabel} | Latest: ${latest}`;
+
+    body.append(title, detail);
+
+    const actions = document.createElement("div");
+    actions.className = "jobs-entry-actions";
+
+    const openButton = document.createElement("button");
+    openButton.type = "button";
+    openButton.className = "jobs-entry-btn";
+    openButton.textContent = "Open";
+    openButton.disabled = busy;
+    openButton.addEventListener("click", () => {
+      applyTimelapseMediaRowSelection(row, entry.path, "directory");
+      setTimelapseMediaDirectory(entry.path);
+    });
+
+    const moveButton = document.createElement("button");
+    moveButton.type = "button";
+    moveButton.className = "jobs-entry-btn";
+    moveButton.textContent = "Move";
+    moveButton.disabled = busy;
+    moveButton.addEventListener("click", async () => {
+      await requestTimelapseMediaFolderMove(entry.path);
+    });
+
+    actions.append(openButton, moveButton);
+    row.append(body, actions);
+    list.appendChild(row);
+  });
+
+  sortedFiles.forEach((entry) => {
+    const row = document.createElement("article");
+    row.className = "jobs-entry jobs-entry-folder timelapse-media-entry-file";
+
+    if (isTimelapseMediaEntrySelected(entry.path, "file")) {
+      row.classList.add("is-selected");
+    }
+
+    bindTimelapseMediaRowSelection(row, entry.path, "file");
+
+    const body = document.createElement("div");
+    body.className = "jobs-entry-body";
+
+    const title = document.createElement("p");
+    title.className = "jobs-entry-title";
+    title.textContent = entry.displayName;
+    title.title = formatTimelapseMediaRootPath(entry.path);
+
+    const detail = document.createElement("p");
+    detail.className = "jobs-entry-detail muted";
+    detail.textContent = `${formatFileSize(entry.size) || "--"} | Modified: ${formatJobsTimestamp(entry.modifiedMs)}`;
+
+    body.append(title, detail);
+
+    const actions = document.createElement("div");
+    actions.className = "jobs-entry-actions";
+
+    const moveButton = document.createElement("button");
+    moveButton.type = "button";
+    moveButton.className = "jobs-entry-btn";
+    moveButton.textContent = "Move";
+    moveButton.disabled = busy;
+    moveButton.addEventListener("click", async () => {
+      await requestTimelapseMediaFileMove(entry.path);
+    });
+
+    const downloadButton = document.createElement("button");
+    downloadButton.type = "button";
+    downloadButton.className = "jobs-entry-btn";
+    downloadButton.textContent = "Download";
+    downloadButton.disabled = busy;
+    downloadButton.addEventListener("click", async () => {
+      await requestTimelapseMediaFileDownload(entry.path);
+    });
+
+    actions.append(moveButton, downloadButton);
+    row.append(body, actions);
+    list.appendChild(row);
+  });
+}
+
+function renderTimelapseMediaStatus() {
+  if (!state.client) {
+    setTimelapseMediaStatusMessage("Connect to Moonraker to manage videos and timelapses.", "warn");
+    return;
+  }
+
+  if (state.timelapseMedia.actionInFlight) {
+    setTimelapseMediaStatusMessage("Running video library action...", "warn");
+    return;
+  }
+
+  if (state.timelapseMedia.lastError) {
+    setTimelapseMediaStatusMessage(`Video library action failed: ${state.timelapseMedia.lastError}`, "error");
+    return;
+  }
+
+  if (state.timelapseMedia.isLoading) {
+    setTimelapseMediaStatusMessage("Loading videos and timelapses...", "info");
+    return;
+  }
+
+  if (state.connectionStatus !== "connected") {
+    setTimelapseMediaStatusMessage("Moonraker websocket is disconnected. Video actions are running in degraded mode.", "warn");
+    return;
+  }
+
+  if (state.timelapseMedia.lastUpdatedMs) {
+    setTimelapseMediaStatusMessage(`Last refreshed: ${new Date(state.timelapseMedia.lastUpdatedMs).toLocaleTimeString()}`, "info");
+    return;
+  }
+
+  setTimelapseMediaStatusMessage("Press Refresh to load videos and timelapses.", "info");
+}
+
+function renderTimelapseMediaCard() {
+  const hasClient = !!state.client;
+  const busy = state.timelapseMedia.isLoading || state.timelapseMedia.actionInFlight;
+
+  if (els.timelapseMediaSort) {
+    els.timelapseMediaSort.value = normalizeTimelapseMediaSort(state.timelapseMedia.sortMode);
+    els.timelapseMediaSort.disabled = busy;
+  }
+
+  if (els.timelapseMediaRefresh) {
+    els.timelapseMediaRefresh.disabled = !hasClient || busy;
+    els.timelapseMediaRefresh.classList.toggle("is-loading", state.timelapseMedia.isLoading);
+    els.timelapseMediaRefresh.title = state.timelapseMedia.isLoading ? "Loading..." : "Refresh";
+    els.timelapseMediaRefresh.setAttribute("aria-label", state.timelapseMedia.isLoading ? "Loading video list" : "Refresh video list");
+  }
+
+  if (els.timelapseMediaNewFolder) {
+    els.timelapseMediaNewFolder.disabled = !hasClient || busy;
+  }
+
+  renderTimelapseMediaSummary();
+  renderTimelapseMediaPathDisplay();
+  renderTimelapseMediaBreadcrumbs();
+  renderTimelapseMediaSidebar();
+  renderTimelapseMediaList();
+  renderTimelapseMediaStatus();
+}
+
+async function loadTimelapseMediaFiles({ source = "user", silent = false } = {}) {
+  if (!state.client) {
+    renderTimelapseMediaCard();
+    return [];
+  }
+
+  if (state.timelapseMedia.isLoading) {
+    return state.timelapseMedia.files || [];
+  }
+
+  state.timelapseMedia.isLoading = true;
+  state.timelapseMedia.lastError = "";
+  renderTimelapseMediaCard();
+
+  try {
+    const response = await state.client.getFilesByRoot("timelapse");
+    let listing = extractTimelapseMediaListing(response);
+
+    const directoryTargets = [""];
+    const currentDirectory = normalizeTimelapseMediaDirectory(state.timelapseMedia.currentDirectory);
+    if (currentDirectory) {
+      directoryTargets.push(currentDirectory);
+    }
+
+    for (const target of directoryTargets) {
+      try {
+        const fullPath = target ? `timelapse/${target}` : "timelapse";
+        const directoryResponse = await state.client.getDirectory(fullPath, { extended: true });
+        listing = mergeTimelapseMediaDirectoriesFromDirectoryResponse(listing, directoryResponse, target);
+      } catch (directoryError) {
+        log.debug("Timelapse directory lookup failed during video refresh.", {
+          directory: target || "timelapse",
+          error: directoryError?.message || String(directoryError),
+        });
+      }
+    }
+
+    applyTimelapseMediaListing(listing);
+    state.timelapseMedia.lastError = "";
+    state.timelapseMedia.lastUpdatedMs = Date.now();
+    persistTimelapseMediaViewState();
+
+    if (source === "user") {
+      appendConsole(`Loaded ${listing.files.length} video file${listing.files.length === 1 ? "" : "s"}.`, "info");
+    }
+
+    renderTimelapseMediaCard();
+    return listing.files;
+  } catch (error) {
+    const message = error?.message || String(error);
+    state.timelapseMedia.lastError = message;
+
+    if (!silent) {
+      appendConsole(`Video library load failed: ${message}`, "error");
+    }
+
+    renderTimelapseMediaCard();
+    return [];
+  } finally {
+    state.timelapseMedia.isLoading = false;
+    renderTimelapseMediaCard();
+  }
+}
+
+function remapTimelapseMediaCurrentDirectoryForMove(sourcePath, destinationPath) {
+  const source = normalizeTimelapseMediaDirectory(sourcePath);
+  const destination = normalizeTimelapseMediaDirectory(destinationPath);
+  const current = normalizeTimelapseMediaDirectory(state.timelapseMedia.currentDirectory);
+
+  if (!source || !destination || !current) return;
+
+  if (current === source) {
+    state.timelapseMedia.currentDirectory = destination;
+    persistTimelapseMediaViewState();
+    return;
+  }
+
+  if (current.startsWith(`${source}/`)) {
+    const suffix = current.slice(source.length + 1);
+    state.timelapseMedia.currentDirectory = suffix ? `${destination}/${suffix}` : destination;
+    persistTimelapseMediaViewState();
+  }
+}
+
+async function requestTimelapseMediaPathMove(sourcePath, destinationPath, { entryType = "file", mode = "move" } = {}) {
+  const normalize = entryType === "directory" ? normalizeTimelapseMediaDirectory : normalizeTimelapseMediaPath;
+  const source = normalize(sourcePath);
+  const destination = normalize(destinationPath);
+
+  if (!source || !destination || !state.client) return false;
+  if (source === destination) return false;
+
+  if (entryType === "directory" && destination.startsWith(`${source}/`)) {
+    setTimelapseMediaStatusMessage("Cannot move a folder into itself.", "warn");
+    return false;
+  }
+
+  state.timelapseMedia.actionInFlight = true;
+  state.timelapseMedia.actionLabel = mode;
+  state.timelapseMedia.activePath = source;
+  renderTimelapseMediaCard();
+
+  try {
+    await state.client.moveFile("timelapse", source, destination);
+    state.timelapseMedia.lastError = "";
+
+    if (entryType === "directory") {
+      remapTimelapseMediaCurrentDirectoryForMove(source, destination);
+    }
+
+    const label = mode === "rename" ? "Renamed" : "Moved";
+    const noun = entryType === "directory" ? "folder" : "video";
+    appendConsole(`${label} ${noun}: ${formatTimelapseMediaRootPath(source)} -> ${formatTimelapseMediaRootPath(destination)}`, "info");
+
+    await loadTimelapseMediaFiles({ source: mode, silent: true });
+    return true;
+  } catch (error) {
+    const message = error?.message || String(error);
+    state.timelapseMedia.lastError = message;
+
+    const noun = entryType === "directory" ? "Folder" : "Video";
+    const verb = mode === "rename" ? "rename" : "move";
+    appendConsole(`${noun} ${verb} failed (${source}): ${message}`, "error");
+    renderTimelapseMediaCard();
+    return false;
+  } finally {
+    state.timelapseMedia.actionInFlight = false;
+    state.timelapseMedia.actionLabel = "";
+    state.timelapseMedia.activePath = "";
+    renderTimelapseMediaCard();
+  }
+}
+
+async function requestTimelapseMediaFileMove(path) {
+  const normalizedPath = normalizeTimelapseMediaPath(path);
+  if (!normalizedPath) return false;
+
+  const filename = getTimelapseMediaDisplayName(normalizedPath);
+  if (!filename) return false;
+
+  const currentDirectory = getTimelapseMediaDirectory(normalizedPath);
+  const requested = window.prompt(
+    "Move video to folder (relative to timelapse root):",
+    currentDirectory
+  );
+  if (requested === null) return false;
+
+  const targetDirectory = normalizeTimelapseMediaDirectory(requested);
+  const destination = targetDirectory ? `${targetDirectory}/${filename}` : filename;
+  return requestTimelapseMediaPathMove(normalizedPath, destination, { entryType: "file", mode: "move" });
+}
+
+async function requestTimelapseMediaFolderMove(path) {
+  const normalizedPath = normalizeTimelapseMediaDirectory(path);
+  if (!normalizedPath) return false;
+
+  const folderName = getTimelapseMediaDisplayName(normalizedPath);
+  if (!folderName) return false;
+
+  const currentParent = getTimelapseMediaParentDirectory(normalizedPath);
+  const requested = window.prompt(
+    "Move folder to destination parent (relative to timelapse root):",
+    currentParent
+  );
+  if (requested === null) return false;
+
+  const targetParent = normalizeTimelapseMediaDirectory(requested);
+  const destination = targetParent ? `${targetParent}/${folderName}` : folderName;
+  return requestTimelapseMediaPathMove(normalizedPath, destination, { entryType: "directory", mode: "move" });
+}
+
+async function requestTimelapseMediaFileDownload(path) {
+  const normalizedPath = normalizeTimelapseMediaPath(path);
+  if (!normalizedPath || !state.client) return false;
+
+  state.timelapseMedia.actionInFlight = true;
+  state.timelapseMedia.actionLabel = "download";
+  state.timelapseMedia.activePath = normalizedPath;
+  renderTimelapseMediaCard();
+
+  try {
+    const fileBlob = await state.client.getFileBlob("timelapse", normalizedPath);
+    const fileName = getTimelapseMediaDisplayName(normalizedPath) || "video.mp4";
+    const url = URL.createObjectURL(fileBlob);
+
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = fileName;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+
+    URL.revokeObjectURL(url);
+    state.timelapseMedia.lastError = "";
+    appendConsole(`Downloaded media file: ${formatTimelapseMediaRootPath(normalizedPath)}`, "info");
+    return true;
+  } catch (error) {
+    const message = error?.message || String(error);
+    state.timelapseMedia.lastError = message;
+    appendConsole(`Media download failed (${normalizedPath}): ${message}`, "error");
+    return false;
+  } finally {
+    state.timelapseMedia.actionInFlight = false;
+    state.timelapseMedia.actionLabel = "";
+    state.timelapseMedia.activePath = "";
+    renderTimelapseMediaCard();
+  }
+}
+
+async function requestTimelapseMediaCreateFolder() {
+  if (!state.client) {
+    setTimelapseMediaStatusMessage("Moonraker client is unavailable.", "warn");
+    return false;
+  }
+
+  let requested = null;
+  try {
+    requested = await openJobsTextInputDialog({
+      title: "Create Video Folder",
+      label: "Folder name (relative to current directory)",
+      confirmLabel: "Create",
+      defaultValue: "new-folder",
+    });
+  } catch (error) {
+    const message = error?.message || String(error);
+    state.timelapseMedia.lastError = message;
+    appendConsole(`Create video folder prompt failed: ${message}`, "error");
+    renderTimelapseMediaCard();
+    return false;
+  }
+
+  if (requested === null) {
+    setTimelapseMediaStatusMessage("Folder creation canceled.", "info");
+    return false;
+  }
+
+  const normalizedName = normalizeTimelapseMediaDirectory(requested);
+  if (!normalizedName) {
+    setTimelapseMediaStatusMessage("Enter a valid folder name.", "warn");
+    return false;
+  }
+
+  const currentDirectory = normalizeTimelapseMediaDirectory(state.timelapseMedia.currentDirectory);
+  const fullPath = currentDirectory ? `${currentDirectory}/${normalizedName}` : normalizedName;
+
+  state.timelapseMedia.actionInFlight = true;
+  state.timelapseMedia.actionLabel = "mkdir";
+  state.timelapseMedia.activePath = fullPath;
+  renderTimelapseMediaCard();
+
+  try {
+    await state.client.createDirectory("timelapse", fullPath);
+    state.timelapseMedia.lastError = "";
+    appendConsole(`Created video folder: ${formatTimelapseMediaRootPath(fullPath)}`, "info");
+    setTimelapseMediaStatusMessage(`Created folder: ${formatTimelapseMediaRootPath(fullPath)}`, "info");
+    await loadTimelapseMediaFiles({ source: "mkdir", silent: true });
+    setTimelapseMediaDirectory(fullPath);
+    persistTimelapseMediaViewState();
+    renderTimelapseMediaCard();
+    return true;
+  } catch (error) {
+    if (isJobsDirectoryAlreadyExistsError(error)) {
+      state.timelapseMedia.lastError = "";
+      appendConsole(`Video folder already exists: ${formatTimelapseMediaRootPath(fullPath)}`, "warn");
+      setTimelapseMediaStatusMessage(`Folder already exists: ${formatTimelapseMediaRootPath(fullPath)}`, "warn");
+      await loadTimelapseMediaFiles({ source: "mkdir", silent: true });
+      setTimelapseMediaDirectory(fullPath);
+      persistTimelapseMediaViewState();
+      renderTimelapseMediaCard();
+      return true;
+    }
+
+    const message = error?.message || String(error);
+    state.timelapseMedia.lastError = message;
+    appendConsole(`Create video folder failed (${fullPath}): ${message}`, "error");
+    renderTimelapseMediaCard();
+    return false;
+  } finally {
+    state.timelapseMedia.actionInFlight = false;
+    state.timelapseMedia.actionLabel = "";
+    state.timelapseMedia.activePath = "";
+    renderTimelapseMediaCard();
+  }
+}
 
 
 
