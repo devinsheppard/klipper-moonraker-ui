@@ -251,6 +251,7 @@ const MACHINE_SIDE_COLLAPSED_STORAGE_KEY = "interface_machine_side_collapsed";
 const TIMELAPSE_SERVICE_NAME_STORAGE_KEY = "timelapse_service_name_v1";
 const TIMELAPSE_SERVICE_NAME_DEFAULT = "forge-timelapse-recorder";
 const TIMELAPSE_CONTROL_MODE_STORAGE_KEY = "timelapse_control_mode_v1";
+const STATUS_CLEARED_FILENAME_STORAGE_KEY = "status_cleared_filename_v1";
 const TIMELAPSE_CONTROL_MODE_SERVICE = "moonraker-service";
 const TIMELAPSE_CONTROL_MODE_EXTERNAL = "external-recorder";
 const WARNINGS_SETTINGS_DEFAULTS = Object.freeze({
@@ -993,6 +994,22 @@ function loadStoredChoice(key, fallback, allowedValues) {
   const raw = localStorage.getItem(key);
   if (!raw) return fallback;
   return allowedValues.includes(raw) ? raw : fallback;
+}
+
+function loadStoredStatusClearedFilename() {
+  return normalizeGcodePath(localStorage.getItem(STATUS_CLEARED_FILENAME_STORAGE_KEY) || "");
+}
+
+function persistStatusClearedFilename(filename) {
+  const normalized = normalizeGcodePath(filename);
+
+  if (normalized) {
+    localStorage.setItem(STATUS_CLEARED_FILENAME_STORAGE_KEY, normalized);
+  } else {
+    localStorage.removeItem(STATUS_CLEARED_FILENAME_STORAGE_KEY);
+  }
+
+  return normalized;
 }
 
 function normalizeThemeColorValue(value, fallback) {
@@ -2667,6 +2684,8 @@ function createDefaultManualProbeState() {
   };
 }
 
+const initialClearedStatusFilename = loadStoredStatusClearedFilename();
+
 const state = {
   client: null,
   connectionStatus: "disconnected",
@@ -2800,7 +2819,8 @@ const state = {
     lastMotionReport: {},
     lastToolhead: {},
     countdownTargetMs: null,
-    fileClearedAfterComplete: false,
+    fileClearedAfterComplete: !!initialClearedStatusFilename,
+    clearedFilename: initialClearedStatusFilename,
   },
 };
 
@@ -5351,11 +5371,9 @@ function shouldShowStatusClearFileButton(printStats = null) {
   const uiState = normalizePrinterState(els.printerState?.dataset?.state || "");
   const rawFilename = String(stats?.filename || state.printStatus.filename || "").trim();
   const printActive = uiState === "printing" || uiState === "paused" || finishedState === "printing" || finishedState === "paused";
-  const printCompleted = finishedState === "complete";
 
   return state.connectionStatus === "connected"
     && !printActive
-    && printCompleted
     && !!rawFilename
     && !state.printStatus.fileClearedAfterComplete;
 }
@@ -5409,9 +5427,19 @@ function clearStatusCardValues() {
 function clearStatusFileFromCard() {
   const stats = state.printStatus.lastPrintStats || {};
   const finishedState = normalizePrinterState(stats?.state || stats?.status);
-  if (finishedState !== "complete") return;
+  const uiState = normalizePrinterState(els.printerState?.dataset?.state || "");
+  const printActive = uiState === "printing" || uiState === "paused" || finishedState === "printing" || finishedState === "paused";
+  const currentFilename = normalizeGcodePath(stats?.filename || state.printStatus.filename || "");
 
-  state.printStatus.fileClearedAfterComplete = true;
+  if (printActive || !currentFilename) return;
+
+  const persistedClearedFilename = persistStatusClearedFilename(currentFilename);
+  state.printStatus.fileClearedAfterComplete = !!persistedClearedFilename;
+  state.printStatus.clearedFilename = persistedClearedFilename;
+  state.printStatus.lastPrintStats = {
+    ...state.printStatus.lastPrintStats,
+    filename: "",
+  };
   clearStatusCardValues();
   renderStatusClearFileButton(stats);
 }
@@ -5842,14 +5870,31 @@ function updateStatusFileInfo(printStats, gcodeMove = null, motionReport = null,
   const rawFilename = typeof stats.filename === "string" ? stats.filename : "";
   const normalizedRaw = rawFilename.trim();
   const finishedState = normalizePrinterState(stats?.state || stats?.status);
+  const printActive = finishedState === "printing" || finishedState === "paused";
+  const normalizedPath = normalizeGcodePath(normalizedRaw);
+  const clearedPath = normalizeGcodePath(state.printStatus.clearedFilename);
 
-  if (finishedState !== "complete") {
+  if (printActive) {
     state.printStatus.fileClearedAfterComplete = false;
+    state.printStatus.clearedFilename = "";
+    persistStatusClearedFilename("");
+  } else if (
+    state.printStatus.fileClearedAfterComplete
+    && normalizedPath
+    && clearedPath
+    && normalizedPath !== clearedPath
+  ) {
+    state.printStatus.fileClearedAfterComplete = false;
+    state.printStatus.clearedFilename = "";
+    persistStatusClearedFilename("");
   }
 
-  const filename = (finishedState === "complete" && state.printStatus.fileClearedAfterComplete) ? "" : rawFilename;
+  const statusCardCleared = state.printStatus.fileClearedAfterComplete
+    && !!normalizedPath
+    && !printActive
+    && (!clearedPath || normalizedPath === clearedPath);
+  const filename = statusCardCleared ? "" : rawFilename;
   const normalized = filename.trim();
-  const statusCardCleared = finishedState === "complete" && state.printStatus.fileClearedAfterComplete;
   const simulationMode = isPrettySimulationMode();
 
   if (statusCardCleared) {
