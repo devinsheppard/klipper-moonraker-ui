@@ -7,8 +7,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
-  <script type="module" crossorigin src="/assets/index-B2mBpnF-.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-CHIP6vwn.css">
+  <script type="module" crossorigin src="/assets/index-BfSLQKjm.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-8OpkPuZ5.css">
 </head>
 <body>
   <div class="app-layout">
@@ -145,6 +145,18 @@
           </span>
           <span class="nav-item-label">Timelapse</span>
         </button>
+        <button data-view="spoolman" class="nav-item" title="Spoolman">
+          <span class="nav-item-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M8 6h8"></path>
+              <path d="M7 10h10"></path>
+              <path d="M6 14h12"></path>
+              <path d="M8 18h8"></path>
+              <circle cx="12" cy="12" r="9"></circle>
+            </svg>
+          </span>
+          <span class="nav-item-label">Spoolman</span>
+        </button>
         <button data-view="pretty-gcode" class="nav-item" title="KlipperView">
           <span class="nav-item-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -203,47 +215,77 @@
         <div class="dashboard-grid two-col" id="dashboard-cards">
           <div class="dashboard-column" id="dashboard-col-left"></div>
           <div class="dashboard-column" id="dashboard-col-right"></div>
-          <article class="card" id="card-print-progress">
-            <div class="card-head status-card-head">
-              <h3 class="dashboard-title-with-icon">
-                <span class="dashboard-title-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" fill="none">
-                    <circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="1.8"></circle>
-                    <path d="M12 12 16 9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path>
-                    <circle cx="12" cy="12" r="1.4" fill="currentColor"></circle>
-                  </svg>
-                </span>
-                <span>Status</span>
-              </h3>
-              <div class="status-head-meta">
-                <span id="status-layer" class="status-layer">Layer: --/--</span>
-                <div id="status-print-actions" class="status-print-actions" hidden>
-                  <button type="button" id="status-print-cancel" class="status-job-action danger">Cancel</button>
-                  <button type="button" id="status-print-pause" class="status-job-action">Pause</button>
-                  <button type="button" id="status-print-resume" class="status-job-action">Resume</button>
+          <article class="card status-card-mainsail" id="card-print-progress">
+            <div class="card-head status-card-head status-card-head-mainsail">
+              <div class="status-head-main">
+                <h3 class="dashboard-title-with-icon">
+                  <span class="dashboard-title-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none">
+                      <circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="1.8"></circle>
+                      <path d="M12 12 16 9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path>
+                      <circle cx="12" cy="12" r="1.4" fill="currentColor"></circle>
+                    </svg>
+                  </span>
+                  <span>Status</span>
+                </h3>
+                <div id="status-state-chip" class="status-state-chip" data-state="disconnected" aria-live="polite">
+                  <span id="status-state-dot" class="status-state-dot" aria-hidden="true"></span>
+                  <span id="status-printer-state" class="status-printer-state">Disconnected</span>
                 </div>
-                <button type="button" id="status-clear-file" class="status-clear-file-btn" hidden>Clear File</button>
+              </div>
+              <div class="status-head-meta">
+                <div class="status-progress-ring-wrap" role="img" aria-label="Print progress">
+                  <svg class="status-progress-ring-svg" viewBox="0 0 40 40" aria-hidden="true">
+                    <circle class="status-progress-ring-track" cx="20" cy="20" r="16"></circle>
+                    <circle id="status-progress-ring" class="status-progress-ring-value" cx="20" cy="20" r="16"></circle>
+                  </svg>
+                  <span id="status-progress-ring-text" class="status-progress-ring-text">0%</span>
+                </div>
+                <div id="status-print-actions" class="status-print-actions" hidden>
+                  <button type="button" id="status-print-cancel" class="status-job-action danger" aria-label="Cancel print">Cancel</button>
+                  <button type="button" id="status-print-pause" class="status-job-action" aria-label="Pause print">Pause</button>
+                  <button type="button" id="status-print-resume" class="status-job-action" aria-label="Resume print">Resume</button>
+                </div>
+                <button type="button" id="status-clear-file" class="status-clear-file-btn" aria-label="Clear current file from status card" hidden>Clear File</button>
               </div>
             </div>
-            <div class="progress-wrap">
-              <div class="progress-bar" id="progress-bar"></div>
-              <span id="progress-text" class="progress-text">0%</span>
-            </div>
-            <div class="status-file-row">
+            <div class="status-file-row status-file-row-mainsail">
               <p id="status-file-name" class="status-file-name">No active file</p>
               <div id="status-file-thumb-wrap" class="status-file-thumb-wrap" hidden>
                 <img id="status-file-thumb" class="status-file-thumb" alt="G-code thumbnail" loading="lazy" />
               </div>
             </div>
-            <div class="status-time-row">
-              <p class="status-meta-item"><span class="status-meta-label">ETP:</span> <span id="status-etp">--:--:--</span></p>
-              <p class="status-meta-item"><span class="status-meta-label">Finish:</span> <span id="status-finish">--:--</span></p>
-              <p class="status-meta-item"><span class="status-meta-label">Time Left:</span> <span id="status-time-left">--:--:--</span></p>
+            <div class="status-overview-grid" aria-label="Status overview">
+              <section class="status-overview-item" aria-label="Temperature summary">
+                <p class="status-overview-label">Temperatures</p>
+                <p id="status-hotend-summary" class="status-overview-value">Nozzle --.-&deg;C / --&deg;C</p>
+                <p id="status-bed-summary" class="status-overview-sub">Bed --.-&deg;C / --&deg;C</p>
+              </section>
+              <section class="status-overview-item" aria-label="Fan summary">
+                <p class="status-overview-label">Fans</p>
+                <p class="status-overview-value">Part Cooling <span id="status-fan-speed">--%</span></p>
+                <p class="status-overview-sub">Active print fan speed</p>
+              </section>
+              <section class="status-overview-item status-overview-progress" aria-label="Progress summary">
+                <div class="status-progress-head">
+                  <p class="status-overview-label">Progress</p>
+                  <span id="progress-text" class="progress-text">0%</span>
+                </div>
+                <div class="progress-wrap">
+                  <div class="progress-bar" id="progress-bar"></div>
+                </div>
+              </section>
             </div>
-            <div class="status-metrics-row">
-              <p class="status-meta-item"><span class="status-meta-label">Speed:</span> <span id="status-speed">-- mm/s</span></p>
-              <p class="status-meta-item"><span class="status-meta-label">Flowrate:</span> <span id="status-flowrate">--%</span></p>
-              <p class="status-meta-item"><span class="status-meta-label">Filament:</span> <span id="status-filament">--</span></p>
+            <div class="status-metrics-row status-metrics-row-mainsail">
+              <p class="status-meta-item"><span class="status-meta-label">Speed</span> <span id="status-speed">-- mm/s</span></p>
+              <p class="status-meta-item"><span class="status-meta-label">Flowrate</span> <span id="status-flowrate">--%</span></p>
+              <p class="status-meta-item"><span class="status-meta-label">Filament</span> <span id="status-filament">--</span></p>
+              <p id="status-layer" class="status-layer">Layer: --/--</p>
+            </div>
+            <div class="status-time-row status-time-row-mainsail">
+              <p class="status-meta-item"><span class="status-meta-label">ETP</span> <span id="status-etp">--:--:--</span></p>
+              <p class="status-meta-item"><span class="status-meta-label">Finish</span> <span id="status-finish">--:--</span></p>
+              <p class="status-meta-item"><span class="status-meta-label">Time Left</span> <span id="status-time-left">--:--:--</span></p>
             </div>
           </article>
 
@@ -1411,6 +1453,57 @@
         </div>
       </section>
 
+      <section id="view-spoolman" class="view">
+        <div class="grid spoolman-grid">
+          <article class="card spoolman-card-fluidd" id="spoolman-card-fluidd">
+            <div class="card-head">
+              <h3>Spoolman</h3>
+              <div class="card-head-actions">
+                <button type="button" id="spoolman-change-spool">Change Spool</button>
+                <button type="button" id="spoolman-refresh">Refresh</button>
+              </div>
+            </div>
+
+            <div id="spoolman-progress-linear" class="spoolman-progress-linear" hidden>
+              <span id="spoolman-progress-linear-bar"></span>
+            </div>
+
+            <div class="spoolman-card-body">
+              <div id="spoolman-fields-grid" class="spoolman-fields-grid">
+                <p class="muted">Spoolman server not available.</p>
+              </div>
+
+              <div class="spoolman-card-visual">
+                <div id="spoolman-progress-ring" class="spoolman-progress-ring" aria-label="Remaining spool percentage">
+                  <span id="spoolman-progress-ring-value" class="spoolman-progress-ring-value">--%</span>
+                </div>
+                <p id="spoolman-visual-fallback" class="spoolman-visual-fallback muted" hidden>Spoolman server not available.</p>
+              </div>
+            </div>
+
+            <p id="spoolman-status-message" class="muted spoolman-status-message" data-level="info">Press Refresh to load Spoolman data.</p>
+          </article>
+        </div>
+
+        <dialog id="spoolman-select-dialog" class="spoolman-select-dialog">
+          <form method="dialog" class="spoolman-select-dialog-card">
+            <div class="spoolman-select-dialog-head">
+              <h3>Spool Selection</h3>
+              <button type="button" id="spoolman-select-close" class="spoolman-select-close" aria-label="Close spool selection">x</button>
+            </div>
+
+            <label for="spoolman-select-id">Active Spool</label>
+            <select id="spoolman-select-id"></select>
+            <p id="spoolman-select-help" class="muted">Select a spool to set it active in Moonraker.</p>
+
+            <div class="settings-inline-row">
+              <button type="button" id="spoolman-select-apply">Select</button>
+              <button type="button" id="spoolman-select-clear" class="danger">Clear</button>
+            </div>
+          </form>
+        </dialog>
+      </section>
+
       <section id="view-settings" class="view">
         <form id="settings-form" class="settings-layout">
           <div class="grid two-col">
@@ -1664,14 +1757,432 @@
               </div>
             </article>
 
-            <article class="card settings-placeholder-card" data-settings-section="timelapse">
-              <h3>Timelapse</h3>
-              <p class="muted">Forge placeholder for Fluidd-compatible settings navigation.</p>
+            <article class="card settings-timelapse-card" data-settings-section="timelapse">
+              <div class="card-head">
+                <h3>Timelapse</h3>
+                <div class="card-head-actions">
+                  <button type="button" id="settings-timelapse-refresh">Refresh</button>
+                </div>
+              </div>
+
+              <p id="settings-timelapse-status" class="muted" data-level="info">Connect to Moonraker to load timelapse settings.</p>
+              <p id="settings-timelapse-unavailable" class="muted settings-timelapse-unavailable" hidden>Moonraker timelapse settings are not available on this host.</p>
+
+              <section class="settings-timelapse-section">
+                <h4>General</h4>
+
+                <div class="settings-timelapse-row">
+                  <div class="settings-timelapse-copy">
+                    <p class="settings-timelapse-title">Enabled</p>
+                    <p class="muted settings-timelapse-subtitle">Enable or disable timelapse capture globally.</p>
+                  </div>
+                  <label class="checkbox-row settings-timelapse-switch" for="settings-timelapse-enabled">
+                    <input id="settings-timelapse-enabled" type="checkbox" />
+                    <span>Enabled</span>
+                  </label>
+                </div>
+
+                <div class="settings-timelapse-row">
+                  <div class="settings-timelapse-copy">
+                    <p class="settings-timelapse-title">Autorender</p>
+                    <p class="muted settings-timelapse-subtitle">Automatically render a video when a print ends.</p>
+                  </div>
+                  <label class="checkbox-row settings-timelapse-switch" for="settings-timelapse-autorender">
+                    <input id="settings-timelapse-autorender" type="checkbox" />
+                    <span>Enabled</span>
+                  </label>
+                </div>
+
+                <div class="settings-timelapse-row">
+                  <div class="settings-timelapse-copy">
+                    <p class="settings-timelapse-title">Camera</p>
+                    <p class="muted settings-timelapse-subtitle">Select the snapshot webcam used by timelapse.</p>
+                    <p id="settings-timelapse-camera-warning" class="muted settings-timelapse-warning" hidden>Snapshot URL is locked by backend settings.</p>
+                  </div>
+                  <div class="settings-timelapse-control">
+                    <select id="settings-timelapse-camera"></select>
+                  </div>
+                </div>
+
+                <div class="settings-timelapse-row">
+                  <div class="settings-timelapse-copy">
+                    <p class="settings-timelapse-title">Mode</p>
+                    <p class="muted settings-timelapse-subtitle">Choose layermacro or hyperlapse capture mode.</p>
+                  </div>
+                  <div class="settings-timelapse-control">
+                    <select id="settings-timelapse-mode">
+                      <option value="layermacro">layermacro</option>
+                      <option value="hyperlapse">hyperlapse</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div id="settings-timelapse-hyperlapse-cycle-row" class="settings-timelapse-row" hidden>
+                  <div class="settings-timelapse-copy">
+                    <p class="settings-timelapse-title">Hyperlapse Cycle</p>
+                    <p class="muted settings-timelapse-subtitle">Capture interval in seconds while in hyperlapse mode.</p>
+                  </div>
+                  <div class="settings-timelapse-control">
+                    <input id="settings-timelapse-hyperlapse-cycle" type="number" min="1" step="1" />
+                  </div>
+                </div>
+
+                <div class="settings-timelapse-row">
+                  <div class="settings-timelapse-copy">
+                    <p class="settings-timelapse-title">Preview Image</p>
+                    <p class="muted settings-timelapse-subtitle">Save preview images for completed timelapses.</p>
+                  </div>
+                  <label class="checkbox-row settings-timelapse-switch" for="settings-timelapse-previewimage">
+                    <input id="settings-timelapse-previewimage" type="checkbox" />
+                    <span>Enabled</span>
+                  </label>
+                </div>
+
+                <div class="settings-timelapse-row">
+                  <div class="settings-timelapse-copy">
+                    <p class="settings-timelapse-title">Save Frames</p>
+                    <p class="muted settings-timelapse-subtitle">Keep source frames after rendering videos.</p>
+                  </div>
+                  <label class="checkbox-row settings-timelapse-switch" for="settings-timelapse-saveframes">
+                    <input id="settings-timelapse-saveframes" type="checkbox" />
+                    <span>Enabled</span>
+                  </label>
+                </div>
+
+                <div class="settings-timelapse-row">
+                  <div class="settings-timelapse-copy">
+                    <p class="settings-timelapse-title">Stream Delay Compensation</p>
+                    <p class="muted settings-timelapse-subtitle">Compensate snapshot capture delay in seconds.</p>
+                  </div>
+                  <div class="settings-timelapse-control">
+                    <input id="settings-timelapse-stream-delay-compensation" type="number" min="0" step="0.01" />
+                  </div>
+                </div>
+
+                <div class="settings-timelapse-row">
+                  <div class="settings-timelapse-copy">
+                    <p class="settings-timelapse-title">G-code Verbose</p>
+                    <p class="muted settings-timelapse-subtitle">Log verbose timelapse status in console output.</p>
+                  </div>
+                  <label class="checkbox-row settings-timelapse-switch" for="settings-timelapse-gcode-verbose">
+                    <input id="settings-timelapse-gcode-verbose" type="checkbox" />
+                    <span>Enabled</span>
+                  </label>
+                </div>
+              </section>
+
+              <section class="settings-timelapse-section">
+                <h4>Parkhead</h4>
+
+                <div class="settings-timelapse-row">
+                  <div class="settings-timelapse-copy">
+                    <p class="settings-timelapse-title">Parkhead</p>
+                    <p class="muted settings-timelapse-subtitle">Move toolhead to a parking position before snapshots.</p>
+                  </div>
+                  <label class="checkbox-row settings-timelapse-switch" for="settings-timelapse-parkhead">
+                    <input id="settings-timelapse-parkhead" type="checkbox" />
+                    <span>Enabled</span>
+                  </label>
+                </div>
+
+                <div id="settings-timelapse-park-options" class="settings-timelapse-subgroup" hidden>
+                  <div class="settings-timelapse-row">
+                    <div class="settings-timelapse-copy">
+                      <p class="settings-timelapse-title">Park Position</p>
+                      <p class="muted settings-timelapse-subtitle">Preset or custom park target.</p>
+                    </div>
+                    <div class="settings-timelapse-control">
+                      <select id="settings-timelapse-parkpos">
+                        <option value="center">center</option>
+                        <option value="front_left">front_left</option>
+                        <option value="front_right">front_right</option>
+                        <option value="back_left">back_left</option>
+                        <option value="back_right">back_right</option>
+                        <option value="x_only">x_only</option>
+                        <option value="y_only">y_only</option>
+                        <option value="custom">custom</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div id="settings-timelapse-park-pos-x-row" class="settings-timelapse-row" hidden>
+                    <div class="settings-timelapse-copy">
+                      <p class="settings-timelapse-title">Pos X</p>
+                      <p class="muted settings-timelapse-subtitle">Custom X parking coordinate in millimeters.</p>
+                    </div>
+                    <div class="settings-timelapse-control">
+                      <input id="settings-timelapse-park-custom-pos-x" type="number" step="0.01" />
+                    </div>
+                  </div>
+
+                  <div id="settings-timelapse-park-pos-y-row" class="settings-timelapse-row" hidden>
+                    <div class="settings-timelapse-copy">
+                      <p class="settings-timelapse-title">Pos Y</p>
+                      <p class="muted settings-timelapse-subtitle">Custom Y parking coordinate in millimeters.</p>
+                    </div>
+                    <div class="settings-timelapse-control">
+                      <input id="settings-timelapse-park-custom-pos-y" type="number" step="0.01" />
+                    </div>
+                  </div>
+
+                  <div id="settings-timelapse-park-pos-dz-row" class="settings-timelapse-row" hidden>
+                    <div class="settings-timelapse-copy">
+                      <p class="settings-timelapse-title">Pos DZ</p>
+                      <p class="muted settings-timelapse-subtitle">Raise Z by this amount before parking.</p>
+                    </div>
+                    <div class="settings-timelapse-control">
+                      <input id="settings-timelapse-park-custom-pos-dz" type="number" min="0" step="0.01" />
+                    </div>
+                  </div>
+
+                  <div class="settings-timelapse-row">
+                    <div class="settings-timelapse-copy">
+                      <p class="settings-timelapse-title">Travel Speed</p>
+                      <p class="muted settings-timelapse-subtitle">Park move speed in mm/s.</p>
+                    </div>
+                    <div class="settings-timelapse-control">
+                      <input id="settings-timelapse-park-travel-speed" type="number" min="0" step="0.01" />
+                    </div>
+                  </div>
+
+                  <div class="settings-timelapse-row">
+                    <div class="settings-timelapse-copy">
+                      <p class="settings-timelapse-title">Firmware Retract</p>
+                      <p class="muted settings-timelapse-subtitle">Use firmware retract commands during park sequence.</p>
+                    </div>
+                    <label class="checkbox-row settings-timelapse-switch" for="settings-timelapse-fw-retract">
+                      <input id="settings-timelapse-fw-retract" type="checkbox" />
+                      <span>Enabled</span>
+                    </label>
+                  </div>
+
+                  <div id="settings-timelapse-retract-options" class="settings-timelapse-subgroup" hidden>
+                    <div class="settings-timelapse-row">
+                      <div class="settings-timelapse-copy">
+                        <p class="settings-timelapse-title">Retract Speed</p>
+                        <p class="muted settings-timelapse-subtitle">Retraction speed in mm/s.</p>
+                      </div>
+                      <div class="settings-timelapse-control">
+                        <input id="settings-timelapse-park-retract-speed" type="number" min="0.01" step="0.01" />
+                      </div>
+                    </div>
+
+                    <div class="settings-timelapse-row">
+                      <div class="settings-timelapse-copy">
+                        <p class="settings-timelapse-title">Retract Distance</p>
+                        <p class="muted settings-timelapse-subtitle">Retraction distance in millimeters.</p>
+                      </div>
+                      <div class="settings-timelapse-control">
+                        <input id="settings-timelapse-park-retract-distance" type="number" min="0" step="0.01" />
+                      </div>
+                    </div>
+
+                    <div class="settings-timelapse-row">
+                      <div class="settings-timelapse-copy">
+                        <p class="settings-timelapse-title">Unretract Speed</p>
+                        <p class="muted settings-timelapse-subtitle">Prime speed in mm/s after parking.</p>
+                      </div>
+                      <div class="settings-timelapse-control">
+                        <input id="settings-timelapse-park-extrude-speed" type="number" min="0.01" step="0.01" />
+                      </div>
+                    </div>
+
+                    <div class="settings-timelapse-row">
+                      <div class="settings-timelapse-copy">
+                        <p class="settings-timelapse-title">Unretract Distance</p>
+                        <p class="muted settings-timelapse-subtitle">Prime distance in millimeters after parking.</p>
+                      </div>
+                      <div class="settings-timelapse-control">
+                        <input id="settings-timelapse-park-extrude-distance" type="number" min="0" step="0.01" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="settings-timelapse-row">
+                    <div class="settings-timelapse-copy">
+                      <p class="settings-timelapse-title">Park Time</p>
+                      <p class="muted settings-timelapse-subtitle">Pause time before snapshot capture.</p>
+                    </div>
+                    <div class="settings-timelapse-control">
+                      <input id="settings-timelapse-park-time" type="number" min="0" step="0.1" />
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section class="settings-timelapse-section">
+                <h4>Rendering Options</h4>
+
+                <div class="settings-timelapse-row">
+                  <div class="settings-timelapse-copy">
+                    <p class="settings-timelapse-title">Variable FPS</p>
+                    <p class="muted settings-timelapse-subtitle">Render with adaptive frame rate to target clip duration.</p>
+                  </div>
+                  <label class="checkbox-row settings-timelapse-switch" for="settings-timelapse-variable-fps">
+                    <input id="settings-timelapse-variable-fps" type="checkbox" />
+                    <span>Enabled</span>
+                  </label>
+                </div>
+
+                <div id="settings-timelapse-variable-fps-options" class="settings-timelapse-subgroup" hidden>
+                  <div class="settings-timelapse-row">
+                    <div class="settings-timelapse-copy">
+                      <p class="settings-timelapse-title">Target Length</p>
+                      <p class="muted settings-timelapse-subtitle">Desired output length in seconds.</p>
+                    </div>
+                    <div class="settings-timelapse-control">
+                      <input id="settings-timelapse-targetlength" type="number" min="0.01" step="0.01" />
+                    </div>
+                  </div>
+
+                  <div class="settings-timelapse-row">
+                    <div class="settings-timelapse-copy">
+                      <p class="settings-timelapse-title">Variable FPS Min</p>
+                      <p class="muted settings-timelapse-subtitle">Minimum frame count bound.</p>
+                    </div>
+                    <div class="settings-timelapse-control">
+                      <input id="settings-timelapse-variable-fps-min" type="number" min="1" step="1" />
+                    </div>
+                  </div>
+
+                  <div class="settings-timelapse-row">
+                    <div class="settings-timelapse-copy">
+                      <p class="settings-timelapse-title">Variable FPS Max</p>
+                      <p class="muted settings-timelapse-subtitle">Maximum frame count bound.</p>
+                    </div>
+                    <div class="settings-timelapse-control">
+                      <input id="settings-timelapse-variable-fps-max" type="number" min="1" step="1" />
+                    </div>
+                  </div>
+                </div>
+
+                <div id="settings-timelapse-static-fps-options" class="settings-timelapse-subgroup">
+                  <div class="settings-timelapse-row">
+                    <div class="settings-timelapse-copy">
+                      <p class="settings-timelapse-title">Output Framerate</p>
+                      <p class="muted settings-timelapse-subtitle">Fixed output framerate.</p>
+                    </div>
+                    <div class="settings-timelapse-control">
+                      <input id="settings-timelapse-output-framerate" type="number" min="1" step="1" />
+                    </div>
+                  </div>
+                </div>
+
+                <div class="settings-timelapse-row">
+                  <div class="settings-timelapse-copy">
+                    <p class="settings-timelapse-title">Duplicate Last Frame</p>
+                    <p class="muted settings-timelapse-subtitle">Number of times to duplicate the final frame.</p>
+                  </div>
+                  <div class="settings-timelapse-control">
+                    <input id="settings-timelapse-duplicatelastframe" type="number" min="0" step="1" />
+                  </div>
+                </div>
+
+                <div class="settings-timelapse-row">
+                  <div class="settings-timelapse-copy">
+                    <p class="settings-timelapse-title">Constant Rate Factor</p>
+                    <p class="muted settings-timelapse-subtitle">FFmpeg quality CRF value.</p>
+                  </div>
+                  <div class="settings-timelapse-control">
+                    <input id="settings-timelapse-constant-rate-factor" type="number" min="1" step="1" />
+                  </div>
+                </div>
+
+                <div class="settings-timelapse-row">
+                  <div class="settings-timelapse-copy">
+                    <p class="settings-timelapse-title">Pixel Format</p>
+                    <p class="muted settings-timelapse-subtitle">FFmpeg pixel format string.</p>
+                  </div>
+                  <div class="settings-timelapse-control">
+                    <input id="settings-timelapse-pixelformat" type="text" />
+                  </div>
+                </div>
+
+                <div class="settings-timelapse-row">
+                  <div class="settings-timelapse-copy">
+                    <p class="settings-timelapse-title">Time Format Code</p>
+                    <p class="muted settings-timelapse-subtitle">Timestamp format used for output naming.</p>
+                  </div>
+                  <div class="settings-timelapse-control">
+                    <input id="settings-timelapse-time-format-code" type="text" />
+                  </div>
+                </div>
+
+                <div class="settings-timelapse-row">
+                  <div class="settings-timelapse-copy">
+                    <p class="settings-timelapse-title">Extra Output Params</p>
+                    <p class="muted settings-timelapse-subtitle">Additional FFmpeg command parameters.</p>
+                  </div>
+                  <div class="settings-timelapse-control">
+                    <input id="settings-timelapse-extraoutputparams" type="text" />
+                  </div>
+                </div>
+              </section>
             </article>
 
-            <article class="card settings-placeholder-card" data-settings-section="spoolman">
+            <article class="card settings-spoolman-card" data-settings-section="spoolman">
               <h3>Spoolman</h3>
-              <p class="muted">Forge placeholder for Fluidd-compatible settings navigation.</p>
+
+              <label class="checkbox-row" for="settings-spoolman-auto-dialog">
+                <input id="settings-spoolman-auto-dialog" type="checkbox" />
+                <span>Show spool selection dialog on print start</span>
+              </label>
+
+              <label for="settings-spoolman-auto-camera">Automatically open camera for QR code detection</label>
+              <select id="settings-spoolman-auto-camera">
+                <option value="">None</option>
+              </select>
+
+              <label class="checkbox-row" for="settings-spoolman-prefer-device-camera">
+                <input id="settings-spoolman-prefer-device-camera" type="checkbox" />
+                <span>Use device camera for QR code detection if available</span>
+              </label>
+
+              <label class="checkbox-row" for="settings-spoolman-auto-select-on-match">
+                <input id="settings-spoolman-auto-select-on-match" type="checkbox" />
+                <span>Automatically commit spool selection on QR code match</span>
+              </label>
+
+              <label class="checkbox-row" for="settings-spoolman-warn-not-enough-filament">
+                <input id="settings-spoolman-warn-not-enough-filament" type="checkbox" />
+                <span>Show a warning when the selected spool doesn't have enough filament left on it to finish the print</span>
+              </label>
+
+              <label class="checkbox-row" for="settings-spoolman-warn-filament-mismatch">
+                <input id="settings-spoolman-warn-filament-mismatch" type="checkbox" />
+                <span>Show a warning when the spool's filament type and the one selected in the slicer don't match</span>
+              </label>
+
+              <label for="settings-spoolman-remaining-unit">Show remaining filament as</label>
+              <select id="settings-spoolman-remaining-unit">
+                <option value="weight">Weight</option>
+                <option value="length">Length</option>
+              </select>
+
+              <label for="settings-spoolman-card-fields">Fields to show in the Spoolman card</label>
+              <select id="settings-spoolman-card-fields" multiple size="8">
+                <option value="id">ID</option>
+                <option value="vendor">Vendor</option>
+                <option value="filament_name">Filament</option>
+                <option value="remaining_weight">Remaining</option>
+                <option value="used_weight">Used</option>
+                <option value="location">Location</option>
+                <option value="material">Material</option>
+                <option value="lot_nr">Lot Nr</option>
+                <option value="price">Price</option>
+                <option value="density">Density</option>
+                <option value="diameter">Diameter</option>
+                <option value="extruder_temp">Extruder Temp</option>
+                <option value="bed_temp">Bed Temp</option>
+                <option value="first_used">First Used</option>
+                <option value="last_used">Last Used</option>
+                <option value="comment">Comment</option>
+              </select>
+
+              <div class="actions">
+                <button type="button" id="settings-spoolman-reset">Reset</button>
+              </div>
+              <p id="settings-spoolman-status" class="muted" data-level="info">Spoolman settings are saved when you use Save &amp; Connect.</p>
             </article>
 
             <article class="card settings-placeholder-card" data-settings-section="versions">

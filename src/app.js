@@ -315,6 +315,77 @@ const TIMELAPSE_MEDIA_SORT_VALUES = [
   "name_asc",
   "name_desc",
 ];
+const TIMELAPSE_SETTINGS_MODE_VALUES = ["layermacro", "hyperlapse"];
+const TIMELAPSE_SETTINGS_PARKPOS_VALUES = [
+  "center",
+  "front_left",
+  "front_right",
+  "back_left",
+  "back_right",
+  "x_only",
+  "y_only",
+  "custom",
+];
+const TIMELAPSE_SETTINGS_DEFAULTS = Object.freeze({
+  enabled: true,
+  camera: "",
+  mode: "layermacro",
+  autorender: true,
+  autorenderOnce: false,
+  saveframes: false,
+  stream_delay_compensation: 0.05,
+  gcode_verbose: true,
+  parkhead: false,
+  parkpos: "back_left",
+  park_custom_pos_x: 0,
+  park_custom_pos_y: 0,
+  park_custom_pos_dz: 0,
+  park_travel_speed: 100,
+  park_retract_speed: 15,
+  park_retract_distance: 1,
+  park_extrude_speed: 15,
+  park_extrude_distance: 1,
+  park_time: 0.1,
+  fw_retract: false,
+  hyperlapse_cycle: 30,
+  constant_rate_factor: 23,
+  output_framerate: 30,
+  pixelformat: "yuv420p",
+  extraoutputparams: "",
+  variable_fps: false,
+  targetlength: 60,
+  variable_fps_min: 5,
+  variable_fps_max: 60,
+  rotation: 0,
+  duplicatelastframe: 0,
+  previewimage: true,
+  time_format_code: "%Y%m%d_%H%M",
+  blockedsettings: [],
+});
+const TIMELAPSE_SETTINGS_NUMERIC_RULES = Object.freeze({
+  stream_delay_compensation: { min: 0, strict: false },
+  park_custom_pos_dz: { min: 0, strict: false },
+  park_travel_speed: { min: 0, strict: false },
+  park_retract_speed: { min: 0, strict: true },
+  park_retract_distance: { min: 0, strict: false },
+  park_extrude_speed: { min: 0, strict: true },
+  park_extrude_distance: { min: 0, strict: false },
+  park_time: { min: 0, strict: false },
+  hyperlapse_cycle: { min: 0, strict: true },
+  constant_rate_factor: { min: 0, strict: true },
+  output_framerate: { min: 0, strict: true },
+  targetlength: { min: 0, strict: true },
+  variable_fps_min: { min: 0, strict: true },
+  variable_fps_max: { min: 0, strict: true },
+  duplicatelastframe: { min: 0, strict: false },
+});
+const TIMELAPSE_SETTINGS_UNAVAILABLE_PATTERNS = [
+  "method not found",
+  "unknown method",
+  "machine.timelapse",
+  "404",
+  "501",
+];
 const WARNINGS_SETTINGS_DEFAULTS = Object.freeze({
   warnOnCpuThrottled: true,
   warnOnStepperDriverOverheating: true,
@@ -648,6 +719,11 @@ const els = {
   timelapseMediaBreadcrumbs: document.getElementById("timelapse-media-breadcrumbs"),
   timelapseMediaFileList: document.getElementById("timelapse-media-file-list"),
   timelapseMediaStatus: document.getElementById("timelapse-media-status"),
+  jobsMoveFileDialog: document.getElementById("jobs-move-file-dialog"),
+  jobsMoveFileTitle: document.getElementById("jobs-move-file-title"),
+  jobsMoveFileSelect: document.getElementById("jobs-move-file-select"),
+  jobsMoveFileCancel: document.getElementById("jobs-move-file-cancel"),
+  jobsMoveFileConfirm: document.getElementById("jobs-move-file-confirm"),
   spoolmanRefresh: document.getElementById("spoolman-refresh"),
   spoolmanChangeSpool: document.getElementById("spoolman-change-spool"),
   spoolmanFieldsGrid: document.getElementById("spoolman-fields-grid"),
@@ -668,6 +744,11 @@ const els = {
   connectionText: document.getElementById("connection-text"),
   printerDot: document.getElementById("printer-dot"),
   printerState: document.getElementById("printer-state"),
+  statusStateChip: document.getElementById("status-state-chip"),
+  statusStateDot: document.getElementById("status-state-dot"),
+  statusPrinterState: document.getElementById("status-printer-state"),
+  statusProgressRing: document.getElementById("status-progress-ring"),
+  statusProgressRingText: document.getElementById("status-progress-ring-text"),
   progressBar: document.getElementById("progress-bar"),
   progressText: document.getElementById("progress-text"),
   statusFileName: document.getElementById("status-file-name"),
@@ -679,6 +760,9 @@ const els = {
   statusSpeed: document.getElementById("status-speed"),
   statusFlowrate: document.getElementById("status-flowrate"),
   statusFilament: document.getElementById("status-filament"),
+  statusHotendSummary: document.getElementById("status-hotend-summary"),
+  statusBedSummary: document.getElementById("status-bed-summary"),
+  statusFanSpeed: document.getElementById("status-fan-speed"),
   statusLayer: document.getElementById("status-layer"),
   statusClearFile: document.getElementById("status-clear-file"),
   statusPrintActions: document.getElementById("status-print-actions"),
@@ -948,6 +1032,49 @@ const els = {
   settingsThermalPresetGcode: document.getElementById("settings-thermal-preset-gcode"),
   settingsThermalPresetSave: document.getElementById("settings-thermal-preset-save"),
   settingsThermalPresetCancel: document.getElementById("settings-thermal-preset-cancel"),
+  settingsTimelapseRefresh: document.getElementById("settings-timelapse-refresh"),
+  settingsTimelapseStatus: document.getElementById("settings-timelapse-status"),
+  settingsTimelapseUnavailable: document.getElementById("settings-timelapse-unavailable"),
+  settingsTimelapseCameraWarning: document.getElementById("settings-timelapse-camera-warning"),
+  settingsTimelapseEnabled: document.getElementById("settings-timelapse-enabled"),
+  settingsTimelapseAutorender: document.getElementById("settings-timelapse-autorender"),
+  settingsTimelapseCamera: document.getElementById("settings-timelapse-camera"),
+  settingsTimelapseMode: document.getElementById("settings-timelapse-mode"),
+  settingsTimelapseHyperlapseCycle: document.getElementById("settings-timelapse-hyperlapse-cycle"),
+  settingsTimelapsePreviewImage: document.getElementById("settings-timelapse-previewimage"),
+  settingsTimelapseSaveFrames: document.getElementById("settings-timelapse-saveframes"),
+  settingsTimelapseStreamDelayCompensation: document.getElementById("settings-timelapse-stream-delay-compensation"),
+  settingsTimelapseGcodeVerbose: document.getElementById("settings-timelapse-gcode-verbose"),
+  settingsTimelapseParkhead: document.getElementById("settings-timelapse-parkhead"),
+  settingsTimelapseParkpos: document.getElementById("settings-timelapse-parkpos"),
+  settingsTimelapseParkCustomPosX: document.getElementById("settings-timelapse-park-custom-pos-x"),
+  settingsTimelapseParkCustomPosY: document.getElementById("settings-timelapse-park-custom-pos-y"),
+  settingsTimelapseParkCustomPosDz: document.getElementById("settings-timelapse-park-custom-pos-dz"),
+  settingsTimelapseParkTravelSpeed: document.getElementById("settings-timelapse-park-travel-speed"),
+  settingsTimelapseFwRetract: document.getElementById("settings-timelapse-fw-retract"),
+  settingsTimelapseParkRetractSpeed: document.getElementById("settings-timelapse-park-retract-speed"),
+  settingsTimelapseParkRetractDistance: document.getElementById("settings-timelapse-park-retract-distance"),
+  settingsTimelapseParkExtrudeSpeed: document.getElementById("settings-timelapse-park-extrude-speed"),
+  settingsTimelapseParkExtrudeDistance: document.getElementById("settings-timelapse-park-extrude-distance"),
+  settingsTimelapseParkTime: document.getElementById("settings-timelapse-park-time"),
+  settingsTimelapseVariableFps: document.getElementById("settings-timelapse-variable-fps"),
+  settingsTimelapseTargetLength: document.getElementById("settings-timelapse-targetlength"),
+  settingsTimelapseVariableFpsMin: document.getElementById("settings-timelapse-variable-fps-min"),
+  settingsTimelapseVariableFpsMax: document.getElementById("settings-timelapse-variable-fps-max"),
+  settingsTimelapseOutputFramerate: document.getElementById("settings-timelapse-output-framerate"),
+  settingsTimelapseDuplicateLastFrame: document.getElementById("settings-timelapse-duplicatelastframe"),
+  settingsTimelapseConstantRateFactor: document.getElementById("settings-timelapse-constant-rate-factor"),
+  settingsTimelapsePixelformat: document.getElementById("settings-timelapse-pixelformat"),
+  settingsTimelapseTimeFormatCode: document.getElementById("settings-timelapse-time-format-code"),
+  settingsTimelapseExtraOutputParams: document.getElementById("settings-timelapse-extraoutputparams"),
+  settingsTimelapseHyperlapseCycleRow: document.getElementById("settings-timelapse-hyperlapse-cycle-row"),
+  settingsTimelapseParkOptions: document.getElementById("settings-timelapse-park-options"),
+  settingsTimelapseParkPosXRow: document.getElementById("settings-timelapse-park-pos-x-row"),
+  settingsTimelapseParkPosYRow: document.getElementById("settings-timelapse-park-pos-y-row"),
+  settingsTimelapseParkPosDzRow: document.getElementById("settings-timelapse-park-pos-dz-row"),
+  settingsTimelapseRetractOptions: document.getElementById("settings-timelapse-retract-options"),
+  settingsTimelapseVariableFpsOptions: document.getElementById("settings-timelapse-variable-fps-options"),
+  settingsTimelapseStaticFpsOptions: document.getElementById("settings-timelapse-static-fps-options"),
   settingsMacrosCategoryAdd: document.getElementById("settings-macros-category-add"),
   settingsMacrosCategoryList: document.getElementById("settings-macros-category-list"),
   settingsMacrosSelectedCategory: document.getElementById("settings-macros-selected-category"),
@@ -1782,6 +1909,516 @@ function deleteThermalPreset(presetId) {
   buildTemperatureTargetMenus();
 
   appendConsole(`Thermal preset deleted: ${presetName}.`, "info");
+}
+
+function setTimelapseSettingsStatus(message, level = "info") {
+  state.timelapseSettings.statusMessage = String(message || "").trim();
+  state.timelapseSettings.statusLevel = String(level || "info").trim().toLowerCase();
+
+  if (!els.settingsTimelapseStatus) return;
+  els.settingsTimelapseStatus.textContent = state.timelapseSettings.statusMessage;
+  els.settingsTimelapseStatus.dataset.level = state.timelapseSettings.statusLevel;
+}
+
+function isTimelapseSettingsConnected() {
+  return !!state.client && state.connectionStatus === "connected";
+}
+
+function isTimelapseSettingsBlocked(...keys) {
+  const blocked = normalizeTimelapseSettingsBlockedList(state.timelapseSettings.settings?.blockedsettings);
+  return keys.some((key) => blocked.includes(String(key || "").trim()));
+}
+
+function isTimelapseSettingsUnavailableError(error) {
+  const message = String(error?.message || error || "").toLowerCase();
+  if (!message.includes("machine.timelapse")) return false;
+  return TIMELAPSE_SETTINGS_UNAVAILABLE_PATTERNS.some((pattern) => message.includes(pattern));
+}
+
+function extractTimelapseSettingsPayload(response) {
+  const root = response?.result ?? response;
+  if (!root || typeof root !== "object" || Array.isArray(root)) {
+    return {};
+  }
+  return root;
+}
+
+function extractTimelapseCameraOptions(webcamResponse) {
+  const payload = webcamResponse?.result ?? webcamResponse;
+  const webcams = Array.isArray(payload?.webcams)
+    ? payload.webcams
+    : Array.isArray(payload)
+      ? payload
+      : [];
+
+  const map = new Map();
+  webcams.forEach((entry) => {
+    const name = String(entry?.name ?? entry?.webcam_name ?? "").trim();
+    const snapshotUrl = String(entry?.snapshot_url ?? entry?.snapshotUrl ?? "").trim();
+    if (!name || !snapshotUrl) return;
+    if (!map.has(name)) {
+      map.set(name, { value: name, label: name });
+    }
+  });
+
+  return [...map.values()].sort((a, b) => a.label.localeCompare(b.label));
+}
+
+function mergeTimelapseSettingsPatch(patch) {
+  const current = state.timelapseSettings.settings || createDefaultTimelapseSettingsPayload();
+  const merged = {
+    ...current,
+    ...(patch && typeof patch === "object" ? patch : {}),
+  };
+  state.timelapseSettings.settings = normalizeTimelapseSettingsPayload(merged);
+}
+
+function setTimelapseSettingsControlDisabled(input, disabled) {
+  if (!input) return;
+  input.disabled = !!disabled;
+}
+
+function syncTimelapseSettingsCameraSelect() {
+  if (!els.settingsTimelapseCamera) return;
+
+  const currentValue = String(state.timelapseSettings.settings.camera || "");
+  const options = [...(Array.isArray(state.timelapseSettings.cameraOptions) ? state.timelapseSettings.cameraOptions : [])];
+
+  if (currentValue && !options.some((entry) => entry.value === currentValue)) {
+    options.unshift({
+      value: currentValue,
+      label: `${currentValue} (Current)`,
+    });
+  }
+
+  if (!options.length) {
+    options.push({ value: "", label: "No snapshot webcams found" });
+  } else {
+    options.unshift({ value: "", label: "Select webcam" });
+  }
+
+  const active = document.activeElement === els.settingsTimelapseCamera;
+  if (!active) {
+    els.settingsTimelapseCamera.replaceChildren();
+    options.forEach((entry) => {
+      const option = document.createElement("option");
+      option.value = entry.value;
+      option.textContent = entry.label;
+      els.settingsTimelapseCamera.appendChild(option);
+    });
+  }
+
+  const knownValues = options.map((entry) => entry.value);
+  const nextValue = knownValues.includes(currentValue) ? currentValue : "";
+  if (!active) {
+    els.settingsTimelapseCamera.value = nextValue;
+  }
+}
+
+function renderTimelapseSettingsCard() {
+  const connected = isTimelapseSettingsConnected();
+  const busy = state.timelapseSettings.loading || state.timelapseSettings.saving;
+  const available = connected && state.timelapseSettings.available;
+  const settings = normalizeTimelapseSettingsPayload(state.timelapseSettings.settings);
+  state.timelapseSettings.settings = settings;
+
+  if (!connected) {
+    setTimelapseSettingsStatus("Connect to Moonraker to load timelapse settings.", "warn");
+  } else if (state.timelapseSettings.loading) {
+    setTimelapseSettingsStatus("Loading timelapse settings...", "info");
+  } else if (!state.timelapseSettings.available && state.timelapseSettings.lastError) {
+    const unavailable = isTimelapseSettingsUnavailableError(state.timelapseSettings.lastError);
+    setTimelapseSettingsStatus(
+      unavailable
+        ? "Moonraker timelapse settings are not available on this host."
+        : `Timelapse settings load failed: ${state.timelapseSettings.lastError}`,
+      unavailable ? "warn" : "error"
+    );
+  } else if (state.timelapseSettings.lastUpdatedMs) {
+    setTimelapseSettingsStatus(
+      `Last updated: ${new Date(state.timelapseSettings.lastUpdatedMs).toLocaleTimeString()}`,
+      "info"
+    );
+  }
+
+  if (els.settingsTimelapseUnavailable) {
+    els.settingsTimelapseUnavailable.hidden = !connected || state.timelapseSettings.loading || state.timelapseSettings.available;
+  }
+
+  if (els.settingsTimelapseRefresh) {
+    els.settingsTimelapseRefresh.disabled = !connected || state.timelapseSettings.loading || state.timelapseSettings.saving;
+  }
+
+  syncTimelapseSettingsCameraSelect();
+
+  const setCheckbox = (input, value) => {
+    if (!input) return;
+    if (document.activeElement !== input) {
+      input.checked = !!value;
+    }
+  };
+
+  const setTextValue = (input, value) => {
+    if (!input) return;
+    if (document.activeElement !== input) {
+      input.value = String(value ?? "");
+    }
+  };
+
+  setCheckbox(els.settingsTimelapseEnabled, settings.enabled);
+  setCheckbox(els.settingsTimelapseAutorender, settings.autorender);
+  setTextValue(els.settingsTimelapseMode, normalizeTimelapseSettingsMode(settings.mode));
+  setTextValue(els.settingsTimelapseHyperlapseCycle, settings.hyperlapse_cycle);
+  setCheckbox(els.settingsTimelapsePreviewImage, settings.previewimage);
+  setCheckbox(els.settingsTimelapseSaveFrames, settings.saveframes);
+  setTextValue(els.settingsTimelapseStreamDelayCompensation, settings.stream_delay_compensation);
+  setCheckbox(els.settingsTimelapseGcodeVerbose, settings.gcode_verbose);
+  setCheckbox(els.settingsTimelapseParkhead, settings.parkhead);
+  setTextValue(els.settingsTimelapseParkpos, normalizeTimelapseSettingsParkpos(settings.parkpos));
+  setTextValue(els.settingsTimelapseParkCustomPosX, settings.park_custom_pos_x);
+  setTextValue(els.settingsTimelapseParkCustomPosY, settings.park_custom_pos_y);
+  setTextValue(els.settingsTimelapseParkCustomPosDz, settings.park_custom_pos_dz);
+  setTextValue(els.settingsTimelapseParkTravelSpeed, settings.park_travel_speed);
+  setCheckbox(els.settingsTimelapseFwRetract, settings.fw_retract);
+  setTextValue(els.settingsTimelapseParkRetractSpeed, settings.park_retract_speed);
+  setTextValue(els.settingsTimelapseParkRetractDistance, settings.park_retract_distance);
+  setTextValue(els.settingsTimelapseParkExtrudeSpeed, settings.park_extrude_speed);
+  setTextValue(els.settingsTimelapseParkExtrudeDistance, settings.park_extrude_distance);
+  setTextValue(els.settingsTimelapseParkTime, settings.park_time);
+  setCheckbox(els.settingsTimelapseVariableFps, settings.variable_fps);
+  setTextValue(els.settingsTimelapseTargetLength, settings.targetlength);
+  setTextValue(els.settingsTimelapseVariableFpsMin, settings.variable_fps_min);
+  setTextValue(els.settingsTimelapseVariableFpsMax, settings.variable_fps_max);
+  setTextValue(els.settingsTimelapseOutputFramerate, settings.output_framerate);
+  setTextValue(els.settingsTimelapseDuplicateLastFrame, settings.duplicatelastframe);
+  setTextValue(els.settingsTimelapseConstantRateFactor, settings.constant_rate_factor);
+  setTextValue(els.settingsTimelapsePixelformat, settings.pixelformat);
+  setTextValue(els.settingsTimelapseTimeFormatCode, settings.time_format_code);
+  setTextValue(els.settingsTimelapseExtraOutputParams, settings.extraoutputparams);
+
+  if (els.settingsTimelapseHyperlapseCycleRow) {
+    els.settingsTimelapseHyperlapseCycleRow.hidden = settings.mode !== "hyperlapse";
+  }
+
+  if (els.settingsTimelapseParkOptions) {
+    els.settingsTimelapseParkOptions.hidden = !settings.parkhead;
+  }
+
+  const showPosX = ["x_only", "custom"].includes(settings.parkpos);
+  const showPosY = ["y_only", "custom"].includes(settings.parkpos);
+  const showPosDz = ["x_only", "y_only", "custom"].includes(settings.parkpos);
+
+  if (els.settingsTimelapseParkPosXRow) {
+    els.settingsTimelapseParkPosXRow.hidden = !settings.parkhead || !showPosX;
+  }
+
+  if (els.settingsTimelapseParkPosYRow) {
+    els.settingsTimelapseParkPosYRow.hidden = !settings.parkhead || !showPosY;
+  }
+
+  if (els.settingsTimelapseParkPosDzRow) {
+    els.settingsTimelapseParkPosDzRow.hidden = !settings.parkhead || !showPosDz;
+  }
+
+  if (els.settingsTimelapseRetractOptions) {
+    els.settingsTimelapseRetractOptions.hidden = !settings.parkhead || settings.fw_retract;
+  }
+
+  if (els.settingsTimelapseVariableFpsOptions) {
+    els.settingsTimelapseVariableFpsOptions.hidden = !settings.variable_fps;
+  }
+
+  if (els.settingsTimelapseStaticFpsOptions) {
+    els.settingsTimelapseStaticFpsOptions.hidden = settings.variable_fps;
+  }
+
+  if (els.settingsTimelapseCameraWarning) {
+    els.settingsTimelapseCameraWarning.hidden = !isTimelapseSettingsBlocked("snapshoturl");
+  }
+
+  setTimelapseSettingsControlDisabled(
+    els.settingsTimelapseEnabled,
+    !available || busy || isTimelapseSettingsBlocked("enabled")
+  );
+  setTimelapseSettingsControlDisabled(
+    els.settingsTimelapseAutorender,
+    !available || busy || isTimelapseSettingsBlocked("autorender")
+  );
+  setTimelapseSettingsControlDisabled(
+    els.settingsTimelapseCamera,
+    !available || busy || !state.timelapseSettings.cameraOptions.length || isTimelapseSettingsBlocked("camera", "snapshoturl")
+  );
+  setTimelapseSettingsControlDisabled(
+    els.settingsTimelapseMode,
+    !available || busy || isTimelapseSettingsBlocked("modeOptions")
+  );
+  setTimelapseSettingsControlDisabled(
+    els.settingsTimelapseHyperlapseCycle,
+    !available || busy || settings.mode !== "hyperlapse" || isTimelapseSettingsBlocked("hyperlapseCycle")
+  );
+  setTimelapseSettingsControlDisabled(
+    els.settingsTimelapsePreviewImage,
+    !available || busy || isTimelapseSettingsBlocked("previewimage")
+  );
+  setTimelapseSettingsControlDisabled(
+    els.settingsTimelapseSaveFrames,
+    !available || busy || isTimelapseSettingsBlocked("saveframes")
+  );
+  setTimelapseSettingsControlDisabled(
+    els.settingsTimelapseStreamDelayCompensation,
+    !available || busy || isTimelapseSettingsBlocked("stream_delay_compensation")
+  );
+  setTimelapseSettingsControlDisabled(
+    els.settingsTimelapseGcodeVerbose,
+    !available || busy || isTimelapseSettingsBlocked("gcode_verbose")
+  );
+  setTimelapseSettingsControlDisabled(
+    els.settingsTimelapseParkhead,
+    !available || busy || isTimelapseSettingsBlocked("parkhead")
+  );
+  setTimelapseSettingsControlDisabled(
+    els.settingsTimelapseParkpos,
+    !available || busy || !settings.parkhead || isTimelapseSettingsBlocked("parkposOptions")
+  );
+  setTimelapseSettingsControlDisabled(
+    els.settingsTimelapseParkCustomPosX,
+    !available || busy || !settings.parkhead || !showPosX || isTimelapseSettingsBlocked("park_custom_pos_x")
+  );
+  setTimelapseSettingsControlDisabled(
+    els.settingsTimelapseParkCustomPosY,
+    !available || busy || !settings.parkhead || !showPosY || isTimelapseSettingsBlocked("park_custom_pos_y")
+  );
+  setTimelapseSettingsControlDisabled(
+    els.settingsTimelapseParkCustomPosDz,
+    !available || busy || !settings.parkhead || !showPosDz || isTimelapseSettingsBlocked("park_custom_pos_dz")
+  );
+  setTimelapseSettingsControlDisabled(
+    els.settingsTimelapseParkTravelSpeed,
+    !available || busy || !settings.parkhead || isTimelapseSettingsBlocked("park_travel_speed")
+  );
+  setTimelapseSettingsControlDisabled(
+    els.settingsTimelapseFwRetract,
+    !available || busy || !settings.parkhead || isTimelapseSettingsBlocked("fw_retract")
+  );
+  setTimelapseSettingsControlDisabled(
+    els.settingsTimelapseParkRetractSpeed,
+    !available || busy || !settings.parkhead || settings.fw_retract || isTimelapseSettingsBlocked("park_retract_speed")
+  );
+  setTimelapseSettingsControlDisabled(
+    els.settingsTimelapseParkRetractDistance,
+    !available || busy || !settings.parkhead || settings.fw_retract || isTimelapseSettingsBlocked("park_retract_distance")
+  );
+  setTimelapseSettingsControlDisabled(
+    els.settingsTimelapseParkExtrudeSpeed,
+    !available || busy || !settings.parkhead || settings.fw_retract || isTimelapseSettingsBlocked("park_extrude_speed")
+  );
+  setTimelapseSettingsControlDisabled(
+    els.settingsTimelapseParkExtrudeDistance,
+    !available || busy || !settings.parkhead || settings.fw_retract || isTimelapseSettingsBlocked("park_extrude_distance")
+  );
+  setTimelapseSettingsControlDisabled(
+    els.settingsTimelapseParkTime,
+    !available || busy || !settings.parkhead || isTimelapseSettingsBlocked("park_time")
+  );
+  setTimelapseSettingsControlDisabled(
+    els.settingsTimelapseVariableFps,
+    !available || busy || isTimelapseSettingsBlocked("variable_fps")
+  );
+  setTimelapseSettingsControlDisabled(
+    els.settingsTimelapseTargetLength,
+    !available || busy || !settings.variable_fps || isTimelapseSettingsBlocked("targetlength")
+  );
+  setTimelapseSettingsControlDisabled(
+    els.settingsTimelapseVariableFpsMin,
+    !available || busy || !settings.variable_fps || isTimelapseSettingsBlocked("variable_fps_min")
+  );
+  setTimelapseSettingsControlDisabled(
+    els.settingsTimelapseVariableFpsMax,
+    !available || busy || !settings.variable_fps || isTimelapseSettingsBlocked("variable_fps_max")
+  );
+  setTimelapseSettingsControlDisabled(
+    els.settingsTimelapseOutputFramerate,
+    !available || busy || settings.variable_fps || isTimelapseSettingsBlocked("output_framerate")
+  );
+  setTimelapseSettingsControlDisabled(
+    els.settingsTimelapseDuplicateLastFrame,
+    !available || busy || isTimelapseSettingsBlocked("duplicatelastframe")
+  );
+  setTimelapseSettingsControlDisabled(
+    els.settingsTimelapseConstantRateFactor,
+    !available || busy || isTimelapseSettingsBlocked("constant_rate_factor")
+  );
+  setTimelapseSettingsControlDisabled(
+    els.settingsTimelapsePixelformat,
+    !available || busy || isTimelapseSettingsBlocked("pixelformat")
+  );
+  setTimelapseSettingsControlDisabled(
+    els.settingsTimelapseTimeFormatCode,
+    !available || busy || isTimelapseSettingsBlocked("time_format_code")
+  );
+  setTimelapseSettingsControlDisabled(
+    els.settingsTimelapseExtraOutputParams,
+    !available || busy || isTimelapseSettingsBlocked("extraoutputparams")
+  );
+}
+
+async function refreshTimelapseSettings({ silent = false } = {}) {
+  if (!isTimelapseSettingsConnected()) {
+    state.timelapseSettings.available = false;
+    state.timelapseSettings.loading = false;
+    state.timelapseSettings.saving = false;
+    state.timelapseSettings.lastError = "";
+    state.timelapseSettings.statusMessage = "Connect to Moonraker to load timelapse settings.";
+    state.timelapseSettings.statusLevel = "warn";
+    renderTimelapseSettingsCard();
+    return null;
+  }
+
+  if (state.timelapseSettings.loading) {
+    return state.timelapseSettings.settings;
+  }
+
+  state.timelapseSettings.loading = true;
+  state.timelapseSettings.lastError = "";
+  state.timelapseSettings.statusMessage = "Loading timelapse settings...";
+  state.timelapseSettings.statusLevel = "info";
+  renderTimelapseSettingsCard();
+
+  try {
+    const settingsResponse = await state.client.getTimelapseSettings();
+    const settingsPayload = extractTimelapseSettingsPayload(settingsResponse);
+    mergeTimelapseSettingsPatch(settingsPayload);
+    state.timelapseSettings.available = true;
+    state.timelapseSettings.lastUpdatedMs = Date.now();
+    state.timelapseSettings.lastError = "";
+
+    try {
+      const webcamResponse = await state.client.getWebcamsList();
+      state.timelapseSettings.cameraOptions = extractTimelapseCameraOptions(webcamResponse);
+    } catch (webcamError) {
+      log.debug("Timelapse webcam list refresh failed.", {
+        error: webcamError?.message || String(webcamError),
+      });
+      state.timelapseSettings.cameraOptions = [];
+    }
+
+    state.timelapseSettings.statusMessage = `Last updated: ${new Date(state.timelapseSettings.lastUpdatedMs).toLocaleTimeString()}`;
+    state.timelapseSettings.statusLevel = "info";
+
+    if (!silent) {
+      appendConsole("Timelapse settings refreshed.", "info");
+    }
+
+    renderTimelapseSettingsCard();
+    return state.timelapseSettings.settings;
+  } catch (error) {
+    const message = error?.message || String(error);
+    state.timelapseSettings.available = false;
+    state.timelapseSettings.lastError = message;
+    state.timelapseSettings.cameraOptions = [];
+
+    const unavailable = isTimelapseSettingsUnavailableError(error);
+    state.timelapseSettings.statusMessage = unavailable
+      ? "Moonraker timelapse settings are not available on this host."
+      : `Timelapse settings load failed: ${message}`;
+    state.timelapseSettings.statusLevel = unavailable ? "warn" : "error";
+
+    if (!silent) {
+      appendConsole(
+        unavailable
+          ? "Timelapse settings unavailable: machine.timelapse module missing."
+          : `Timelapse settings load failed: ${message}`,
+        unavailable ? "warn" : "error"
+      );
+    }
+
+    renderTimelapseSettingsCard();
+    return null;
+  } finally {
+    state.timelapseSettings.loading = false;
+    renderTimelapseSettingsCard();
+  }
+}
+
+async function saveTimelapseSettingsPatch(patch, { silent = true } = {}) {
+  if (!isTimelapseSettingsConnected()) {
+    setTimelapseSettingsStatus("Connect to Moonraker before saving timelapse settings.", "warn");
+    renderTimelapseSettingsCard();
+    return false;
+  }
+
+  const payload = patch && typeof patch === "object" ? patch : {};
+  const keys = Object.keys(payload);
+  if (!keys.length) return false;
+
+  const previous = normalizeTimelapseSettingsPayload(state.timelapseSettings.settings);
+  mergeTimelapseSettingsPatch(payload);
+  state.timelapseSettings.saving = true;
+  renderTimelapseSettingsCard();
+
+  try {
+    const response = await state.client.saveTimelapseSettings(payload);
+    const responsePayload = extractTimelapseSettingsPayload(response);
+    const hasResponsePayload = Object.keys(responsePayload).length > 0;
+    mergeTimelapseSettingsPatch(
+      hasResponsePayload
+        ? normalizeTimelapseSettingsPayload(responsePayload)
+        : payload
+    );
+    state.timelapseSettings.available = true;
+    state.timelapseSettings.lastError = "";
+    state.timelapseSettings.lastUpdatedMs = Date.now();
+    state.timelapseSettings.statusMessage = `Saved: ${keys.join(", ")}`;
+    state.timelapseSettings.statusLevel = "info";
+
+    if (!silent) {
+      appendConsole(`Timelapse setting saved: ${keys.join(", ")}`, "info");
+    }
+
+    renderTimelapseSettingsCard();
+    return true;
+  } catch (error) {
+    const message = error?.message || String(error);
+    state.timelapseSettings.settings = previous;
+    state.timelapseSettings.lastError = message;
+    state.timelapseSettings.statusMessage = `Timelapse setting save failed: ${message}`;
+    state.timelapseSettings.statusLevel = "error";
+    renderTimelapseSettingsCard();
+
+    if (!silent) {
+      appendConsole(`Timelapse setting save failed: ${message}`, "error");
+    }
+
+    return false;
+  } finally {
+    state.timelapseSettings.saving = false;
+    renderTimelapseSettingsCard();
+  }
+}
+
+function parseTimelapseSettingsNumberInput(key, rawValue) {
+  const fallback = state.timelapseSettings.settings?.[key] ?? TIMELAPSE_SETTINGS_DEFAULTS[key] ?? 0;
+  const value = normalizeTimelapseSettingsNumber(key, rawValue, fallback);
+  return value;
+}
+
+function saveTimelapseNumberSettingFromInput(key, input, { silent = true } = {}) {
+  if (!input) return;
+
+  const value = parseTimelapseSettingsNumberInput(key, input.value);
+  const patch = { [key]: value };
+
+  if (key === "variable_fps_max" && value <= Number(state.timelapseSettings.settings.variable_fps_min)) {
+    setTimelapseSettingsStatus("Variable FPS Max must be greater than Variable FPS Min.", "warn");
+    renderTimelapseSettingsCard();
+    return;
+  }
+
+  if (key === "variable_fps_min" && Number(state.timelapseSettings.settings.variable_fps_max) <= value) {
+    patch.variable_fps_max = value + 1;
+  }
+
+  void saveTimelapseSettingsPatch(patch, { silent });
 }
 function persistConfigViewState() {
   localStorage.setItem(CONFIG_SELECTED_PATH_STORAGE_KEY, state.config.selectedPath || "");
@@ -2751,6 +3388,100 @@ function createDefaultTimelapseControlState() {
   };
 }
 
+function createDefaultTimelapseSettingsPayload() {
+  return {
+    ...TIMELAPSE_SETTINGS_DEFAULTS,
+    blockedsettings: [...TIMELAPSE_SETTINGS_DEFAULTS.blockedsettings],
+  };
+}
+
+function normalizeTimelapseSettingsMode(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return TIMELAPSE_SETTINGS_MODE_VALUES.includes(normalized) ? normalized : TIMELAPSE_SETTINGS_DEFAULTS.mode;
+}
+
+function normalizeTimelapseSettingsParkpos(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return TIMELAPSE_SETTINGS_PARKPOS_VALUES.includes(normalized) ? normalized : TIMELAPSE_SETTINGS_DEFAULTS.parkpos;
+}
+
+function normalizeTimelapseSettingsBlockedList(value) {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.map((entry) => String(entry || "").trim()).filter(Boolean))];
+}
+
+function normalizeTimelapseSettingsNumber(key, candidate, fallback) {
+  const numeric = Number(candidate);
+  if (!Number.isFinite(numeric)) return fallback;
+
+  const rules = TIMELAPSE_SETTINGS_NUMERIC_RULES[key];
+  if (!rules) return numeric;
+
+  if (rules.strict ? numeric <= rules.min : numeric < rules.min) {
+    return fallback;
+  }
+
+  return numeric;
+}
+
+function normalizeTimelapseSettingsPayload(candidate) {
+  const source = candidate && typeof candidate === "object" ? candidate : {};
+  const defaults = createDefaultTimelapseSettingsPayload();
+  const output = { ...defaults };
+
+  Object.keys(defaults).forEach((key) => {
+    if (!Object.prototype.hasOwnProperty.call(source, key)) return;
+
+    if (key === "mode") {
+      output.mode = normalizeTimelapseSettingsMode(source.mode);
+      return;
+    }
+
+    if (key === "parkpos") {
+      output.parkpos = normalizeTimelapseSettingsParkpos(source.parkpos);
+      return;
+    }
+
+    if (key === "blockedsettings") {
+      output.blockedsettings = normalizeTimelapseSettingsBlockedList(source.blockedsettings);
+      return;
+    }
+
+    const defaultValue = defaults[key];
+    if (typeof defaultValue === "boolean") {
+      output[key] = source[key] === true;
+      return;
+    }
+
+    if (typeof defaultValue === "number") {
+      output[key] = normalizeTimelapseSettingsNumber(key, source[key], defaultValue);
+      return;
+    }
+
+    output[key] = String(source[key] ?? "").trim();
+  });
+
+  if (output.variable_fps_max <= output.variable_fps_min) {
+    output.variable_fps_max = Math.max(output.variable_fps_min + 1, defaults.variable_fps_max);
+  }
+
+  return output;
+}
+
+function createDefaultTimelapseSettingsState() {
+  return {
+    settings: createDefaultTimelapseSettingsPayload(),
+    cameraOptions: [],
+    loading: false,
+    saving: false,
+    available: false,
+    lastUpdatedMs: null,
+    lastError: "",
+    statusMessage: "Connect to Moonraker to load timelapse settings.",
+    statusLevel: "info",
+  };
+}
+
 function createDefaultSpoolmanState() {
   const enabled = loadStoredSpoolmanEnabled();
   const serverUrl = loadStoredSpoolmanServerUrl();
@@ -3043,6 +3774,7 @@ const state = {
   toolsMenu: createDefaultToolsMenuState(),
   timelapse: createDefaultTimelapseControlState(),
   timelapseMedia: createDefaultTimelapseMediaState(),
+  timelapseSettings: createDefaultTimelapseSettingsState(),
   spoolman: createDefaultSpoolmanState(),
   updateManager: createDefaultUpdateManagerState(),
   endstops: createDefaultEndstopsState(),
@@ -3086,6 +3818,7 @@ const state = {
     lastVirtualSd: {},
     lastMotionReport: {},
     lastToolhead: {},
+    lastFanSpeed: null,
     countdownTargetMs: null,
     fileClearedAfterComplete: !!initialClearedStatusFilename,
     clearedFilename: initialClearedStatusFilename,
@@ -6419,6 +7152,7 @@ function setConnectionUi(status) {
   renderToolsMenu();
   renderTimelapseControlView();
   renderTimelapseMediaCard();
+  renderTimelapseSettingsCard();
   renderSpoolmanView();
   renderSpoolmanSettingsCard();
   if (status === "connected" && state.activeView === "timelapse") {
@@ -6430,6 +7164,9 @@ function setConnectionUi(status) {
   if (status === "connected" && state.activeView === "spoolman") {
     void refreshSpoolmanState({ source: "connect", silent: true });
   }
+  if (status === "connected" && state.activeView === "settings") {
+    void refreshTimelapseSettings({ silent: true });
+  }
 
   if (isPrettyGcodeViewerVisible()) {
     renderPrettyGcodeView();
@@ -6439,9 +7176,22 @@ function setConnectionUi(status) {
 function setPrinterState(value) {
   const normalized = normalizePrinterState(value);
   const meta = PRINTER_STATE_META[normalized] || PRINTER_STATE_META.unknown;
-  els.printerState.dataset.state = normalized;
-  els.printerState.textContent = meta.label;
-  els.printerDot.style.background = meta.color;
+  if (els.printerState) {
+    els.printerState.dataset.state = normalized;
+    els.printerState.textContent = meta.label;
+  }
+  if (els.printerDot) {
+    els.printerDot.style.background = meta.color;
+  }
+  if (els.statusStateChip) {
+    els.statusStateChip.dataset.state = normalized;
+  }
+  if (els.statusStateDot) {
+    els.statusStateDot.style.background = meta.color;
+  }
+  if (els.statusPrinterState) {
+    els.statusPrinterState.textContent = meta.label;
+  }
   renderJobsJobControls();
   renderControlsPanel();
   renderStatusClearFileButton(state.printStatus.lastPrintStats);
@@ -6490,6 +7240,17 @@ function clearStatusCardValues() {
     els.progressText.textContent = "0%";
   }
 
+  if (els.statusProgressRingText) {
+    els.statusProgressRingText.textContent = "0%";
+  }
+
+  if (els.statusProgressRing) {
+    const radius = Number(els.statusProgressRing.getAttribute("r")) || 16;
+    const circumference = 2 * Math.PI * radius;
+    els.statusProgressRing.style.strokeDasharray = `${circumference}`;
+    els.statusProgressRing.style.strokeDashoffset = `${circumference}`;
+  }
+
   if (els.statusEtp) {
     els.statusEtp.textContent = "--:--:--";
   }
@@ -6515,6 +7276,8 @@ function clearStatusCardValues() {
   if (els.statusLayer) {
     els.statusLayer.textContent = "Layer: --/--";
   }
+
+  renderStatusThermalsAndFan();
 }
 
 function clearStatusFileFromCard() {
@@ -6701,6 +7464,64 @@ function renderStatusProgress(virtualSd) {
   if (els.progressText) {
     els.progressText.textContent = `${pct}%`;
   }
+
+  if (els.statusProgressRingText) {
+    els.statusProgressRingText.textContent = `${pct}%`;
+  }
+
+  if (els.statusProgressRing) {
+    const radius = Number(els.statusProgressRing.getAttribute("r")) || 16;
+    const circumference = 2 * Math.PI * radius;
+    const offset = circumference - (pct / 100) * circumference;
+    els.statusProgressRing.style.strokeDasharray = `${circumference}`;
+    els.statusProgressRing.style.strokeDashoffset = `${offset}`;
+  }
+}
+
+function formatStatusTemperaturePair(current, target) {
+  const currentValue = readFiniteNumber(current);
+  const targetValue = readFiniteNumber(target);
+
+  if (!Number.isFinite(currentValue) && !Number.isFinite(targetValue)) {
+    return "--.-\u00B0C / --\u00B0C";
+  }
+
+  const currentLabel = Number.isFinite(currentValue) ? `${currentValue.toFixed(1)}\u00B0C` : "--.-\u00B0C";
+  const targetLabel = Number.isFinite(targetValue) ? `${Math.max(0, Math.round(targetValue))}\u00B0C` : "--\u00B0C";
+  return `${currentLabel} / ${targetLabel}`;
+}
+
+function normalizeStatusFanPercent(value) {
+  const numeric = readFiniteNumber(value);
+  if (!Number.isFinite(numeric)) return null;
+
+  // Moonraker fan.speed is usually 0..1, but some integrations report 0..100.
+  const scaled = numeric <= 1.000001 ? numeric * 100 : numeric;
+  return Math.max(0, Math.min(100, Math.round(scaled)));
+}
+
+function renderStatusThermalsAndFan() {
+  if (els.statusHotendSummary) {
+    els.statusHotendSummary.textContent = `Nozzle ${formatStatusTemperaturePair(
+      state.temperatures.hotend.current,
+      state.temperatures.hotend.target
+    )}`;
+  }
+
+  if (els.statusBedSummary) {
+    els.statusBedSummary.textContent = `Bed ${formatStatusTemperaturePair(
+      state.temperatures.bed.current,
+      state.temperatures.bed.target
+    )}`;
+  }
+
+  if (els.statusFanSpeed) {
+    let fanPercent = normalizeStatusFanPercent(state.printStatus.lastFanSpeed);
+    if (!Number.isFinite(fanPercent)) {
+      fanPercent = normalizeFanSpeedPercent(state.controls.fanSpeed);
+    }
+    els.statusFanSpeed.textContent = Number.isFinite(fanPercent) ? `${fanPercent}%` : "--%";
+  }
 }
 function formatStatusLayerValue(value) {
   const numeric = Number(value);
@@ -6829,6 +7650,17 @@ function formatStatusSpeedMmPerSec(mmPerSec) {
   }
 
   return `${mmPerSec.toFixed(1)} mm/s`;
+}
+
+function updateStatusFanSnapshot(fan = null) {
+  const speedCandidate = fan && typeof fan === "object"
+    ? fan.speed ?? fan.value ?? fan.speed_factor ?? null
+    : null;
+  const fanPercent = normalizeStatusFanPercent(speedCandidate);
+  if (Number.isFinite(fanPercent)) {
+    state.printStatus.lastFanSpeed = fanPercent;
+  }
+  renderStatusThermalsAndFan();
 }
 
 function updateStatusRatesAndFilament(printStats, gcodeMove = null, motionReport = null, toolhead = null) {
@@ -7673,6 +8505,8 @@ function renderControlsPanel() {
     els.controlsFanSpeedValue.textContent = `${normalizeFanSpeedPercent(state.controls.fanSpeed)}%`;
   }
 
+  renderStatusThermalsAndFan();
+
   const currentZOffset = getControlsCurrentZOffset();
   const showZOffsetSaveButton = getControlsShowZOffsetSaveButton(currentZOffset);
   const zOffsetButtons = getControlsZOffsetStepButtons();
@@ -7981,12 +8815,14 @@ async function saveControlsZOffsetConfig() {
 async function sendControlsFanSpeed(percent, { persist = true, successMessage = null } = {}) {
   const normalized = normalizeFanSpeedPercent(percent);
   state.controls.fanSpeed = normalized;
+  state.printStatus.lastFanSpeed = normalized;
 
   if (persist) {
     localStorage.setItem("controls_fan_speed", String(normalized));
   }
 
   renderControlsPanel();
+  renderStatusThermalsAndFan();
 
   const sent = await executeGcodeAction(`M106 S${fanSpeedPercentToPwm(normalized)}`, {
     actionLabel: "Set fan speed",
@@ -8178,10 +9014,11 @@ function startTemperaturePolling() {
     inFlight = true;
 
     try {
-      const statusResponse = await state.client.call("/printer/objects/query?extruder&heater_bed&print_stats&virtual_sdcard&gcode_move&motion_report&toolhead&manual_probe");
+      const statusResponse = await state.client.call("/printer/objects/query?extruder&heater_bed&print_stats&virtual_sdcard&gcode_move&motion_report&toolhead&manual_probe&fan");
       const statusSnapshot = statusResponse?.result?.status || {};
 
       updateTemperatureSnapshotFromStatus(statusSnapshot);
+      updateStatusFanSnapshot(statusSnapshot?.fan || null);
 
       const virtualSd = mergeVirtualSdSnapshot(statusSnapshot?.virtual_sdcard || null);
       renderStatusProgress(virtualSd);
@@ -10036,6 +10873,7 @@ function updateTemperatureSnapshotFromStatus(status, { recordHistory = true } = 
     void persistTemperatureHistoryPoint(latestSample);
   }
 
+  renderStatusThermalsAndFan();
   renderTemperaturePanel();
 }
 
@@ -10931,6 +11769,7 @@ async function connectMoonraker() {
       if (state.activeView === "spoolman") {
         void refreshSpoolmanState({ source: "connect", silent: true });
       }
+      void refreshTimelapseSettings({ silent: true });
       log.info("Moonraker websocket connected.");
       return;
     }
@@ -10953,6 +11792,12 @@ async function connectMoonraker() {
       state.jobs.workflowStatusLevel = "info";
       state.timelapseMedia.isLoading = false;
       state.timelapseMedia.actionInFlight = false;
+      state.timelapseSettings.loading = false;
+      state.timelapseSettings.saving = false;
+      state.timelapseSettings.available = false;
+      state.timelapseSettings.lastError = "";
+      state.timelapseSettings.statusMessage = "Connect to Moonraker to load timelapse settings.";
+      state.timelapseSettings.statusLevel = "warn";
       state.spoolman.loading = false;
       state.spoolman.testing = false;
       state.spoolman.actionInFlight = false;
@@ -10974,6 +11819,7 @@ async function connectMoonraker() {
       renderMachineLogFilesCard();
       renderJobsCard();
       renderTimelapseMediaCard();
+      renderTimelapseSettingsCard();
       renderSpoolmanView();
       renderSpoolmanSettingsCard();
       renderPrintHistoryCard();
@@ -10999,6 +11845,12 @@ async function connectMoonraker() {
       state.jobs.workflowStatusLevel = "info";
       state.timelapseMedia.isLoading = false;
       state.timelapseMedia.actionInFlight = false;
+      state.timelapseSettings.loading = false;
+      state.timelapseSettings.saving = false;
+      state.timelapseSettings.available = false;
+      state.timelapseSettings.lastError = "";
+      state.timelapseSettings.statusMessage = "Moonraker websocket error. Timelapse settings are unavailable.";
+      state.timelapseSettings.statusLevel = "error";
       state.spoolman.loading = false;
       state.spoolman.testing = false;
       state.spoolman.actionInFlight = false;
@@ -11020,6 +11872,7 @@ async function connectMoonraker() {
       renderMachineLogFilesCard();
       renderJobsCard();
       renderTimelapseMediaCard();
+      renderTimelapseSettingsCard();
       renderSpoolmanView();
       renderSpoolmanSettingsCard();
       renderPrintHistoryCard();
@@ -11078,6 +11931,7 @@ async function connectMoonraker() {
       mergeManualProbeStatusSnapshot(status?.manual_probe || null);
 
       updateTemperatureSnapshotFromStatus(status);
+      updateStatusFanSnapshot(status?.fan || null);
 
       const reportedPrinterState = printStats.state || printStats.status;
       if (reportedPrinterState) {
@@ -11094,6 +11948,7 @@ async function connectMoonraker() {
         hotendTarget: extruder.target ?? null,
         bed: bed.temperature ?? null,
         bedTarget: bed.target ?? null,
+        fan: state.printStatus.lastFanSpeed ?? null,
       });
       return;
     }
@@ -11115,7 +11970,7 @@ async function connectMoonraker() {
   state.client.connectWebSocket();
 
   try {
-    const statusResponse = await state.client.call("/printer/objects/query?print_stats&gcode_move&virtual_sdcard&motion_report&toolhead&manual_probe");
+    const statusResponse = await state.client.call("/printer/objects/query?print_stats&gcode_move&virtual_sdcard&motion_report&toolhead&manual_probe&fan");
     const statusSnapshot = statusResponse?.result?.status || {};
     const printStats = statusSnapshot.print_stats || {};
     const gcodeMove = statusSnapshot.gcode_move || null;
@@ -11127,6 +11982,7 @@ async function connectMoonraker() {
     setPrinterState(printerState);
     updateStatusFileInfo(printStats, gcodeMove, motionReport, toolhead);
     mergeManualProbeStatusSnapshot(statusSnapshot.manual_probe || null);
+    updateStatusFanSnapshot(statusSnapshot.fan || null);
     log.debug("Initial printer state loaded.", { printerState });
   } catch (error) {
     const message = error?.message || String(error);
@@ -15614,6 +16470,7 @@ function applyJobsPrepareStatusSnapshot(snapshot) {
   const status = snapshot?.result?.status || {};
   const virtualSd = mergeVirtualSdSnapshot(status?.virtual_sdcard || null);
   renderStatusProgress(virtualSd);
+  updateStatusFanSnapshot(status?.fan || null);
   updateStatusFileInfo(
     status?.print_stats || {},
     status?.gcode_move || null,
@@ -15628,10 +16485,10 @@ async function queryJobsPrepareStatusSnapshot() {
   }
 
   if (typeof state.client.queryPrinterObjects === "function") {
-    return state.client.queryPrinterObjects(["print_stats", "virtual_sdcard", "gcode_move", "motion_report", "toolhead", "idle_timeout"]);
+    return state.client.queryPrinterObjects(["print_stats", "virtual_sdcard", "gcode_move", "motion_report", "toolhead", "idle_timeout", "fan"]);
   }
 
-  return state.client.call("/printer/objects/query?print_stats&virtual_sdcard&gcode_move&motion_report&toolhead&idle_timeout");
+  return state.client.call("/printer/objects/query?print_stats&virtual_sdcard&gcode_move&motion_report&toolhead&idle_timeout&fan");
 }
 
 async function verifyJobsSelectedFile(path, { attempts = 8, intervalMs = 220 } = {}) {
@@ -16084,6 +16941,130 @@ function openJobsTextInputDialog({ title = "", label = "", confirmLabel = "Save"
     openPromptFallback();
   });
 }
+
+function openJobsFolderSelectDialog({
+  title = "Move",
+  label = "Destination folder",
+  confirmLabel = "Move",
+  options = [],
+  defaultValue = "",
+} = {}) {
+  return new Promise((resolve) => {
+    const dialog = els.jobsMoveFileDialog;
+    const titleEl = els.jobsMoveFileTitle;
+    const selectEl = els.jobsMoveFileSelect;
+    const cancelEl = els.jobsMoveFileCancel;
+    const confirmEl = els.jobsMoveFileConfirm;
+
+    const entries = (Array.isArray(options) ? options : [])
+      .map((entry) => ({
+        value: String(entry?.value ?? ""),
+        label: String(entry?.label ?? entry?.value ?? "").trim(),
+      }))
+      .filter((entry) => entry.label.length > 0);
+
+    if (!(dialog instanceof HTMLDialogElement) || !selectEl || !cancelEl || !confirmEl || !entries.length) {
+      const fallback = typeof window.prompt === "function"
+        ? window.prompt(String(title || "Move"), String(defaultValue || ""))
+        : null;
+      resolve(fallback === null ? null : String(fallback));
+      return;
+    }
+
+    if (titleEl) {
+      titleEl.textContent = String(title || "Move");
+    }
+
+    const card = dialog.querySelector(".jobs-move-dialog-card");
+    const labelEl = card?.querySelector(".jobs-move-dialog-label");
+    if (labelEl) {
+      labelEl.textContent = String(label || "Destination folder");
+    }
+
+    confirmEl.textContent = String(confirmLabel || "Move");
+
+    selectEl.replaceChildren();
+    entries.forEach((entry) => {
+      const option = document.createElement("option");
+      option.value = entry.value;
+      option.textContent = entry.label;
+      selectEl.appendChild(option);
+    });
+
+    const hasDefault = entries.some((entry) => entry.value === String(defaultValue || ""));
+    selectEl.value = hasDefault ? String(defaultValue || "") : entries[0].value;
+
+    let settled = false;
+    const cleanup = () => {
+      dialog.removeEventListener("cancel", handleCancel);
+      dialog.removeEventListener("click", handleBackdrop);
+      cancelEl.removeEventListener("click", handleCancelClick);
+      confirmEl.removeEventListener("click", handleConfirmClick);
+      selectEl.removeEventListener("keydown", handleKeydown);
+    };
+
+    const closeWith = (value) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      try {
+        dialog.close();
+      } catch {}
+      resolve(value);
+    };
+
+    const handleCancel = (event) => {
+      event.preventDefault();
+      closeWith(null);
+    };
+
+    const handleBackdrop = (event) => {
+      if (event.target === dialog) {
+        closeWith(null);
+      }
+    };
+
+    const handleCancelClick = () => closeWith(null);
+    const handleConfirmClick = () => closeWith(String(selectEl.value || ""));
+    const handleKeydown = (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        closeWith(String(selectEl.value || ""));
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeWith(null);
+      }
+    };
+
+    dialog.addEventListener("cancel", handleCancel);
+    dialog.addEventListener("click", handleBackdrop);
+    cancelEl.addEventListener("click", handleCancelClick);
+    confirmEl.addEventListener("click", handleConfirmClick);
+    selectEl.addEventListener("keydown", handleKeydown);
+
+    if (typeof dialog.showModal === "function") {
+      try {
+        dialog.showModal();
+        setTimeout(() => {
+          selectEl.focus();
+        }, 0);
+        return;
+      } catch (error) {
+        log.warn("Move folder select dialog failed to open, using prompt fallback.", {
+          error: error?.message || String(error),
+        });
+      }
+    }
+
+    cleanup();
+    const fallback = typeof window.prompt === "function"
+      ? window.prompt(String(title || "Move"), String(defaultValue || ""))
+      : null;
+    resolve(fallback === null ? null : String(fallback));
+  });
+}
+
 async function requestJobsCreateFolder() {
   if (!state.client) {
     setJobsStatusMessage("Moonraker client is unavailable.", "warn");
@@ -18437,6 +19418,16 @@ async function requestViewChange(viewName) {
     return;
   }
 
+  if (viewName === "settings") {
+    renderTimelapseSettingsCard();
+
+    if (state.connectionStatus === "connected") {
+      void refreshTimelapseSettings({ silent: true });
+    }
+
+    return;
+  }
+
   if (viewName !== "configuration") return;
 
   if (!state.client) {
@@ -19837,6 +20828,138 @@ function wireEvents() {
     state.thermalPresetDialogPresetId = null;
     state.thermalPresetDialogDraft = null;
   });
+
+  els.settingsTimelapseRefresh?.addEventListener("click", async () => {
+    await refreshTimelapseSettings({ silent: false });
+  });
+
+  els.settingsTimelapseEnabled?.addEventListener("change", () => {
+    void saveTimelapseSettingsPatch({ enabled: !!els.settingsTimelapseEnabled?.checked });
+  });
+
+  els.settingsTimelapseAutorender?.addEventListener("change", () => {
+    void saveTimelapseSettingsPatch({ autorender: !!els.settingsTimelapseAutorender?.checked });
+  });
+
+  els.settingsTimelapseCamera?.addEventListener("change", () => {
+    const camera = String(els.settingsTimelapseCamera?.value || "").trim();
+    void saveTimelapseSettingsPatch({ camera: camera || null });
+  });
+
+  els.settingsTimelapseMode?.addEventListener("change", () => {
+    const mode = normalizeTimelapseSettingsMode(els.settingsTimelapseMode?.value);
+    void saveTimelapseSettingsPatch({ mode });
+  });
+
+  els.settingsTimelapseHyperlapseCycle?.addEventListener("change", () => {
+    saveTimelapseNumberSettingFromInput("hyperlapse_cycle", els.settingsTimelapseHyperlapseCycle);
+  });
+
+  els.settingsTimelapsePreviewImage?.addEventListener("change", () => {
+    void saveTimelapseSettingsPatch({ previewimage: !!els.settingsTimelapsePreviewImage?.checked });
+  });
+
+  els.settingsTimelapseSaveFrames?.addEventListener("change", () => {
+    void saveTimelapseSettingsPatch({ saveframes: !!els.settingsTimelapseSaveFrames?.checked });
+  });
+
+  els.settingsTimelapseStreamDelayCompensation?.addEventListener("change", () => {
+    saveTimelapseNumberSettingFromInput("stream_delay_compensation", els.settingsTimelapseStreamDelayCompensation);
+  });
+
+  els.settingsTimelapseGcodeVerbose?.addEventListener("change", () => {
+    void saveTimelapseSettingsPatch({ gcode_verbose: !!els.settingsTimelapseGcodeVerbose?.checked });
+  });
+
+  els.settingsTimelapseParkhead?.addEventListener("change", () => {
+    void saveTimelapseSettingsPatch({ parkhead: !!els.settingsTimelapseParkhead?.checked });
+  });
+
+  els.settingsTimelapseParkpos?.addEventListener("change", () => {
+    const parkpos = normalizeTimelapseSettingsParkpos(els.settingsTimelapseParkpos?.value);
+    void saveTimelapseSettingsPatch({ parkpos });
+  });
+
+  els.settingsTimelapseParkCustomPosX?.addEventListener("change", () => {
+    saveTimelapseNumberSettingFromInput("park_custom_pos_x", els.settingsTimelapseParkCustomPosX);
+  });
+
+  els.settingsTimelapseParkCustomPosY?.addEventListener("change", () => {
+    saveTimelapseNumberSettingFromInput("park_custom_pos_y", els.settingsTimelapseParkCustomPosY);
+  });
+
+  els.settingsTimelapseParkCustomPosDz?.addEventListener("change", () => {
+    saveTimelapseNumberSettingFromInput("park_custom_pos_dz", els.settingsTimelapseParkCustomPosDz);
+  });
+
+  els.settingsTimelapseParkTravelSpeed?.addEventListener("change", () => {
+    saveTimelapseNumberSettingFromInput("park_travel_speed", els.settingsTimelapseParkTravelSpeed);
+  });
+
+  els.settingsTimelapseFwRetract?.addEventListener("change", () => {
+    void saveTimelapseSettingsPatch({ fw_retract: !!els.settingsTimelapseFwRetract?.checked });
+  });
+
+  els.settingsTimelapseParkRetractSpeed?.addEventListener("change", () => {
+    saveTimelapseNumberSettingFromInput("park_retract_speed", els.settingsTimelapseParkRetractSpeed);
+  });
+
+  els.settingsTimelapseParkRetractDistance?.addEventListener("change", () => {
+    saveTimelapseNumberSettingFromInput("park_retract_distance", els.settingsTimelapseParkRetractDistance);
+  });
+
+  els.settingsTimelapseParkExtrudeSpeed?.addEventListener("change", () => {
+    saveTimelapseNumberSettingFromInput("park_extrude_speed", els.settingsTimelapseParkExtrudeSpeed);
+  });
+
+  els.settingsTimelapseParkExtrudeDistance?.addEventListener("change", () => {
+    saveTimelapseNumberSettingFromInput("park_extrude_distance", els.settingsTimelapseParkExtrudeDistance);
+  });
+
+  els.settingsTimelapseParkTime?.addEventListener("change", () => {
+    saveTimelapseNumberSettingFromInput("park_time", els.settingsTimelapseParkTime);
+  });
+
+  els.settingsTimelapseVariableFps?.addEventListener("change", () => {
+    void saveTimelapseSettingsPatch({ variable_fps: !!els.settingsTimelapseVariableFps?.checked });
+  });
+
+  els.settingsTimelapseTargetLength?.addEventListener("change", () => {
+    saveTimelapseNumberSettingFromInput("targetlength", els.settingsTimelapseTargetLength);
+  });
+
+  els.settingsTimelapseVariableFpsMin?.addEventListener("change", () => {
+    saveTimelapseNumberSettingFromInput("variable_fps_min", els.settingsTimelapseVariableFpsMin);
+  });
+
+  els.settingsTimelapseVariableFpsMax?.addEventListener("change", () => {
+    saveTimelapseNumberSettingFromInput("variable_fps_max", els.settingsTimelapseVariableFpsMax);
+  });
+
+  els.settingsTimelapseOutputFramerate?.addEventListener("change", () => {
+    saveTimelapseNumberSettingFromInput("output_framerate", els.settingsTimelapseOutputFramerate);
+  });
+
+  els.settingsTimelapseDuplicateLastFrame?.addEventListener("change", () => {
+    saveTimelapseNumberSettingFromInput("duplicatelastframe", els.settingsTimelapseDuplicateLastFrame);
+  });
+
+  els.settingsTimelapseConstantRateFactor?.addEventListener("change", () => {
+    saveTimelapseNumberSettingFromInput("constant_rate_factor", els.settingsTimelapseConstantRateFactor);
+  });
+
+  els.settingsTimelapsePixelformat?.addEventListener("change", () => {
+    void saveTimelapseSettingsPatch({ pixelformat: String(els.settingsTimelapsePixelformat?.value || "").trim() });
+  });
+
+  els.settingsTimelapseTimeFormatCode?.addEventListener("change", () => {
+    void saveTimelapseSettingsPatch({ time_format_code: String(els.settingsTimelapseTimeFormatCode?.value || "").trim() });
+  });
+
+  els.settingsTimelapseExtraOutputParams?.addEventListener("change", () => {
+    void saveTimelapseSettingsPatch({ extraoutputparams: String(els.settingsTimelapseExtraOutputParams?.value || "") });
+  });
+
   els.settingsForm.addEventListener("submit", async (event) => {
     event.preventDefault();
 
@@ -20319,6 +21442,7 @@ async function init() {
   renderThermalPresetSettingsList();
   renderTimelapseControlView();
   renderTimelapseMediaCard();
+  renderTimelapseSettingsCard();
   renderSpoolmanView();
   renderSpoolmanSettingsCard();
 
@@ -20439,6 +21563,7 @@ async function init() {
   setControlDistance(state.controls.distance, { persist: false });
   state.controls.fanSpeed = normalizeFanSpeedPercent(state.controls.fanSpeed);
   renderControlsPanel();
+  renderStatusThermalsAndFan();
   renderManualProbeDialog();
   setToolsMenuOpen(false, { refresh: false });
 
@@ -21350,6 +22475,43 @@ async function requestTimelapseMediaPathMove(sourcePath, destinationPath, { entr
   }
 }
 
+function getTimelapseMediaMoveDestinationOptions({ excludeDirectoryPrefix = "" } = {}) {
+  const excluded = normalizeTimelapseMediaDirectory(excludeDirectoryPrefix);
+  const directorySet = new Set([""]);
+  const currentDirectory = normalizeTimelapseMediaDirectory(state.timelapseMedia.currentDirectory);
+
+  if (currentDirectory) {
+    directorySet.add(currentDirectory);
+  }
+
+  (state.timelapseMedia.directories || []).forEach((directoryPath) => {
+    const normalized = normalizeTimelapseMediaDirectory(directoryPath);
+    if (!normalized) return;
+
+    if (excluded && (normalized === excluded || normalized.startsWith(`${excluded}/`))) {
+      return;
+    }
+
+    directorySet.add(normalized);
+  });
+
+  const options = [...directorySet]
+    .sort((a, b) => a.localeCompare(b))
+    .map((value) => ({
+      value,
+      label: formatTimelapseMediaRootPath(value),
+    }));
+
+  if (!options.length) {
+    options.push({
+      value: "",
+      label: "timelapse/",
+    });
+  }
+
+  return options;
+}
+
 async function requestTimelapseMediaFileMove(path) {
   const normalizedPath = normalizeTimelapseMediaPath(path);
   if (!normalizedPath) return false;
@@ -21358,10 +22520,13 @@ async function requestTimelapseMediaFileMove(path) {
   if (!filename) return false;
 
   const currentDirectory = getTimelapseMediaDirectory(normalizedPath);
-  const requested = window.prompt(
-    "Move video to folder (relative to timelapse root):",
-    currentDirectory
-  );
+  const requested = await openJobsFolderSelectDialog({
+    title: "Move Timelapse Video",
+    label: "Destination folder",
+    confirmLabel: "Move",
+    options: getTimelapseMediaMoveDestinationOptions(),
+    defaultValue: currentDirectory,
+  });
   if (requested === null) return false;
 
   const targetDirectory = normalizeTimelapseMediaDirectory(requested);
@@ -21377,10 +22542,13 @@ async function requestTimelapseMediaFolderMove(path) {
   if (!folderName) return false;
 
   const currentParent = getTimelapseMediaParentDirectory(normalizedPath);
-  const requested = window.prompt(
-    "Move folder to destination parent (relative to timelapse root):",
-    currentParent
-  );
+  const requested = await openJobsFolderSelectDialog({
+    title: "Move Timelapse Folder",
+    label: "Destination parent folder",
+    confirmLabel: "Move",
+    options: getTimelapseMediaMoveDestinationOptions({ excludeDirectoryPrefix: normalizedPath }),
+    defaultValue: currentParent,
+  });
   if (requested === null) return false;
 
   const targetParent = normalizeTimelapseMediaDirectory(requested);

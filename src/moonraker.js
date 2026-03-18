@@ -447,6 +447,37 @@ export class MoonrakerClient {
     return this.call(`/printer/objects/query?${query}`);
   }
 
+  async getTimelapseSettings() {
+    return this.callJsonRpc("machine.timelapse.get_settings", {});
+  }
+
+  async saveTimelapseSettings(settingsPatch = {}) {
+    const payload = settingsPatch && typeof settingsPatch === "object" ? settingsPatch : {};
+    return this.callJsonRpc("machine.timelapse.post_settings", payload);
+  }
+
+  async getWebcamsList() {
+    let lastError = null;
+
+    try {
+      return await this.call("/server/webcams/list");
+    } catch (error) {
+      lastError = error;
+    }
+
+    try {
+      return await this.callJsonRpc("server.webcams.list", {});
+    } catch (error) {
+      lastError = error;
+    }
+
+    if (lastError instanceof Error) {
+      throw lastError;
+    }
+
+    throw new Error("Failed to list webcams.");
+  }
+
   async selectPrintFile(path) {
     const normalizedPath = normalizePathSegments(path).join("/");
     if (!normalizedPath) {
