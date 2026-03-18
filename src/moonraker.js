@@ -130,6 +130,101 @@ export class MoonrakerClient {
     return payload;
   }
 
+  parseSpoolmanProxyResponse(payload) {
+    const normalized = payload?.response ?? payload;
+
+    if (normalized?.error) {
+      const rawError = normalized.error;
+      const message = typeof rawError === "string"
+        ? rawError
+        : String(rawError?.message || "Unknown spoolman proxy error");
+      throw new Error(`Spoolman proxy error: ${message}`);
+    }
+
+    if (normalized && Object.prototype.hasOwnProperty.call(normalized, "result")) {
+      return normalized.result;
+    }
+
+    return normalized;
+  }
+
+  async spoolmanProxy(path, { requestMethod = "GET", body = null, useV2Response = true } = {}) {
+    const normalizedPath = String(path || "").trim();
+    if (!normalizedPath.startsWith("/")) {
+      throw new Error("Spoolman proxy path must start with '/'.");
+    }
+
+    const method = String(requestMethod || "GET").trim().toUpperCase() || "GET";
+    const params = {
+      path: normalizedPath,
+      request_method: method,
+    };
+
+    if (useV2Response != null) {
+      params.use_v2_response = !!useV2Response;
+    }
+
+    if (body != null) {
+      params.body = body;
+    }
+
+    const result = await this.callJsonRpc("server.spoolman.proxy", params);
+    return this.parseSpoolmanProxyResponse(result);
+  }
+
+  async getSpoolmanHealth() {
+    return this.spoolmanProxy("/v1/health");
+  }
+
+  async getSpoolmanInfo() {
+    return this.spoolmanProxy("/v1/info");
+  }
+
+  async getSpoolmanSpools() {
+    return this.spoolmanProxy("/v1/spool");
+  }
+
+  async getSpoolmanSpool(spoolId) {
+    const numericId = Number(spoolId);
+    if (!Number.isFinite(numericId) || numericId <= 0) {
+      throw new Error(`Invalid spool ID: ${spoolId}`);
+    }
+    return this.spoolmanProxy(`/v1/spool/${Math.round(numericId)}`);
+  }
+
+  async getSpoolmanActiveSpoolId() {
+    const result = await this.callJsonRpc("server.spoolman.get_spool_id", {});
+    const numericId = Number(result?.spool_id ?? result?.result?.spool_id ?? result);
+
+    return {
+      spool_id: Number.isFinite(numericId) && numericId > 0
+        ? Math.round(numericId)
+        : null,
+    };
+  }
+
+  async setSpoolmanActiveSpoolId(spoolId = null) {
+    let normalizedId = null;
+
+    if (spoolId != null && spoolId !== "") {
+      const numericId = Number(spoolId);
+      if (!Number.isFinite(numericId) || numericId <= 0) {
+        throw new Error(`Invalid spool ID: ${spoolId}`);
+      }
+      normalizedId = Math.round(numericId);
+    }
+
+    const params = { spool_id: normalizedId };
+    const result = await this.callJsonRpc("server.spoolman.post_spool_id", params);
+    const responseId = Number(result?.spool_id ?? result?.result?.spool_id ?? normalizedId);
+
+    return {
+      spool_id: Number.isFinite(responseId) && responseId > 0
+        ? Math.round(responseId)
+        : null,
+    };
+  }
+
   async callWebSocketJsonRpc(method, params = {}, { timeoutMs = 5000 } = {}) {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       throw new Error(`Moonraker websocket is not connected: ${method}`);
@@ -1205,4 +1300,3 @@ export class MoonrakerClient {
     return this.deleteFile("logs", path);
   }
 }
-

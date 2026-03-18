@@ -144,6 +144,18 @@
           </span>
           <span class="nav-item-label">Timelapse</span>
         </button>
+        <button data-view="spoolman" class="nav-item" title="Spoolman">
+          <span class="nav-item-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M8 6h8"></path>
+              <path d="M7 10h10"></path>
+              <path d="M6 14h12"></path>
+              <path d="M8 18h8"></path>
+              <circle cx="12" cy="12" r="9"></circle>
+            </svg>
+          </span>
+          <span class="nav-item-label">Spoolman</span>
+        </button>
         <button data-view="pretty-gcode" class="nav-item" title="KlipperView">
           <span class="nav-item-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1410,6 +1422,57 @@
         </div>
       </section>
 
+      <section id="view-spoolman" class="view">
+        <div class="grid spoolman-grid">
+          <article class="card spoolman-card-fluidd" id="spoolman-card-fluidd">
+            <div class="card-head">
+              <h3>Spoolman</h3>
+              <div class="card-head-actions">
+                <button type="button" id="spoolman-change-spool">Change Spool</button>
+                <button type="button" id="spoolman-refresh">Refresh</button>
+              </div>
+            </div>
+
+            <div id="spoolman-progress-linear" class="spoolman-progress-linear" hidden>
+              <span id="spoolman-progress-linear-bar"></span>
+            </div>
+
+            <div class="spoolman-card-body">
+              <div id="spoolman-fields-grid" class="spoolman-fields-grid">
+                <p class="muted">Spoolman server not available.</p>
+              </div>
+
+              <div class="spoolman-card-visual">
+                <div id="spoolman-progress-ring" class="spoolman-progress-ring" aria-label="Remaining spool percentage">
+                  <span id="spoolman-progress-ring-value" class="spoolman-progress-ring-value">--%</span>
+                </div>
+                <p id="spoolman-visual-fallback" class="spoolman-visual-fallback muted" hidden>Spoolman server not available.</p>
+              </div>
+            </div>
+
+            <p id="spoolman-status-message" class="muted spoolman-status-message" data-level="info">Press Refresh to load Spoolman data.</p>
+          </article>
+        </div>
+
+        <dialog id="spoolman-select-dialog" class="spoolman-select-dialog">
+          <form method="dialog" class="spoolman-select-dialog-card">
+            <div class="spoolman-select-dialog-head">
+              <h3>Spool Selection</h3>
+              <button type="button" id="spoolman-select-close" class="spoolman-select-close" aria-label="Close spool selection">x</button>
+            </div>
+
+            <label for="spoolman-select-id">Active Spool</label>
+            <select id="spoolman-select-id"></select>
+            <p id="spoolman-select-help" class="muted">Select a spool to set it active in Moonraker.</p>
+
+            <div class="settings-inline-row">
+              <button type="button" id="spoolman-select-apply">Select</button>
+              <button type="button" id="spoolman-select-clear" class="danger">Clear</button>
+            </div>
+          </form>
+        </dialog>
+      </section>
+
       <section id="view-settings" class="view">
         <form id="settings-form" class="settings-layout">
           <div class="grid two-col">
@@ -1668,9 +1731,69 @@
               <p class="muted">Forge placeholder for Fluidd-compatible settings navigation.</p>
             </article>
 
-            <article class="card settings-placeholder-card" data-settings-section="spoolman">
+            <article class="card settings-spoolman-card" data-settings-section="spoolman">
               <h3>Spoolman</h3>
-              <p class="muted">Forge placeholder for Fluidd-compatible settings navigation.</p>
+
+              <label class="checkbox-row" for="settings-spoolman-auto-dialog">
+                <input id="settings-spoolman-auto-dialog" type="checkbox" />
+                <span>Show spool selection dialog on print start</span>
+              </label>
+
+              <label for="settings-spoolman-auto-camera">Automatically open camera for QR code detection</label>
+              <select id="settings-spoolman-auto-camera">
+                <option value="">None</option>
+              </select>
+
+              <label class="checkbox-row" for="settings-spoolman-prefer-device-camera">
+                <input id="settings-spoolman-prefer-device-camera" type="checkbox" />
+                <span>Use device camera for QR code detection if available</span>
+              </label>
+
+              <label class="checkbox-row" for="settings-spoolman-auto-select-on-match">
+                <input id="settings-spoolman-auto-select-on-match" type="checkbox" />
+                <span>Automatically commit spool selection on QR code match</span>
+              </label>
+
+              <label class="checkbox-row" for="settings-spoolman-warn-not-enough-filament">
+                <input id="settings-spoolman-warn-not-enough-filament" type="checkbox" />
+                <span>Show a warning when the selected spool doesn't have enough filament left on it to finish the print</span>
+              </label>
+
+              <label class="checkbox-row" for="settings-spoolman-warn-filament-mismatch">
+                <input id="settings-spoolman-warn-filament-mismatch" type="checkbox" />
+                <span>Show a warning when the spool's filament type and the one selected in the slicer don't match</span>
+              </label>
+
+              <label for="settings-spoolman-remaining-unit">Show remaining filament as</label>
+              <select id="settings-spoolman-remaining-unit">
+                <option value="weight">Weight</option>
+                <option value="length">Length</option>
+              </select>
+
+              <label for="settings-spoolman-card-fields">Fields to show in the Spoolman card</label>
+              <select id="settings-spoolman-card-fields" multiple size="8">
+                <option value="id">ID</option>
+                <option value="vendor">Vendor</option>
+                <option value="filament_name">Filament</option>
+                <option value="remaining_weight">Remaining</option>
+                <option value="used_weight">Used</option>
+                <option value="location">Location</option>
+                <option value="material">Material</option>
+                <option value="lot_nr">Lot Nr</option>
+                <option value="price">Price</option>
+                <option value="density">Density</option>
+                <option value="diameter">Diameter</option>
+                <option value="extruder_temp">Extruder Temp</option>
+                <option value="bed_temp">Bed Temp</option>
+                <option value="first_used">First Used</option>
+                <option value="last_used">Last Used</option>
+                <option value="comment">Comment</option>
+              </select>
+
+              <div class="actions">
+                <button type="button" id="settings-spoolman-reset">Reset</button>
+              </div>
+              <p id="settings-spoolman-status" class="muted" data-level="info">Spoolman settings are saved when you use Save &amp; Connect.</p>
             </article>
 
             <article class="card settings-placeholder-card" data-settings-section="versions">

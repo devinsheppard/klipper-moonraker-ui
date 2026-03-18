@@ -226,6 +226,7 @@ const VIEW_TITLES = {
   files: "GCode Files",
   history: "Print History",
   timelapse: "Timelapse",
+  spoolman: "Spoolman",
   "pretty-gcode": "KlipperView",
   settings: "Settings",
 };
@@ -256,6 +257,58 @@ const TIMELAPSE_CONTROL_MODE_SERVICE = "moonraker-service";
 const TIMELAPSE_CONTROL_MODE_EXTERNAL = "external-recorder";
 const TIMELAPSE_MEDIA_SORT_STORAGE_KEY = "timelapse_media_sort";
 const TIMELAPSE_MEDIA_DIRECTORY_STORAGE_KEY = "timelapse_media_directory";
+const SPOOLMAN_ENABLED_STORAGE_KEY = "spoolman_enabled_v1";
+const SPOOLMAN_SERVER_URL_STORAGE_KEY = "spoolman_server_url_v1";
+const SPOOLMAN_API_TOKEN_STORAGE_KEY = "spoolman_api_token_v1";
+const SPOOLMAN_AUTO_DIALOG_STORAGE_KEY = "spoolman_auto_spool_selection_dialog_v1";
+const SPOOLMAN_AUTO_QR_CAMERA_STORAGE_KEY = "spoolman_auto_qr_detection_camera_v1";
+const SPOOLMAN_PREFER_DEVICE_CAMERA_STORAGE_KEY = "spoolman_prefer_device_camera_v1";
+const SPOOLMAN_AUTO_SELECT_ON_MATCH_STORAGE_KEY = "spoolman_auto_select_on_match_v1";
+const SPOOLMAN_WARN_NOT_ENOUGH_STORAGE_KEY = "spoolman_warn_not_enough_filament_v1";
+const SPOOLMAN_WARN_MISMATCH_STORAGE_KEY = "spoolman_warn_filament_type_mismatch_v1";
+const SPOOLMAN_REMAINING_UNIT_STORAGE_KEY = "spoolman_remaining_filament_unit_v1";
+const SPOOLMAN_CARD_FIELDS_STORAGE_KEY = "spoolman_selected_card_fields_v1";
+const SPOOLMAN_CONNECTION_DIRECT = "direct";
+const SPOOLMAN_CONNECTION_PROXY = "moonraker-proxy";
+const SPOOLMAN_REMAINING_UNIT_VALUES = ["weight", "length"];
+const SPOOLMAN_CARD_FIELD_OPTIONS = [
+  "id",
+  "vendor",
+  "filament_name",
+  "remaining_weight",
+  "used_weight",
+  "location",
+  "material",
+  "lot_nr",
+  "price",
+  "density",
+  "diameter",
+  "extruder_temp",
+  "bed_temp",
+  "first_used",
+  "last_used",
+  "comment",
+];
+const SPOOLMAN_DEFAULT_SELECTED_CARD_FIELDS = [
+  "vendor",
+  "filament_name",
+  "remaining_weight",
+  "location",
+  "material",
+  "lot_nr",
+  "first_used",
+  "comment",
+];
+const SPOOLMAN_SETTINGS_DEFAULTS = Object.freeze({
+  autoSpoolSelectionDialog: true,
+  autoOpenQRDetectionCamera: "",
+  preferDeviceCamera: false,
+  autoSelectSpoolOnMatch: false,
+  warnOnNotEnoughFilament: true,
+  warnOnFilamentTypeMismatch: true,
+  remainingFilamentUnit: "weight",
+  selectedCardFields: [...SPOOLMAN_DEFAULT_SELECTED_CARD_FIELDS],
+});
 const TIMELAPSE_MEDIA_SORT_VALUES = [
   "modified_desc",
   "modified_asc",
@@ -595,6 +648,21 @@ const els = {
   timelapseMediaBreadcrumbs: document.getElementById("timelapse-media-breadcrumbs"),
   timelapseMediaFileList: document.getElementById("timelapse-media-file-list"),
   timelapseMediaStatus: document.getElementById("timelapse-media-status"),
+  spoolmanRefresh: document.getElementById("spoolman-refresh"),
+  spoolmanChangeSpool: document.getElementById("spoolman-change-spool"),
+  spoolmanFieldsGrid: document.getElementById("spoolman-fields-grid"),
+  spoolmanProgressLinear: document.getElementById("spoolman-progress-linear"),
+  spoolmanProgressLinearBar: document.getElementById("spoolman-progress-linear-bar"),
+  spoolmanProgressRing: document.getElementById("spoolman-progress-ring"),
+  spoolmanProgressRingValue: document.getElementById("spoolman-progress-ring-value"),
+  spoolmanVisualFallback: document.getElementById("spoolman-visual-fallback"),
+  spoolmanStatusMessage: document.getElementById("spoolman-status-message"),
+  spoolmanSelectDialog: document.getElementById("spoolman-select-dialog"),
+  spoolmanSelectClose: document.getElementById("spoolman-select-close"),
+  spoolmanSelectId: document.getElementById("spoolman-select-id"),
+  spoolmanSelectApply: document.getElementById("spoolman-select-apply"),
+  spoolmanSelectClear: document.getElementById("spoolman-select-clear"),
+  spoolmanSelectHelp: document.getElementById("spoolman-select-help"),
   pageTitle: document.getElementById("page-title"),
   connectionPill: document.getElementById("connection-pill"),
   connectionText: document.getElementById("connection-text"),
@@ -898,6 +966,16 @@ const els = {
   settingsMacroVisible: document.getElementById("settings-macro-visible"),
   settingsMacroSave: document.getElementById("settings-macro-save"),
   settingsMacroCancel: document.getElementById("settings-macro-cancel"),
+  settingsSpoolmanAutoDialog: document.getElementById("settings-spoolman-auto-dialog"),
+  settingsSpoolmanAutoCamera: document.getElementById("settings-spoolman-auto-camera"),
+  settingsSpoolmanPreferDeviceCamera: document.getElementById("settings-spoolman-prefer-device-camera"),
+  settingsSpoolmanAutoSelectOnMatch: document.getElementById("settings-spoolman-auto-select-on-match"),
+  settingsSpoolmanWarnNotEnoughFilament: document.getElementById("settings-spoolman-warn-not-enough-filament"),
+  settingsSpoolmanWarnFilamentMismatch: document.getElementById("settings-spoolman-warn-filament-mismatch"),
+  settingsSpoolmanRemainingUnit: document.getElementById("settings-spoolman-remaining-unit"),
+  settingsSpoolmanCardFields: document.getElementById("settings-spoolman-card-fields"),
+  settingsSpoolmanReset: document.getElementById("settings-spoolman-reset"),
+  settingsSpoolmanStatus: document.getElementById("settings-spoolman-status"),
   settingsDashboardViewportButtons: [...document.querySelectorAll(".settings-dashboard-viewport-btn")],
   settingsDashboardColumns: document.getElementById("settings-dashboard-columns"),
   settingsDashboardReset: document.getElementById("settings-dashboard-reset"),
@@ -2526,6 +2604,91 @@ function createDefaultMachineLoadsState() {
   };
 }
 
+function normalizeSpoolmanServerUrl(value) {
+  const normalized = String(value || "").trim();
+  if (!normalized) return "";
+  return normalized.replace(/\/+$/, "");
+}
+
+function normalizeSpoolmanApiToken(value) {
+  return String(value || "").trim();
+}
+
+function loadStoredSpoolmanEnabled() {
+  return true;
+}
+
+function loadStoredSpoolmanServerUrl() {
+  return "";
+}
+
+function loadStoredSpoolmanApiToken() {
+  return "";
+}
+
+function getSpoolmanConnectionMode(serverUrl) {
+  return normalizeSpoolmanServerUrl(serverUrl) ? SPOOLMAN_CONNECTION_DIRECT : SPOOLMAN_CONNECTION_PROXY;
+}
+
+function normalizeSpoolmanRemainingFilamentUnit(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return SPOOLMAN_REMAINING_UNIT_VALUES.includes(normalized)
+    ? normalized
+    : SPOOLMAN_SETTINGS_DEFAULTS.remainingFilamentUnit;
+}
+
+function normalizeSpoolmanCardFields(value) {
+  const list = Array.isArray(value)
+    ? value
+    : [];
+  const normalized = list
+    .map((entry) => String(entry || "").trim())
+    .filter((entry, index, arr) => entry && arr.indexOf(entry) === index && SPOOLMAN_CARD_FIELD_OPTIONS.includes(entry));
+  return normalized.length ? normalized : [...SPOOLMAN_SETTINGS_DEFAULTS.selectedCardFields];
+}
+
+function loadStoredSpoolmanCardFields() {
+  const raw = localStorage.getItem(SPOOLMAN_CARD_FIELDS_STORAGE_KEY);
+  if (!raw) return [...SPOOLMAN_SETTINGS_DEFAULTS.selectedCardFields];
+
+  try {
+    return normalizeSpoolmanCardFields(JSON.parse(raw));
+  } catch {
+    return [...SPOOLMAN_SETTINGS_DEFAULTS.selectedCardFields];
+  }
+}
+
+function loadStoredSpoolmanSettings() {
+  const storedCameraValue = String(localStorage.getItem(SPOOLMAN_AUTO_QR_CAMERA_STORAGE_KEY) || "");
+  return {
+    autoSpoolSelectionDialog: loadStoredBool(
+      SPOOLMAN_AUTO_DIALOG_STORAGE_KEY,
+      SPOOLMAN_SETTINGS_DEFAULTS.autoSpoolSelectionDialog
+    ),
+    autoOpenQRDetectionCamera: storedCameraValue === "null" ? "" : storedCameraValue,
+    preferDeviceCamera: loadStoredBool(
+      SPOOLMAN_PREFER_DEVICE_CAMERA_STORAGE_KEY,
+      SPOOLMAN_SETTINGS_DEFAULTS.preferDeviceCamera
+    ),
+    autoSelectSpoolOnMatch: loadStoredBool(
+      SPOOLMAN_AUTO_SELECT_ON_MATCH_STORAGE_KEY,
+      SPOOLMAN_SETTINGS_DEFAULTS.autoSelectSpoolOnMatch
+    ),
+    warnOnNotEnoughFilament: loadStoredBool(
+      SPOOLMAN_WARN_NOT_ENOUGH_STORAGE_KEY,
+      SPOOLMAN_SETTINGS_DEFAULTS.warnOnNotEnoughFilament
+    ),
+    warnOnFilamentTypeMismatch: loadStoredBool(
+      SPOOLMAN_WARN_MISMATCH_STORAGE_KEY,
+      SPOOLMAN_SETTINGS_DEFAULTS.warnOnFilamentTypeMismatch
+    ),
+    remainingFilamentUnit: normalizeSpoolmanRemainingFilamentUnit(
+      localStorage.getItem(SPOOLMAN_REMAINING_UNIT_STORAGE_KEY)
+    ),
+    selectedCardFields: loadStoredSpoolmanCardFields(),
+  };
+}
+
 function normalizeTimelapseServiceName(value) {
   return String(value || "").trim();
 }
@@ -2585,6 +2748,33 @@ function createDefaultTimelapseControlState() {
     statusMessage: controlMode === TIMELAPSE_CONTROL_MODE_EXTERNAL
       ? "External recorder mode enabled. Moonraker service checks are disabled."
       : "Connect to Moonraker to query service state.",
+  };
+}
+
+function createDefaultSpoolmanState() {
+  const enabled = loadStoredSpoolmanEnabled();
+  const serverUrl = loadStoredSpoolmanServerUrl();
+  return {
+    enabled,
+    serverUrl,
+    apiToken: loadStoredSpoolmanApiToken(),
+    connectionMode: getSpoolmanConnectionMode(serverUrl),
+    connectionState: enabled ? "unknown" : "disabled",
+    healthState: enabled ? "unknown" : "disabled",
+    info: null,
+    currency: null,
+    spools: [],
+    activeSpoolId: null,
+    activeSpool: null,
+    loading: false,
+    testing: false,
+    actionInFlight: false,
+    lastUpdatedMs: null,
+    lastError: "",
+    settings: loadStoredSpoolmanSettings(),
+    statusMessage: enabled
+      ? "Press Refresh to load Spoolman data."
+      : "Spoolman integration is disabled in Settings.",
   };
 }
 
@@ -2853,6 +3043,7 @@ const state = {
   toolsMenu: createDefaultToolsMenuState(),
   timelapse: createDefaultTimelapseControlState(),
   timelapseMedia: createDefaultTimelapseMediaState(),
+  spoolman: createDefaultSpoolmanState(),
   updateManager: createDefaultUpdateManagerState(),
   endstops: createDefaultEndstopsState(),
   logFiles: createDefaultMachineLogFilesState(),
@@ -5295,6 +5486,822 @@ async function runTimelapseServiceAction(action) {
     await refreshTimelapseControlState({ silent: true });
   }
 }
+
+function setSpoolmanStatusText(element, message, level = "info") {
+  if (!element) return;
+  element.textContent = String(message || "").trim();
+  element.dataset.level = String(level || "info").trim().toLowerCase() || "info";
+}
+
+function parseSpoolmanHealthState(payload) {
+  const candidates = [
+    payload?.status,
+    payload?.state,
+    payload?.result?.status,
+    payload?.result?.state,
+  ];
+
+  const status = candidates
+    .map((entry) => String(entry || "").trim().toLowerCase())
+    .find(Boolean);
+
+  if (!status) return "unknown";
+  if (["ok", "healthy", "ready", "up"].includes(status)) return "healthy";
+  if (["degraded", "warning"].includes(status)) return "warning";
+  if (["error", "failed", "down", "unhealthy"].includes(status)) return "error";
+  return status;
+}
+
+function getSpoolmanRequestHeaders(token) {
+  const normalizedToken = normalizeSpoolmanApiToken(token);
+  if (!normalizedToken) return null;
+  return {
+    Authorization: `Bearer ${normalizedToken}`,
+  };
+}
+
+function formatSpoolmanWeight(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric < 0) return "-";
+  if (numeric >= 1000) return `${(numeric / 1000).toFixed(2)} kg`;
+  return `${numeric.toFixed(1)} g`;
+}
+
+function formatSpoolmanLength(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric < 0) return "-";
+  if (numeric >= 1000) return `${(numeric / 1000).toFixed(2)} m`;
+  return `${numeric.toFixed(0)} mm`;
+}
+
+function formatSpoolmanTemperature(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return "-";
+  return `${numeric.toFixed(0)} C`;
+}
+
+function formatSpoolmanTimestamp(value) {
+  const date = new Date(value || "");
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleString();
+}
+
+function formatSpoolmanRelativeDate(value) {
+  const date = new Date(value || "");
+  if (Number.isNaN(date.getTime())) return { text: "-", exact: "" };
+
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const target = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const dayMs = 24 * 60 * 60 * 1000;
+  const diffDays = Math.round((today.getTime() - target.getTime()) / dayMs);
+
+  if (diffDays <= 0) return { text: "Today", exact: formatSpoolmanTimestamp(value) };
+  if (diffDays === 1) return { text: "Yesterday", exact: formatSpoolmanTimestamp(value) };
+  return { text: `${diffDays} days ago`, exact: formatSpoolmanTimestamp(value) };
+}
+
+function filamentWeightToLength(weight, filament) {
+  const weightValue = Number(weight);
+  const densityValue = Number(filament?.density);
+  const diameterValue = Number(filament?.diameter);
+  if (!Number.isFinite(weightValue) || weightValue < 0) return null;
+  if (!Number.isFinite(densityValue) || densityValue <= 0) return null;
+  if (!Number.isFinite(diameterValue) || diameterValue <= 0) return null;
+  return (weightValue / densityValue / (Math.PI / 4 * diameterValue ** 2)) * 1000;
+}
+
+function normalizeSpoolmanColor(rawColor) {
+  const value = String(rawColor || "").trim();
+  if (!value) return "";
+  return value.startsWith("#") ? value : `#${value}`;
+}
+
+function normalizeSpoolmanSpool(spool) {
+  if (!spool || typeof spool !== "object") return null;
+
+  const filament = spool.filament && typeof spool.filament === "object"
+    ? spool.filament
+    : {};
+  const vendorName = String(filament?.vendor?.name || "").trim();
+  const filamentName = String(filament?.name || "").trim();
+  const initialWeight = spool.initial_weight ?? filament.weight ?? null;
+  const remainingLength = spool.remaining_length ?? filamentWeightToLength(spool.remaining_weight, filament);
+  const usedLength = spool.used_length ?? filamentWeightToLength(spool.used_weight, filament);
+  const initialLength = initialWeight != null ? filamentWeightToLength(initialWeight, filament) : null;
+  const progressRaw = Number.isFinite(Number(initialWeight)) && Number(initialWeight) > 0 && Number.isFinite(Number(spool.used_weight))
+    ? ((Number(initialWeight) - Number(spool.used_weight)) / Number(initialWeight)) * 100
+    : null;
+  const progress = Number.isFinite(progressRaw)
+    ? Math.max(0, Math.min(100, progressRaw))
+    : null;
+
+  return {
+    ...spool,
+    filament: {
+      ...filament,
+      color_hex: normalizeSpoolmanColor(filament?.color_hex),
+    },
+    filament_name: [vendorName, filamentName].filter(Boolean).join(" - ") || String(spool.id || "-"),
+    initial_weight: initialWeight,
+    remaining_length: remainingLength,
+    used_length: usedLength,
+    initial_length: initialLength,
+    progress,
+  };
+}
+
+function getSpoolmanFieldLabel(field) {
+  const labels = {
+    id: "ID",
+    vendor: "Vendor",
+    filament_name: "Filament",
+    remaining_weight: "Remaining",
+    used_weight: "Used",
+    location: "Location",
+    material: "Material",
+    lot_nr: "Lot Nr",
+    price: "Price",
+    density: "Density",
+    diameter: "Diameter",
+    extruder_temp: "Extruder Temp",
+    bed_temp: "Bed Temp",
+    first_used: "First Used",
+    last_used: "Last Used",
+    comment: "Comment",
+  };
+  return labels[field] || field;
+}
+
+function getSpoolmanSupportedCameraOptions() {
+  const options = [
+    { value: "", label: "None" },
+  ];
+
+  if (state.camera?.enabled) {
+    options.push({ value: "main-camera", label: "Main Camera" });
+  }
+  if (state.toolheadCamera?.enabled) {
+    options.push({ value: "toolhead-camera", label: "Toolhead Camera" });
+  }
+
+  return options;
+}
+
+function buildSpoolmanDisplayValue(spool, field) {
+  if (!spool) return { text: "-", subtext: "", title: "" };
+
+  switch (field) {
+    case "vendor":
+      return { text: String(spool?.filament?.vendor?.name || "-"), subtext: "", title: "" };
+    case "filament_name":
+      return { text: String(spool.filament_name || "-"), subtext: "", title: "" };
+    case "material":
+      return { text: String(spool?.filament?.material || "-"), subtext: "", title: "" };
+    case "first_used": {
+      const relative = formatSpoolmanRelativeDate(spool.first_used);
+      return { text: relative.text, subtext: "", title: relative.exact };
+    }
+    case "last_used": {
+      const relative = formatSpoolmanRelativeDate(spool.last_used);
+      return { text: relative.text, subtext: "", title: relative.exact };
+    }
+    case "price": {
+      const numeric = Number(spool.price);
+      if (!Number.isFinite(numeric)) return { text: "-", subtext: "", title: "" };
+      const currency = String(state.spoolman.currency || "USD");
+      try {
+        return {
+          text: new Intl.NumberFormat(undefined, { style: "currency", currency }).format(numeric),
+          subtext: "",
+          title: "",
+        };
+      } catch {
+        return { text: `${numeric.toFixed(2)} ${currency}`, subtext: "", title: "" };
+      }
+    }
+    case "density": {
+      const numeric = Number(spool?.filament?.density);
+      return { text: Number.isFinite(numeric) ? `${numeric}` : "-", subtext: "", title: "" };
+    }
+    case "diameter":
+      return { text: formatSpoolmanLength(spool?.filament?.diameter), subtext: "", title: "" };
+    case "extruder_temp":
+      return { text: formatSpoolmanTemperature(spool?.filament?.settings_extruder_temp), subtext: "", title: "" };
+    case "bed_temp":
+      return { text: formatSpoolmanTemperature(spool?.filament?.settings_bed_temp), subtext: "", title: "" };
+    case "remaining_weight": {
+      const useLength = state.spoolman.settings?.remainingFilamentUnit === "length";
+      if (useLength) {
+        return {
+          text: formatSpoolmanLength(spool.remaining_length),
+          subtext: formatSpoolmanLength(spool.initial_length),
+          title: "",
+        };
+      }
+      return {
+        text: formatSpoolmanWeight(spool.remaining_weight),
+        subtext: formatSpoolmanWeight(spool.initial_weight),
+        title: "",
+      };
+    }
+    case "used_weight": {
+      const useLength = state.spoolman.settings?.remainingFilamentUnit === "length";
+      if (useLength) {
+        return {
+          text: formatSpoolmanLength(spool.used_length),
+          subtext: formatSpoolmanLength(spool.initial_length),
+          title: "",
+        };
+      }
+      return {
+        text: formatSpoolmanWeight(spool.used_weight),
+        subtext: formatSpoolmanWeight(spool.initial_weight),
+        title: "",
+      };
+    }
+    default: {
+      const rawValue = spool[field];
+      const value = rawValue == null || rawValue === "" ? "-" : String(rawValue);
+      return { text: value, subtext: "", title: "" };
+    }
+  }
+}
+
+function splitSpoolmanCardFields(fields) {
+  const sanitized = normalizeSpoolmanCardFields(fields);
+  const columnCount = sanitized.length > 1 ? 2 : 1;
+  const elementsPerColumn = Math.ceil(sanitized.length / columnCount);
+  return new Array(columnCount)
+    .fill(null)
+    .map((_, index) => sanitized.slice(index * elementsPerColumn, (index + 1) * elementsPerColumn));
+}
+
+function renderSpoolmanSelectOptions() {
+  if (!els.spoolmanSelectId) return;
+
+  const select = els.spoolmanSelectId;
+  const activeSpoolId = Number(state.spoolman.activeSpoolId);
+  const spools = Array.isArray(state.spoolman.spools)
+    ? [...state.spoolman.spools]
+    : [];
+  const sorted = spools
+    .map(normalizeSpoolmanSpool)
+    .filter(Boolean)
+    .sort((a, b) => String(a.filament_name || "").localeCompare(String(b.filament_name || ""), undefined, { numeric: true }));
+
+  select.innerHTML = "";
+
+  const noneOption = document.createElement("option");
+  noneOption.value = "";
+  noneOption.textContent = "None";
+  select.appendChild(noneOption);
+
+  sorted.forEach((spool) => {
+    const option = document.createElement("option");
+    option.value = String(spool.id);
+    option.textContent = `${spool.id}: ${spool.filament_name || "Unnamed spool"}`;
+    option.selected = Number.isFinite(activeSpoolId) && activeSpoolId > 0 && spool.id === activeSpoolId;
+    select.appendChild(option);
+  });
+
+  if (els.spoolmanSelectHelp) {
+    els.spoolmanSelectHelp.textContent = sorted.length
+      ? "Select a spool to set it active in Moonraker."
+      : "No spools were returned by Spoolman yet.";
+  }
+}
+
+function renderSpoolmanSettingsCard() {
+  const settings = state.spoolman.settings || { ...SPOOLMAN_SETTINGS_DEFAULTS };
+
+  const cameraSelect = els.settingsSpoolmanAutoCamera;
+  if (cameraSelect) {
+    const options = getSpoolmanSupportedCameraOptions();
+    const selected = String(settings.autoOpenQRDetectionCamera || "");
+    const hasSelectedOption = options.some((entry) => entry.value === selected);
+    if (selected && !hasSelectedOption) {
+      options.push({ value: selected, label: selected });
+    }
+    cameraSelect.innerHTML = "";
+    options.forEach((entry) => {
+      const option = document.createElement("option");
+      option.value = entry.value;
+      option.textContent = entry.label;
+      cameraSelect.appendChild(option);
+    });
+    if (document.activeElement !== cameraSelect) {
+      cameraSelect.value = selected;
+    }
+  }
+
+  if (els.settingsSpoolmanAutoDialog) {
+    els.settingsSpoolmanAutoDialog.checked = !!settings.autoSpoolSelectionDialog;
+  }
+  if (els.settingsSpoolmanPreferDeviceCamera) {
+    els.settingsSpoolmanPreferDeviceCamera.checked = !!settings.preferDeviceCamera;
+  }
+  if (els.settingsSpoolmanAutoSelectOnMatch) {
+    els.settingsSpoolmanAutoSelectOnMatch.checked = !!settings.autoSelectSpoolOnMatch;
+  }
+  if (els.settingsSpoolmanWarnNotEnoughFilament) {
+    els.settingsSpoolmanWarnNotEnoughFilament.checked = !!settings.warnOnNotEnoughFilament;
+  }
+  if (els.settingsSpoolmanWarnFilamentMismatch) {
+    els.settingsSpoolmanWarnFilamentMismatch.checked = !!settings.warnOnFilamentTypeMismatch;
+  }
+  if (els.settingsSpoolmanRemainingUnit && document.activeElement !== els.settingsSpoolmanRemainingUnit) {
+    els.settingsSpoolmanRemainingUnit.value = normalizeSpoolmanRemainingFilamentUnit(settings.remainingFilamentUnit);
+  }
+  if (els.settingsSpoolmanCardFields) {
+    const selected = new Set(normalizeSpoolmanCardFields(settings.selectedCardFields));
+    [...els.settingsSpoolmanCardFields.options].forEach((option) => {
+      option.selected = selected.has(option.value);
+    });
+  }
+
+  const level = state.spoolman.lastError
+    ? "error"
+    : state.spoolman.connectionState === "connected"
+      ? "info"
+      : "warn";
+  setSpoolmanStatusText(
+    els.settingsSpoolmanStatus,
+    state.spoolman.statusMessage || "Spoolman settings are saved when you use Save & Connect.",
+    level
+  );
+}
+
+function renderSpoolmanView() {
+  const enabled = !!state.spoolman.enabled;
+  const isBusy = !!(state.spoolman.loading || state.spoolman.testing || state.spoolman.actionInFlight);
+  const isConnected = enabled && state.spoolman.connectionState === "connected";
+  const activeSpool = normalizeSpoolmanSpool(state.spoolman.activeSpool);
+  const fieldsContainer = els.spoolmanFieldsGrid;
+
+  if (fieldsContainer) {
+    fieldsContainer.innerHTML = "";
+
+    if (state.spoolman.loading || state.spoolman.testing || state.spoolman.actionInFlight) {
+      const row = document.createElement("p");
+      row.className = "muted";
+      row.textContent = "Refreshing Spoolman data...";
+      fieldsContainer.appendChild(row);
+    } else if (activeSpool) {
+      const columns = splitSpoolmanCardFields(state.spoolman.settings?.selectedCardFields);
+      columns.forEach((columnFields) => {
+        const col = document.createElement("div");
+        col.className = "spoolman-fields-column";
+
+        columnFields.forEach((field) => {
+          const row = document.createElement("p");
+          row.className = "spoolman-field-row";
+
+          const label = document.createElement("span");
+          label.className = "spoolman-field-label";
+          label.textContent = getSpoolmanFieldLabel(field);
+
+          const valueWrap = document.createElement("strong");
+          valueWrap.className = "spoolman-field-value";
+
+          const valueInfo = buildSpoolmanDisplayValue(activeSpool, field);
+          valueWrap.textContent = valueInfo.text;
+          if (valueInfo.title) {
+            valueWrap.title = valueInfo.title;
+          }
+
+          if (valueInfo.subtext) {
+            const sub = document.createElement("small");
+            sub.className = "spoolman-field-subvalue";
+            sub.textContent = ` / ${valueInfo.subtext}`;
+            valueWrap.appendChild(sub);
+          }
+
+          row.append(label, valueWrap);
+          col.appendChild(row);
+        });
+
+        fieldsContainer.appendChild(col);
+      });
+    } else {
+      const row = document.createElement("p");
+      row.className = "muted";
+      row.textContent = isConnected
+        ? "Filament tracking is inactive. To get started, please select a spool."
+        : "Spoolman server not available.";
+      fieldsContainer.appendChild(row);
+    }
+  }
+
+  const progress = Number(activeSpool?.progress);
+  const hasProgress = Number.isFinite(progress);
+  const progressValue = hasProgress ? Math.max(0, Math.min(100, progress)) : 0;
+  const activeColor = String(activeSpool?.filament?.color_hex || "var(--accent)");
+
+  if (els.spoolmanProgressLinear && els.spoolmanProgressLinearBar) {
+    els.spoolmanProgressLinear.hidden = !activeSpool;
+    els.spoolmanProgressLinearBar.style.width = `${progressValue.toFixed(1)}%`;
+    els.spoolmanProgressLinearBar.style.background = activeColor || "var(--accent)";
+  }
+
+  if (els.spoolmanProgressRing && els.spoolmanProgressRingValue) {
+    if (activeSpool && hasProgress) {
+      els.spoolmanProgressRing.hidden = false;
+      els.spoolmanProgressRing.style.setProperty("--spoolman-progress", `${progressValue.toFixed(1)}%`);
+      els.spoolmanProgressRing.style.setProperty("--spoolman-color", activeColor || "var(--accent)");
+      els.spoolmanProgressRingValue.textContent = `${Math.round(progressValue)}%`;
+    } else {
+      els.spoolmanProgressRing.hidden = true;
+      els.spoolmanProgressRingValue.textContent = "--%";
+    }
+  }
+
+  if (els.spoolmanVisualFallback) {
+    els.spoolmanVisualFallback.hidden = !!activeSpool;
+    els.spoolmanVisualFallback.textContent = isConnected
+      ? "Filament tracking is inactive."
+      : "Spoolman server not available.";
+  }
+
+  const messageLevel = state.spoolman.lastError
+    ? "error"
+    : isConnected
+      ? "info"
+      : "warn";
+  setSpoolmanStatusText(
+    els.spoolmanStatusMessage,
+    state.spoolman.statusMessage || "Press Refresh to load Spoolman data.",
+    messageLevel
+  );
+
+  if (els.spoolmanRefresh) {
+    els.spoolmanRefresh.disabled = !enabled || isBusy;
+  }
+  if (els.spoolmanChangeSpool) {
+    els.spoolmanChangeSpool.disabled = !enabled || isBusy || !isConnected;
+  }
+
+  if (els.spoolmanSelectApply) {
+    els.spoolmanSelectApply.disabled = !enabled || isBusy || !isConnected;
+  }
+  if (els.spoolmanSelectClear) {
+    els.spoolmanSelectClear.disabled = !enabled || isBusy || !isConnected;
+  }
+
+  renderSpoolmanSelectOptions();
+}
+
+function getSpoolmanSettingsDraftFromInputs() {
+  const selectedCardFields = els.settingsSpoolmanCardFields
+    ? [...els.settingsSpoolmanCardFields.selectedOptions].map((option) => option.value)
+    : state.spoolman.settings?.selectedCardFields;
+
+  return {
+    enabled: true,
+    serverUrl: "",
+    apiToken: "",
+    connectionMode: SPOOLMAN_CONNECTION_PROXY,
+    settings: {
+      autoSpoolSelectionDialog: !!els.settingsSpoolmanAutoDialog?.checked,
+      autoOpenQRDetectionCamera: String(els.settingsSpoolmanAutoCamera?.value || ""),
+      preferDeviceCamera: !!els.settingsSpoolmanPreferDeviceCamera?.checked,
+      autoSelectSpoolOnMatch: !!els.settingsSpoolmanAutoSelectOnMatch?.checked,
+      warnOnNotEnoughFilament: !!els.settingsSpoolmanWarnNotEnoughFilament?.checked,
+      warnOnFilamentTypeMismatch: !!els.settingsSpoolmanWarnFilamentMismatch?.checked,
+      remainingFilamentUnit: normalizeSpoolmanRemainingFilamentUnit(els.settingsSpoolmanRemainingUnit?.value || ""),
+      selectedCardFields: normalizeSpoolmanCardFields(selectedCardFields),
+    },
+  };
+}
+
+async function fetchSpoolmanDirect(path, { serverUrl, apiToken, method = "GET" } = {}) {
+  const normalizedServerUrl = normalizeSpoolmanServerUrl(serverUrl);
+  if (!normalizedServerUrl) {
+    throw new Error("A Spoolman server URL is required for direct mode.");
+  }
+
+  const normalizedPath = String(path || "").trim();
+  if (!normalizedPath.startsWith("/")) {
+    throw new Error("Spoolman direct path must start with '/'.");
+  }
+
+  const response = await fetch(`${normalizedServerUrl}${normalizedPath}`, {
+    method,
+    headers: {
+      Accept: "application/json",
+      ...(getSpoolmanRequestHeaders(apiToken) || {}),
+    },
+  });
+
+  const text = await response.text().catch(() => "");
+  let parsed = null;
+  if (text) {
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      parsed = text;
+    }
+  }
+
+  if (!response.ok) {
+    const details = typeof parsed === "string"
+      ? parsed
+      : (parsed?.message || parsed?.error || "");
+    const suffix = details ? `: ${String(details).slice(0, 180)}` : "";
+    throw new Error(`Spoolman direct call failed (${response.status})${suffix}`);
+  }
+
+  return parsed;
+}
+
+async function fetchSpoolmanViaCurrentMode(path, { method = "GET", serverUrl = state.spoolman.serverUrl, apiToken = state.spoolman.apiToken } = {}) {
+  const mode = getSpoolmanConnectionMode(serverUrl);
+
+  if (mode === SPOOLMAN_CONNECTION_DIRECT) {
+    return fetchSpoolmanDirect(path, {
+      serverUrl,
+      apiToken,
+      method,
+    });
+  }
+
+  if (!state.client || state.connectionStatus !== "connected") {
+    throw new Error("Moonraker must be connected to use Spoolman proxy mode.");
+  }
+
+  return state.client.spoolmanProxy(path, {
+    requestMethod: method,
+  });
+}
+
+async function probeSpoolmanConnectivity({ enabled, serverUrl, apiToken, includeSpoolData = true } = {}) {
+  const spoolmanEnabled = !!enabled;
+  const normalizedServerUrl = normalizeSpoolmanServerUrl(serverUrl);
+  const normalizedApiToken = normalizeSpoolmanApiToken(apiToken);
+
+  if (!spoolmanEnabled) {
+    return {
+      mode: getSpoolmanConnectionMode(normalizedServerUrl),
+      healthState: "disabled",
+      info: null,
+      currency: null,
+      spools: [],
+      activeSpoolId: null,
+      activeSpool: null,
+    };
+  }
+
+  const mode = getSpoolmanConnectionMode(normalizedServerUrl);
+
+  if (mode === SPOOLMAN_CONNECTION_PROXY && (!state.client || state.connectionStatus !== "connected")) {
+    throw new Error("Moonraker must be connected when Spoolman server URL is not set.");
+  }
+
+  const healthPayload = await fetchSpoolmanViaCurrentMode("/v1/health", {
+    method: "GET",
+    serverUrl: normalizedServerUrl,
+    apiToken: normalizedApiToken,
+  });
+  const infoPayload = await fetchSpoolmanViaCurrentMode("/v1/info", {
+    method: "GET",
+    serverUrl: normalizedServerUrl,
+    apiToken: normalizedApiToken,
+  });
+  let currencyPayload = null;
+  try {
+    currencyPayload = await fetchSpoolmanViaCurrentMode("/v1/setting/currency", {
+      method: "GET",
+      serverUrl: normalizedServerUrl,
+      apiToken: normalizedApiToken,
+    });
+  } catch (error) {
+    log.debug("Spoolman currency setting unavailable.", {
+      error: error?.message || String(error),
+    });
+  }
+
+  let activeSpoolId = null;
+  let activeSpool = null;
+  let spools = [];
+
+  if (includeSpoolData) {
+    try {
+      const spoolPayload = await fetchSpoolmanViaCurrentMode("/v1/spool", {
+        method: "GET",
+        serverUrl: normalizedServerUrl,
+        apiToken: normalizedApiToken,
+      });
+      spools = Array.isArray(spoolPayload) ? spoolPayload : [];
+    } catch (error) {
+      log.debug("Spoolman spool list unavailable.", {
+        error: error?.message || String(error),
+      });
+    }
+  }
+
+  if (includeSpoolData && state.client && state.connectionStatus === "connected") {
+    const activeSpoolResponse = await state.client.getSpoolmanActiveSpoolId();
+    const candidateId = Number(activeSpoolResponse?.spool_id ?? activeSpoolResponse?.result?.spool_id ?? activeSpoolResponse);
+    activeSpoolId = Number.isFinite(candidateId) && candidateId > 0 ? Math.round(candidateId) : null;
+
+    if (activeSpoolId != null) {
+      activeSpool = Array.isArray(spools)
+        ? spools.find((spool) => Number(spool?.id) === activeSpoolId) || null
+        : null;
+
+      if (!activeSpool) {
+        try {
+          activeSpool = await fetchSpoolmanViaCurrentMode(`/v1/spool/${activeSpoolId}`, {
+            method: "GET",
+            serverUrl: normalizedServerUrl,
+            apiToken: normalizedApiToken,
+          });
+        } catch (error) {
+          log.debug("Active Spoolman spool details unavailable.", {
+            error: error?.message || String(error),
+          });
+        }
+      }
+    }
+  }
+
+  return {
+    mode,
+    healthState: parseSpoolmanHealthState(healthPayload),
+    info: infoPayload,
+    currency: currencyPayload?.currency || currencyPayload?.result?.currency || null,
+    spools,
+    activeSpoolId,
+    activeSpool,
+  };
+}
+
+async function refreshSpoolmanState({ source = "user", silent = false } = {}) {
+  const enabled = !!state.spoolman.enabled;
+  state.spoolman.connectionMode = getSpoolmanConnectionMode(state.spoolman.serverUrl);
+
+  if (!enabled) {
+    state.spoolman.testing = false;
+    state.spoolman.loading = false;
+    state.spoolman.connectionState = "disabled";
+    state.spoolman.lastError = "";
+    state.spoolman.statusMessage = "Spoolman integration is disabled in Settings.";
+    state.spoolman.currency = null;
+    state.spoolman.spools = [];
+    state.spoolman.activeSpoolId = null;
+    state.spoolman.activeSpool = null;
+    state.spoolman.healthState = "disabled";
+    renderSpoolmanView();
+    renderSpoolmanSettingsCard();
+    return;
+  }
+
+  const isTest = source === "test";
+  state.spoolman.testing = isTest;
+  state.spoolman.loading = !isTest;
+  state.spoolman.lastError = "";
+  state.spoolman.connectionState = "checking";
+  state.spoolman.statusMessage = isTest
+    ? "Testing Spoolman connection..."
+    : "Refreshing Spoolman data...";
+  renderSpoolmanView();
+  renderSpoolmanSettingsCard();
+
+  try {
+    const result = await probeSpoolmanConnectivity({
+      enabled: true,
+      serverUrl: state.spoolman.serverUrl,
+      apiToken: state.spoolman.apiToken,
+      includeSpoolData: true,
+    });
+
+    state.spoolman.connectionMode = result.mode;
+    state.spoolman.connectionState = "connected";
+    state.spoolman.healthState = result.healthState;
+    state.spoolman.info = result.info;
+    state.spoolman.currency = result.currency;
+    state.spoolman.spools = Array.isArray(result.spools) ? result.spools : [];
+    state.spoolman.activeSpoolId = result.activeSpoolId;
+    state.spoolman.activeSpool = result.activeSpool;
+    state.spoolman.lastError = "";
+    state.spoolman.lastUpdatedMs = Date.now();
+
+    const modeLabel = result.mode === SPOOLMAN_CONNECTION_DIRECT ? "Direct" : "Moonraker Proxy";
+    const versionLabel = String(result.info?.version || "").trim()
+      ? `, v${result.info.version}`
+      : "";
+    state.spoolman.statusMessage = isTest
+      ? `Connection successful (${modeLabel}${versionLabel}).`
+      : `Spoolman data refreshed (${modeLabel}${versionLabel}).`;
+
+    if (!silent) {
+      appendConsole(`Spoolman ${isTest ? "connection test" : "refresh"} successful.`, "info");
+    }
+  } catch (error) {
+    const message = error?.message || String(error);
+    state.spoolman.connectionState = "error";
+    state.spoolman.lastError = message;
+    state.spoolman.statusMessage = `Spoolman ${isTest ? "connection test" : "refresh"} failed: ${message}`;
+
+    if (!silent) {
+      appendConsole(`Spoolman ${isTest ? "connection test" : "refresh"} failed: ${message}`, "error");
+    }
+  } finally {
+    state.spoolman.testing = false;
+    state.spoolman.loading = false;
+    renderSpoolmanView();
+    renderSpoolmanSettingsCard();
+  }
+}
+
+async function testSpoolmanSettingsDraft() {
+  const draft = getSpoolmanSettingsDraftFromInputs();
+
+  if (!draft.enabled) {
+    setSpoolmanStatusText(
+      els.settingsSpoolmanStatus,
+      "Enable Spoolman integration to run a connection test.",
+      "warn"
+    );
+    return;
+  }
+
+  setSpoolmanStatusText(els.settingsSpoolmanStatus, "Testing Spoolman connection...", "info");
+
+  try {
+    const result = await probeSpoolmanConnectivity({
+      enabled: draft.enabled,
+      serverUrl: draft.serverUrl,
+      apiToken: draft.apiToken,
+      includeSpoolData: false,
+    });
+    const modeLabel = result.mode === SPOOLMAN_CONNECTION_DIRECT ? "Direct" : "Moonraker Proxy";
+    const versionLabel = String(result.info?.version || "").trim()
+      ? `, v${result.info.version}`
+      : "";
+    setSpoolmanStatusText(
+      els.settingsSpoolmanStatus,
+      `Connection successful (${modeLabel}${versionLabel}).`,
+      "info"
+    );
+  } catch (error) {
+    const message = error?.message || String(error);
+    setSpoolmanStatusText(
+      els.settingsSpoolmanStatus,
+      `Connection test failed: ${message}`,
+      "error"
+    );
+  }
+}
+
+async function setSpoolmanActiveSpool(spoolId = null) {
+  if (!state.spoolman.enabled) {
+    state.spoolman.statusMessage = "Enable Spoolman integration before changing active spool.";
+    renderSpoolmanView();
+    renderSpoolmanSettingsCard();
+    return;
+  }
+
+  if (!state.client || state.connectionStatus !== "connected") {
+    state.spoolman.statusMessage = "Moonraker must be connected to set active spool.";
+    state.spoolman.connectionState = "error";
+    renderSpoolmanView();
+    renderSpoolmanSettingsCard();
+    return;
+  }
+
+  state.spoolman.actionInFlight = true;
+  state.spoolman.lastError = "";
+  state.spoolman.statusMessage = spoolId == null
+    ? "Clearing active spool..."
+    : `Setting active spool to ${spoolId}...`;
+  renderSpoolmanView();
+  renderSpoolmanSettingsCard();
+
+  try {
+    await state.client.setSpoolmanActiveSpoolId(spoolId);
+    await refreshSpoolmanState({ source: "refresh", silent: true });
+    state.spoolman.statusMessage = spoolId == null
+      ? "Active spool cleared."
+      : `Active spool set to ID ${spoolId}.`;
+    renderSpoolmanView();
+    renderSpoolmanSettingsCard();
+    appendConsole(state.spoolman.statusMessage, "info");
+  } catch (error) {
+    const message = error?.message || String(error);
+    state.spoolman.lastError = message;
+    state.spoolman.connectionState = "error";
+    state.spoolman.statusMessage = `Active spool update failed: ${message}`;
+    renderSpoolmanView();
+    renderSpoolmanSettingsCard();
+    appendConsole(`Spoolman active spool update failed: ${message}`, "error");
+  } finally {
+    state.spoolman.actionInFlight = false;
+    renderSpoolmanView();
+    renderSpoolmanSettingsCard();
+  }
+}
+
 async function runToolsPowerAction(deviceName, action) {
   const normalizedDevice = String(deviceName || "").trim();
   const normalizedAction = String(action || "").trim().toLowerCase();
@@ -5412,11 +6419,16 @@ function setConnectionUi(status) {
   renderToolsMenu();
   renderTimelapseControlView();
   renderTimelapseMediaCard();
+  renderSpoolmanView();
+  renderSpoolmanSettingsCard();
   if (status === "connected" && state.activeView === "timelapse") {
     if (!state.timelapseMedia.files.length && !state.timelapseMedia.directories.length && !state.timelapseMedia.isLoading) {
       void loadTimelapseMediaFiles({ source: "connect", silent: true });
     }
     void refreshTimelapseControlState({ silent: true });
+  }
+  if (status === "connected" && state.activeView === "spoolman") {
+    void refreshSpoolmanState({ source: "connect", silent: true });
   }
 
   if (isPrettyGcodeViewerVisible()) {
@@ -9916,6 +10928,9 @@ async function connectMoonraker() {
       if (state.activeView === "timelapse") {
         void loadTimelapseMediaFiles({ source: "connect", silent: true });
       }
+      if (state.activeView === "spoolman") {
+        void refreshSpoolmanState({ source: "connect", silent: true });
+      }
       log.info("Moonraker websocket connected.");
       return;
     }
@@ -9938,6 +10953,15 @@ async function connectMoonraker() {
       state.jobs.workflowStatusLevel = "info";
       state.timelapseMedia.isLoading = false;
       state.timelapseMedia.actionInFlight = false;
+      state.spoolman.loading = false;
+      state.spoolman.testing = false;
+      state.spoolman.actionInFlight = false;
+      state.spoolman.activeSpoolId = null;
+      state.spoolman.activeSpool = null;
+      if (state.spoolman.enabled && getSpoolmanConnectionMode(state.spoolman.serverUrl) === SPOOLMAN_CONNECTION_PROXY) {
+        state.spoolman.connectionState = "unknown";
+        state.spoolman.statusMessage = "Connect to Moonraker to use Spoolman proxy mode.";
+      }
       state.printHistory.isLoading = false;
       state.printHistory.isTotalsLoading = false;
       state.printHistory.actionInFlight = false;
@@ -9949,8 +10973,10 @@ async function connectMoonraker() {
       renderEndstopsCard();
       renderMachineLogFilesCard();
       renderJobsCard();
-  renderTimelapseMediaCard();
-  renderPrintHistoryCard();
+      renderTimelapseMediaCard();
+      renderSpoolmanView();
+      renderSpoolmanSettingsCard();
+      renderPrintHistoryCard();
       log.warn("Moonraker websocket disconnected.");
       return;
     }
@@ -9973,6 +10999,15 @@ async function connectMoonraker() {
       state.jobs.workflowStatusLevel = "info";
       state.timelapseMedia.isLoading = false;
       state.timelapseMedia.actionInFlight = false;
+      state.spoolman.loading = false;
+      state.spoolman.testing = false;
+      state.spoolman.actionInFlight = false;
+      state.spoolman.activeSpoolId = null;
+      state.spoolman.activeSpool = null;
+      if (state.spoolman.enabled && getSpoolmanConnectionMode(state.spoolman.serverUrl) === SPOOLMAN_CONNECTION_PROXY) {
+        state.spoolman.connectionState = "error";
+        state.spoolman.statusMessage = "Moonraker websocket error. Spoolman proxy mode is unavailable.";
+      }
       state.printHistory.isLoading = false;
       state.printHistory.isTotalsLoading = false;
       state.printHistory.actionInFlight = false;
@@ -9984,8 +11019,10 @@ async function connectMoonraker() {
       renderEndstopsCard();
       renderMachineLogFilesCard();
       renderJobsCard();
-  renderTimelapseMediaCard();
-  renderPrintHistoryCard();
+      renderTimelapseMediaCard();
+      renderSpoolmanView();
+      renderSpoolmanSettingsCard();
+      renderPrintHistoryCard();
       log.error("Moonraker websocket error.");
       return;
     }
@@ -17362,6 +18399,17 @@ async function requestViewChange(viewName) {
     await refreshTimelapseControlState({ silent: true });
     return;
   }
+  if (viewName === "spoolman") {
+    renderSpoolmanView();
+    renderSpoolmanSettingsCard();
+
+    if (!state.client || state.connectionStatus !== "connected") {
+      return;
+    }
+
+    await refreshSpoolmanState({ source: "view", silent: true });
+    return;
+  }
   if (viewName === "pretty-gcode") {
     updatePrettyGcodeToolhead({ skipRender: true });
 
@@ -17759,6 +18807,79 @@ function wireEvents() {
     state.timelapseMedia.sortMode = normalizeTimelapseMediaSort(els.timelapseMediaSort?.value);
     persistTimelapseMediaViewState();
     renderTimelapseMediaCard();
+  });
+
+  els.spoolmanRefresh?.addEventListener("click", async () => {
+    await refreshSpoolmanState({ source: "refresh" });
+  });
+
+  els.spoolmanChangeSpool?.addEventListener("click", () => {
+    renderSpoolmanSelectOptions();
+    if (els.spoolmanSelectDialog && typeof els.spoolmanSelectDialog.showModal === "function") {
+      els.spoolmanSelectDialog.showModal();
+    }
+  });
+
+  els.spoolmanSelectClose?.addEventListener("click", () => {
+    els.spoolmanSelectDialog?.close();
+  });
+
+  els.spoolmanSelectDialog?.addEventListener("click", (event) => {
+    if (event.target === els.spoolmanSelectDialog) {
+      els.spoolmanSelectDialog?.close();
+    }
+  });
+
+  els.spoolmanSelectApply?.addEventListener("click", async () => {
+    const value = Number(els.spoolmanSelectId?.value);
+    if (!Number.isFinite(value) || value <= 0) {
+      state.spoolman.statusMessage = "Select a valid spool before applying.";
+      state.spoolman.lastError = "Invalid spool ID.";
+      renderSpoolmanView();
+      renderSpoolmanSettingsCard();
+      return;
+    }
+    await setSpoolmanActiveSpool(Math.round(value));
+    els.spoolmanSelectDialog?.close();
+  });
+
+  els.spoolmanSelectClear?.addEventListener("click", async () => {
+    await setSpoolmanActiveSpool(null);
+    els.spoolmanSelectDialog?.close();
+  });
+
+  const syncSpoolmanSettingsPreview = () => {
+    const draft = getSpoolmanSettingsDraftFromInputs();
+    state.spoolman.settings = {
+      ...draft.settings,
+      selectedCardFields: [...draft.settings.selectedCardFields],
+    };
+    renderSpoolmanView();
+    renderSpoolmanSettingsCard();
+  };
+
+  [
+    els.settingsSpoolmanAutoDialog,
+    els.settingsSpoolmanAutoCamera,
+    els.settingsSpoolmanPreferDeviceCamera,
+    els.settingsSpoolmanAutoSelectOnMatch,
+    els.settingsSpoolmanWarnNotEnoughFilament,
+    els.settingsSpoolmanWarnFilamentMismatch,
+    els.settingsSpoolmanRemainingUnit,
+    els.settingsSpoolmanCardFields,
+  ].forEach((input) => {
+    input?.addEventListener("change", syncSpoolmanSettingsPreview);
+  });
+
+  els.settingsSpoolmanReset?.addEventListener("click", () => {
+    state.spoolman.settings = {
+      ...SPOOLMAN_SETTINGS_DEFAULTS,
+      selectedCardFields: [...SPOOLMAN_SETTINGS_DEFAULTS.selectedCardFields],
+    };
+    state.spoolman.statusMessage = "Spoolman settings reset to defaults.";
+    state.spoolman.lastError = "";
+    renderSpoolmanView();
+    renderSpoolmanSettingsCard();
   });
 
   window.addEventListener("scroll", () => {
@@ -18747,6 +19868,19 @@ function wireEvents() {
     state.toolheadCamera.enabled = els.toolheadCameraEnabled.checked;
     state.toolheadCamera.url = els.toolheadCameraUrl.value.trim();
     state.toolheadCamera.renderMode = els.toolheadCameraRenderMode.value === CAMERA_MODES.IFRAME ? CAMERA_MODES.IFRAME : CAMERA_MODES.IMAGE;
+    const spoolmanDraft = getSpoolmanSettingsDraftFromInputs();
+    state.spoolman.enabled = true;
+    state.spoolman.serverUrl = "";
+    state.spoolman.apiToken = "";
+    state.spoolman.settings = {
+      ...spoolmanDraft.settings,
+      selectedCardFields: [...spoolmanDraft.settings.selectedCardFields],
+    };
+    state.spoolman.connectionMode = SPOOLMAN_CONNECTION_PROXY;
+    state.spoolman.connectionState = "unknown";
+    state.spoolman.healthState = "unknown";
+    state.spoolman.lastError = "";
+    state.spoolman.statusMessage = "Spoolman settings saved. Use Refresh to verify.";
 
     localStorage.setItem("moonraker_url", state.moonrakerUrl);
     persistInterfaceThemeSettings();
@@ -18767,11 +19901,24 @@ function wireEvents() {
     localStorage.setItem("toolhead_camera_enabled", String(state.toolheadCamera.enabled));
     localStorage.setItem("toolhead_camera_url", state.toolheadCamera.url);
     localStorage.setItem("toolhead_camera_render_mode", state.toolheadCamera.renderMode);
+    localStorage.setItem(SPOOLMAN_ENABLED_STORAGE_KEY, "true");
+    localStorage.removeItem(SPOOLMAN_SERVER_URL_STORAGE_KEY);
+    localStorage.removeItem(SPOOLMAN_API_TOKEN_STORAGE_KEY);
+    localStorage.setItem(SPOOLMAN_AUTO_DIALOG_STORAGE_KEY, String(state.spoolman.settings.autoSpoolSelectionDialog));
+    localStorage.setItem(SPOOLMAN_AUTO_QR_CAMERA_STORAGE_KEY, String(state.spoolman.settings.autoOpenQRDetectionCamera || ""));
+    localStorage.setItem(SPOOLMAN_PREFER_DEVICE_CAMERA_STORAGE_KEY, String(state.spoolman.settings.preferDeviceCamera));
+    localStorage.setItem(SPOOLMAN_AUTO_SELECT_ON_MATCH_STORAGE_KEY, String(state.spoolman.settings.autoSelectSpoolOnMatch));
+    localStorage.setItem(SPOOLMAN_WARN_NOT_ENOUGH_STORAGE_KEY, String(state.spoolman.settings.warnOnNotEnoughFilament));
+    localStorage.setItem(SPOOLMAN_WARN_MISMATCH_STORAGE_KEY, String(state.spoolman.settings.warnOnFilamentTypeMismatch));
+    localStorage.setItem(SPOOLMAN_REMAINING_UNIT_STORAGE_KEY, state.spoolman.settings.remainingFilamentUnit);
+    localStorage.setItem(SPOOLMAN_CARD_FIELDS_STORAGE_KEY, JSON.stringify(state.spoolman.settings.selectedCardFields));
 
     applyInterfaceSettings();
     applyDashboardLayout();
     applyDashboardSettings();
     renderCameraCards();
+    renderSpoolmanView();
+    renderSpoolmanSettingsCard();
     appendConsole("Settings saved.", "info");
     log.info("Settings saved.", {
       moonrakerUrl: state.moonrakerUrl,
@@ -19172,6 +20319,8 @@ async function init() {
   renderThermalPresetSettingsList();
   renderTimelapseControlView();
   renderTimelapseMediaCard();
+  renderSpoolmanView();
+  renderSpoolmanSettingsCard();
 
   els.cameraEnabled.checked = state.camera.enabled;
   els.cameraUrl.value = state.camera.url;
