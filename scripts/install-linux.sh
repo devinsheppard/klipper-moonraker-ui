@@ -87,15 +87,10 @@ configure_nginx() {
   conf_dir="$(dirname "$conf_path")"
   run_as_root mkdir -p "$conf_dir"
 
-  local include_line
-  include_line=""
-  if run_as_root test -f /etc/nginx/conf.d/moonraker.conf; then
-    include_line="  include /etc/nginx/conf.d/moonraker.conf;"
-  fi
-
   local tmp_conf
   tmp_conf="/tmp/forgeui-nginx-${FORGE_PORT}.conf"
-  cat >"$tmp_conf" <<EOF
+  if run_as_root test -f /etc/nginx/conf.d/moonraker.conf; then
+    cat >"$tmp_conf" <<EOF
 server {
   listen ${FORGE_PORT};
   listen [::]:${FORGE_PORT};
@@ -106,9 +101,49 @@ server {
   location / {
     try_files \$uri \$uri/ /index.html;
   }
-${include_line}
+
+  include /etc/nginx/conf.d/moonraker.conf;
 }
 EOF
+  else
+    cat >"$tmp_conf" <<EOF
+server {
+  listen ${FORGE_PORT};
+  listen [::]:${FORGE_PORT};
+  server_name ${FORGE_SERVER_NAME};
+  root ${TARGET_DIR};
+  index index.html;
+
+  # Moonraker websocket proxy
+  location /websocket {
+    proxy_pass http://127.0.0.1:7125/websocket;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade \$http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host \$host;
+    proxy_set_header X-Real-IP \$remote_addr;
+    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto \$scheme;
+    proxy_set_header Origin "";
+    proxy_read_timeout 86400;
+  }
+
+  # Moonraker HTTP API proxy
+  location ~ ^/(printer|api|access|machine|server|debug|temp|database|history|announcements|spoolman) {
+    proxy_pass http://127.0.0.1:7125;
+    proxy_set_header Host \$host;
+    proxy_set_header X-Real-IP \$remote_addr;
+    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto \$scheme;
+  }
+
+  # Serve Forge UI static app and SPA routes
+  location / {
+    try_files \$uri \$uri/ /index.html;
+  }
+}
+EOF
+  fi
 
   log "Writing nginx site config: $conf_path"
   run_as_root cp "$tmp_conf" "$conf_path"
