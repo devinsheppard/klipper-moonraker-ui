@@ -3119,7 +3119,7 @@ function persistDashboardLayoutsByViewport() {
 }
 
 function getDashboardAppliedViewport() {
-  return normalizeDashboardViewport(state.dashboard.settingsViewport || getDashboardRuntimeViewport());
+  return normalizeDashboardViewport(runtimeDashboardViewport || getDashboardRuntimeViewport());
 }
 
 function getRuntimeDashboardLegacyLayout(viewportCandidate = getDashboardAppliedViewport()) {
