@@ -1204,6 +1204,8 @@ const els = {
   settingsSpoolmanWarnFilamentMismatch: document.getElementById("settings-spoolman-warn-filament-mismatch"),
   settingsSpoolmanRemainingUnit: document.getElementById("settings-spoolman-remaining-unit"),
   settingsSpoolmanCardFields: document.getElementById("settings-spoolman-card-fields"),
+  settingsSpoolmanCardFieldToggles: [...document.querySelectorAll("[data-spoolman-card-field]")],
+  settingsSpoolmanFieldsApply: document.getElementById("settings-spoolman-fields-apply"),
   settingsSpoolmanReset: document.getElementById("settings-spoolman-reset"),
   settingsSpoolmanStatus: document.getElementById("settings-spoolman-status"),
   settingsDashboardViewportButtons: [...document.querySelectorAll(".settings-dashboard-viewport-btn")],
@@ -2806,7 +2808,11 @@ function persistDashboardLayoutsByViewport() {
   });
 }
 
-function getRuntimeDashboardLegacyLayout(viewportCandidate = getDashboardRuntimeViewport()) {
+function getDashboardAppliedViewport() {
+  return normalizeDashboardViewport(state.dashboard.settingsViewport || getDashboardRuntimeViewport());
+}
+
+function getRuntimeDashboardLegacyLayout(viewportCandidate = getDashboardAppliedViewport()) {
   const viewport = normalizeDashboardViewport(viewportCandidate);
   const layout = getDashboardLayoutForViewport(viewport);
   return convertViewportLayoutToLegacyLayout(layout, viewport);
@@ -3036,7 +3042,7 @@ function renderSettingsDashboardLayout() {
         if (!DASHBOARD_CARD_IDS.includes(draggedCardId)) return;
 
         moveDashboardCardInViewportLayout(viewport, draggedCardId, columnIndex, cardId);
-        if (viewport === getDashboardRuntimeViewport()) {
+        if (viewport === getDashboardAppliedViewport()) {
           applyDashboardLayout();
         }
         renderSettingsDashboardLayout();
@@ -3069,7 +3075,7 @@ function renderSettingsDashboardLayout() {
       if (!DASHBOARD_CARD_IDS.includes(draggedCardId)) return;
 
       moveDashboardCardInViewportLayout(viewport, draggedCardId, columnIndex);
-      if (viewport === getDashboardRuntimeViewport()) {
+      if (viewport === getDashboardAppliedViewport()) {
         applyDashboardLayout();
       }
       renderSettingsDashboardLayout();
@@ -3092,7 +3098,7 @@ function resetDashboardLayoutForViewport(viewportCandidate) {
   const defaults = getDashboardDefaultLayoutForViewport(viewport);
   setDashboardLayoutForViewport(viewport, defaults, { persist: true });
 
-  if (viewport === getDashboardRuntimeViewport()) {
+  if (viewport === getDashboardAppliedViewport()) {
     applyDashboardLayout();
   }
 }
@@ -3413,6 +3419,33 @@ function normalizeSpoolmanCardFields(value) {
     .map((entry) => String(entry || "").trim())
     .filter((entry, index, arr) => entry && arr.indexOf(entry) === index && SPOOLMAN_CARD_FIELD_OPTIONS.includes(entry));
   return normalized.length ? normalized : [...SPOOLMAN_SETTINGS_DEFAULTS.selectedCardFields];
+}
+
+function getSelectedSpoolmanCardFieldsFromInputs() {
+  const selected = (els.settingsSpoolmanCardFieldToggles || [])
+    .filter((input) => input instanceof HTMLInputElement && input.checked)
+    .map((input) => input.value);
+  return normalizeSpoolmanCardFields(selected);
+}
+
+function syncSpoolmanCardFieldInputs(selectedCardFields) {
+  const selected = new Set(normalizeSpoolmanCardFields(selectedCardFields));
+  (els.settingsSpoolmanCardFieldToggles || []).forEach((input) => {
+    if (!(input instanceof HTMLInputElement)) return;
+    input.checked = selected.has(input.value);
+  });
+}
+
+function hasPendingSpoolmanCardFieldChanges(selectedCardFields) {
+  const applied = normalizeSpoolmanCardFields(selectedCardFields);
+  const pending = getSelectedSpoolmanCardFieldsFromInputs();
+  if (applied.length !== pending.length) return true;
+  return applied.some((field, index) => field !== pending[index]);
+}
+
+function syncSpoolmanCardFieldApplyButton(selectedCardFields) {
+  if (!els.settingsSpoolmanFieldsApply) return;
+  els.settingsSpoolmanFieldsApply.disabled = !hasPendingSpoolmanCardFieldChanges(selectedCardFields);
 }
 
 function loadStoredSpoolmanCardFields() {
@@ -5559,6 +5592,81 @@ function isPrettyGcodeViewerVisible() {
   return state.activeView === "pretty-gcode" || state.activeView === "dashboard";
 }
 
+function getDashboardRuntimeColumnId(columnIndex) {
+  if (columnIndex === 0) return "dashboard-col-left";
+  if (columnIndex === 1) return "dashboard-col-right";
+  return `dashboard-col-${columnIndex + 1}`;
+}
+
+function getDashboardRuntimeColumns() {
+  if (!els.dashboardCards) return [];
+  return [...els.dashboardCards.querySelectorAll(".dashboard-column")];
+}
+
+function getDashboardCardElement(cardId) {
+  switch (cardId) {
+    case "card-print-progress":
+      return els.cardPrintProgress;
+    case "card-temperatures":
+      return els.cardTemperatures;
+    case "card-motion":
+      return els.cardMotion;
+    case "card-quick-commands":
+      return els.cardQuickCommands;
+    case "card-macros":
+      return els.cardMacros;
+    case "card-runout-sensors":
+      return els.cardRunoutSensors;
+    case "card-dashboard-console":
+      return els.cardDashboardConsole;
+    case "camera-main-card":
+      return els.cardMainCamera;
+    case "camera-toolhead-card":
+      return els.cardToolheadCamera;
+    case KLIPPERVIEW_CARD_ID:
+      return els.prettyGcodeCard;
+    default:
+      return document.getElementById(cardId);
+  }
+}
+
+function syncDashboardRuntimeColumns(columnCountCandidate) {
+  if (!els.dashboardCards) return [];
+
+  const requestedCount = Number(columnCountCandidate);
+  const columnCount = Math.max(1, Math.min(6, Number.isFinite(requestedCount) ? Math.round(requestedCount) : 1));
+  const existingById = new Map(
+    getDashboardRuntimeColumns()
+      .filter((column) => column.id)
+      .map((column) => [column.id, column])
+  );
+  const nextColumns = [];
+
+  for (let columnIndex = 0; columnIndex < columnCount; columnIndex += 1) {
+    const columnId = getDashboardRuntimeColumnId(columnIndex);
+    let column = existingById.get(columnId) || document.getElementById(columnId);
+
+    if (!column) {
+      column = document.createElement("div");
+      column.className = "dashboard-column";
+      column.id = columnId;
+    }
+
+    column.dataset.dashboardRuntimeColumn = String(columnIndex);
+    nextColumns.push(column);
+  }
+
+  els.dashboardCards.replaceChildren(...nextColumns);
+  els.dashboardCards.style.gridTemplateColumns = `repeat(${columnCount}, minmax(0, 1fr))`;
+  els.dashboardCards.dataset.dashboardColumns = String(columnCount);
+  els.dashboardCards.classList.toggle("two-col", columnCount === 2);
+
+  els.dashboardColLeft = nextColumns[0] || null;
+  els.dashboardColRight = nextColumns[1] || null;
+
+  return nextColumns;
+}
+
 function syncPrettyGcodeCardPlacement() {
   if (!els.prettyGcodeCard) return;
 
@@ -5569,38 +5677,42 @@ function syncPrettyGcodeCardPlacement() {
     return;
   }
 
-  const runtimeViewport = getDashboardRuntimeViewport();
+  const runtimeViewport = getDashboardAppliedViewport();
   const runtimeLayout = getDashboardLayoutForViewport(runtimeViewport);
-  const inLeftColumn = (runtimeLayout.columns?.[0] || []).includes(KLIPPERVIEW_CARD_ID);
-  const targetColumn = inLeftColumn ? els.dashboardColLeft : els.dashboardColRight;
+  const expectedColumnCount = runtimeLayout.columns?.length || getDashboardViewportColumnCount(runtimeViewport);
+  const runtimeColumns = getDashboardRuntimeColumns().length === expectedColumnCount
+    ? getDashboardRuntimeColumns()
+    : syncDashboardRuntimeColumns(expectedColumnCount);
+  const targetColumnIndex = Math.max(0, runtimeLayout.columns.findIndex((column) => (column || []).includes(KLIPPERVIEW_CARD_ID)));
+  const targetColumn = runtimeColumns[targetColumnIndex] || runtimeColumns[0] || null;
+
   if (targetColumn && els.prettyGcodeCard.parentElement !== targetColumn) {
     targetColumn.appendChild(els.prettyGcodeCard);
   }
 }
 
 function applyDashboardLayout() {
-  if (!els.dashboardColLeft || !els.dashboardColRight) return;
+  if (!els.dashboardCards) return;
 
-  const runtimeLayout = getRuntimeDashboardLegacyLayout();
-  state.dashboard.layout = normalizeDashboardLayout(runtimeLayout);
+  const runtimeViewport = getDashboardAppliedViewport();
+  const runtimeLayout = getDashboardLayoutForViewport(runtimeViewport);
+  const runtimeColumns = syncDashboardRuntimeColumns(runtimeLayout.columns?.length || getDashboardViewportColumnCount(runtimeViewport));
   const keepKlipperViewInViewer = state.activeView === "pretty-gcode";
+  state.dashboard.layout = convertViewportLayoutToLegacyLayout(runtimeLayout, runtimeViewport);
 
-  const leftFragment = document.createDocumentFragment();
-  state.dashboard.layout.left.forEach((cardId) => {
-    if (keepKlipperViewInViewer && cardId === KLIPPERVIEW_CARD_ID) return;
-    const card = document.getElementById(cardId);
-    if (card) leftFragment.appendChild(card);
+  runtimeColumns.forEach((columnEl, columnIndex) => {
+    const fragment = document.createDocumentFragment();
+    const cardsInColumn = runtimeLayout.columns?.[columnIndex] || [];
+
+    cardsInColumn.forEach((cardId) => {
+      if (keepKlipperViewInViewer && cardId === KLIPPERVIEW_CARD_ID) return;
+      const card = getDashboardCardElement(cardId);
+      if (card) fragment.appendChild(card);
+    });
+
+    columnEl.appendChild(fragment);
   });
 
-  const rightFragment = document.createDocumentFragment();
-  state.dashboard.layout.right.forEach((cardId) => {
-    if (keepKlipperViewInViewer && cardId === KLIPPERVIEW_CARD_ID) return;
-    const card = document.getElementById(cardId);
-    if (card) rightFragment.appendChild(card);
-  });
-
-  els.dashboardColLeft.appendChild(leftFragment);
-  els.dashboardColRight.appendChild(rightFragment);
   syncPrettyGcodeCardPlacement();
 }
 
@@ -5784,7 +5896,7 @@ function renderDashboardLayoutLists() {
 }
 
 function openDashboardLayoutDialog() {
-  state.dashboard.layout = getRuntimeDashboardLegacyLayout();
+  state.dashboard.layout = getRuntimeDashboardLegacyLayout(getDashboardAppliedViewport());
   renderDashboardLayoutLists();
   if (typeof els.dashboardLayoutDialog?.showModal === "function") {
     els.dashboardLayoutDialog.showModal();
@@ -5798,7 +5910,7 @@ function closeDashboardLayoutDialog() {
 }
 
 function saveDashboardLayout() {
-  const viewport = getDashboardRuntimeViewport();
+  const viewport = getDashboardAppliedViewport();
   state.dashboard.layout = normalizeDashboardLayout(state.dashboard.layout);
   const viewportLayout = convertLegacyLayoutToViewportLayout(state.dashboard.layout, viewport);
   setDashboardLayoutForViewport(viewport, viewportLayout, { persist: true });
@@ -5814,7 +5926,7 @@ function saveDashboardLayout() {
 }
 
 function resetDashboardLayout() {
-  const viewport = getDashboardRuntimeViewport();
+  const viewport = getDashboardAppliedViewport();
   const defaults = getDashboardDefaultLayoutForViewport(viewport);
   state.dashboard.layout = convertViewportLayoutToLegacyLayout(defaults, viewport);
   renderDashboardLayoutLists();
@@ -6805,10 +6917,8 @@ function renderSpoolmanSettingsCard() {
     els.settingsSpoolmanRemainingUnit.value = normalizeSpoolmanRemainingFilamentUnit(settings.remainingFilamentUnit);
   }
   if (els.settingsSpoolmanCardFields) {
-    const selected = new Set(normalizeSpoolmanCardFields(settings.selectedCardFields));
-    [...els.settingsSpoolmanCardFields.options].forEach((option) => {
-      option.selected = selected.has(option.value);
-    });
+    syncSpoolmanCardFieldInputs(settings.selectedCardFields);
+    syncSpoolmanCardFieldApplyButton(settings.selectedCardFields);
   }
 
   const level = state.spoolman.lastError
@@ -6818,7 +6928,7 @@ function renderSpoolmanSettingsCard() {
       : "warn";
   setSpoolmanStatusText(
     els.settingsSpoolmanStatus,
-    state.spoolman.statusMessage || "Spoolman settings are saved when you use Save & Connect.",
+    state.spoolman.statusMessage || "Use Apply Selected Fields for card fields. Other Spoolman settings are saved with Save & Connect.",
     level
   );
 }
@@ -6944,7 +7054,7 @@ function renderSpoolmanView() {
 
 function getSpoolmanSettingsDraftFromInputs() {
   const selectedCardFields = els.settingsSpoolmanCardFields
-    ? [...els.settingsSpoolmanCardFields.selectedOptions].map((option) => option.value)
+    ? getSelectedSpoolmanCardFieldsFromInputs()
     : state.spoolman.settings?.selectedCardFields;
 
   return {
@@ -12244,7 +12354,11 @@ function getCardActionsContainer(header) {
   actions.className = "card-head-actions";
 
   const title = header.querySelector(":scope > h2, :scope > h3");
-  const movableNodes = [...header.children].filter((child) => child !== title && !child.classList.contains("card-head-actions"));
+  const movableNodes = [...header.children].filter((child) => (
+    child !== title
+    && !child.classList.contains("card-head-actions")
+    && !child.classList.contains("controls-absolute-position")
+  ));
   movableNodes.forEach((node) => actions.appendChild(node));
 
   header.appendChild(actions);
@@ -20544,9 +20658,27 @@ function wireEvents() {
     els.settingsSpoolmanWarnNotEnoughFilament,
     els.settingsSpoolmanWarnFilamentMismatch,
     els.settingsSpoolmanRemainingUnit,
-    els.settingsSpoolmanCardFields,
   ].forEach((input) => {
     input?.addEventListener("change", syncSpoolmanSettingsPreview);
+  });
+
+  (els.settingsSpoolmanCardFieldToggles || []).forEach((input) => {
+    input?.addEventListener("change", () => {
+      syncSpoolmanCardFieldApplyButton(state.spoolman.settings?.selectedCardFields);
+    });
+  });
+
+  els.settingsSpoolmanFieldsApply?.addEventListener("click", () => {
+    const selectedCardFields = getSelectedSpoolmanCardFieldsFromInputs();
+    state.spoolman.settings = {
+      ...state.spoolman.settings,
+      selectedCardFields: [...selectedCardFields],
+    };
+    localStorage.setItem(SPOOLMAN_CARD_FIELDS_STORAGE_KEY, JSON.stringify(state.spoolman.settings.selectedCardFields));
+    state.spoolman.statusMessage = "Spoolman card fields applied.";
+    state.spoolman.lastError = "";
+    renderSpoolmanView();
+    renderSpoolmanSettingsCard();
   });
 
   els.settingsSpoolmanReset?.addEventListener("click", () => {

@@ -995,8 +995,26 @@
   color: color-mix(in srgb, var(--danger) 88%, #ffffff 12%);
 }
 
-.settings-spoolman-card select[multiple] {
-  min-height: 180px;
+.settings-spoolman-field-picker {
+  border: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg-soft) 74%, rgba(2, 6, 23, 0.45));
+  padding: 8px 10px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 12px;
+  max-height: 240px;
+  overflow: auto;
+}
+
+.settings-spoolman-field-picker .checkbox-row {
+  margin: 0;
+  min-height: 28px;
+  align-items: center;
+}
+
+.settings-spoolman-field-picker .checkbox-row span {
+  font-size: 0.8rem;
 }
 
 .spoolman-select-dialog {
@@ -3453,4 +3471,110 @@ button.is-pending,
 :root button:not(.emergency-stop-btn):not(.danger):not(.controls-jog-btn):not(.nav-item):not(.settings-subnav-item):not(.history-segmented-btn):not(#controls-motors-off) .sidebar-toggle-icon::before,
 :root button:not(.emergency-stop-btn):not(.danger):not(.controls-jog-btn):not(.nav-item):not(.settings-subnav-item):not(.history-segmented-btn):not(#controls-motors-off) .sidebar-toggle-icon::after {
   background: currentColor;
+}
+
+/* Widescreen dashboard header alignment for Controls + KlipperView cards */
+#view-dashboard #dashboard-cards[data-dashboard-columns="3"] #card-motion > .controls-card-head.card-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "title actions"
+    "position position";
+  align-items: start;
+  row-gap: 8px;
+  column-gap: 10px;
+}
+
+#view-dashboard #dashboard-cards[data-dashboard-columns="3"] #card-motion > .controls-card-head.card-head > h3 {
+  grid-area: title;
+  min-width: 0;
+}
+
+#view-dashboard #dashboard-cards[data-dashboard-columns="3"] #card-motion > .controls-card-head.card-head > .controls-absolute-position {
+  grid-area: position;
+  margin: 0;
+}
+
+#view-dashboard #dashboard-cards[data-dashboard-columns="3"] #card-motion > .controls-card-head.card-head > .card-head-actions {
+  grid-area: actions;
+  justify-self: end;
+  align-self: start;
+  display: inline-flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+}
+
+#view-dashboard #dashboard-cards[data-dashboard-columns="3"] #card-klipperview > .pretty-gcode-head.card-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "title actions";
+  align-items: start;
+  column-gap: 10px;
+}
+
+#view-dashboard #dashboard-cards[data-dashboard-columns="3"] #card-klipperview > .pretty-gcode-head.card-head > h3 {
+  grid-area: title;
+  min-width: 0;
+}
+
+#view-dashboard #dashboard-cards[data-dashboard-columns="3"] #card-klipperview > .pretty-gcode-head.card-head > .card-head-actions {
+  grid-area: actions;
+  justify-self: end;
+  align-self: start;
+  display: inline-flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+  gap: 8px;
+}
+
+#view-dashboard #dashboard-cards[data-dashboard-columns="3"] #card-klipperview > .pretty-gcode-head.card-head > .card-head-actions > .pretty-gcode-actions {
+  order: 1;
+  display: inline-flex;
+  align-items: flex-start;
+  flex-wrap: nowrap;
+  gap: 8px;
+}
+
+#view-dashboard #dashboard-cards[data-dashboard-columns="3"] #card-klipperview > .pretty-gcode-head.card-head > .card-head-actions > .pretty-gcode-actions #pretty-gcode-reload {
+  order: 1;
+}
+
+#view-dashboard #dashboard-cards[data-dashboard-columns="3"] #card-klipperview > .pretty-gcode-head.card-head > .card-head-actions > .card-collapse-toggle {
+  order: 2;
+}
+
+/* Place Follow Toolhead on the file row (right side). */
+#card-klipperview .pretty-gcode-meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+#card-klipperview .pretty-gcode-file {
+  margin: 0;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+#card-klipperview .pretty-gcode-follow {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+@media (max-width: 980px) {
+  #card-klipperview .pretty-gcode-meta-row {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  #card-klipperview .pretty-gcode-follow {
+    margin-left: 0;
+  }
 }

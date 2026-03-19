@@ -1336,15 +1336,17 @@
               <span>KlipperView</span>
             </h3>
             <div class="actions pretty-gcode-actions">
-              <label class="pretty-gcode-follow" for="pretty-gcode-follow">
-                <input id="pretty-gcode-follow" type="checkbox" checked />
-                <span>Follow Toolhead</span>
-              </label>
               <button type="button" id="pretty-gcode-reload" class="pretty-gcode-reload-btn">Reload</button>
             </div>
           </div>
 
-          <p id="pretty-gcode-file" class="muted pretty-gcode-file">No active print file.</p>
+          <div class="pretty-gcode-meta-row">
+            <p id="pretty-gcode-file" class="muted pretty-gcode-file">No active print file.</p>
+            <label class="pretty-gcode-follow" for="pretty-gcode-follow">
+              <input id="pretty-gcode-follow" type="checkbox" checked />
+              <span>Follow Toolhead</span>
+            </label>
+          </div>
 
           <div class="pretty-gcode-controls" role="group" aria-label="KlipperView simulation controls">
             <span id="pretty-gcode-mode" class="pretty-gcode-mode">Mode: Live</span>
@@ -2175,30 +2177,31 @@
                 <option value="length">Length</option>
               </select>
 
-              <label for="settings-spoolman-card-fields">Fields to show in the Spoolman card</label>
-              <select id="settings-spoolman-card-fields" multiple size="8">
-                <option value="id">ID</option>
-                <option value="vendor">Vendor</option>
-                <option value="filament_name">Filament</option>
-                <option value="remaining_weight">Remaining</option>
-                <option value="used_weight">Used</option>
-                <option value="location">Location</option>
-                <option value="material">Material</option>
-                <option value="lot_nr">Lot Nr</option>
-                <option value="price">Price</option>
-                <option value="density">Density</option>
-                <option value="diameter">Diameter</option>
-                <option value="extruder_temp">Extruder Temp</option>
-                <option value="bed_temp">Bed Temp</option>
-                <option value="first_used">First Used</option>
-                <option value="last_used">Last Used</option>
-                <option value="comment">Comment</option>
-              </select>
+              <p>Fields to show in the Spoolman card</p>
+              <div id="settings-spoolman-card-fields" class="settings-spoolman-field-picker" role="group" aria-label="Fields to show in the Spoolman card">
+                <label class="checkbox-row"><input type="checkbox" data-spoolman-card-field value="id" /><span>ID</span></label>
+                <label class="checkbox-row"><input type="checkbox" data-spoolman-card-field value="vendor" /><span>Vendor</span></label>
+                <label class="checkbox-row"><input type="checkbox" data-spoolman-card-field value="filament_name" /><span>Filament</span></label>
+                <label class="checkbox-row"><input type="checkbox" data-spoolman-card-field value="remaining_weight" /><span>Remaining</span></label>
+                <label class="checkbox-row"><input type="checkbox" data-spoolman-card-field value="used_weight" /><span>Used</span></label>
+                <label class="checkbox-row"><input type="checkbox" data-spoolman-card-field value="location" /><span>Location</span></label>
+                <label class="checkbox-row"><input type="checkbox" data-spoolman-card-field value="material" /><span>Material</span></label>
+                <label class="checkbox-row"><input type="checkbox" data-spoolman-card-field value="lot_nr" /><span>Lot Nr</span></label>
+                <label class="checkbox-row"><input type="checkbox" data-spoolman-card-field value="price" /><span>Price</span></label>
+                <label class="checkbox-row"><input type="checkbox" data-spoolman-card-field value="density" /><span>Density</span></label>
+                <label class="checkbox-row"><input type="checkbox" data-spoolman-card-field value="diameter" /><span>Diameter</span></label>
+                <label class="checkbox-row"><input type="checkbox" data-spoolman-card-field value="extruder_temp" /><span>Extruder Temp</span></label>
+                <label class="checkbox-row"><input type="checkbox" data-spoolman-card-field value="bed_temp" /><span>Bed Temp</span></label>
+                <label class="checkbox-row"><input type="checkbox" data-spoolman-card-field value="first_used" /><span>First Used</span></label>
+                <label class="checkbox-row"><input type="checkbox" data-spoolman-card-field value="last_used" /><span>Last Used</span></label>
+                <label class="checkbox-row"><input type="checkbox" data-spoolman-card-field value="comment" /><span>Comment</span></label>
+              </div>
 
               <div class="actions">
+                <button type="button" id="settings-spoolman-fields-apply">Apply Selected Fields</button>
                 <button type="button" id="settings-spoolman-reset">Reset</button>
               </div>
-              <p id="settings-spoolman-status" class="muted" data-level="info">Spoolman settings are saved when you use Save &amp; Connect.</p>
+              <p id="settings-spoolman-status" class="muted" data-level="info">Use Apply Selected Fields for card fields. Other Spoolman settings are saved with Save &amp; Connect.</p>
             </article>
 
             <article class="card settings-placeholder-card" data-settings-section="versions">
