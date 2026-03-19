@@ -4241,6 +4241,7 @@ const initialClearedStatusFilename = loadStoredStatusClearedFilename();
 const state = {
   client: null,
   connectionStatus: "disconnected",
+  connectionSessionId: 0,
   activeView: loadStoredView(),
   moonrakerUrl: localStorage.getItem("moonraker_url") || "http://127.0.0.1:7125",
   config: {
@@ -15346,6 +15347,8 @@ function extractMacroKeysFromConfigText(configText) {
   return mergeMacroKeys(keys);
 }
 async function connectMoonraker() {
+  const connectionSessionId = (Number(state.connectionSessionId) || 0) + 1;
+  state.connectionSessionId = connectionSessionId;
   appendConsole(`Connecting to ${state.moonrakerUrl}`, "info");
   log.info("Connecting to Moonraker.", { baseUrl: state.moonrakerUrl });
   stopTemperaturePolling();
@@ -15391,10 +15394,13 @@ async function connectMoonraker() {
     }
   }
 
-  state.client = new MoonrakerClient(state.moonrakerUrl);
+  const client = new MoonrakerClient(state.moonrakerUrl);
+  const isCurrentClient = () => state.client === client && state.connectionSessionId === connectionSessionId;
+  state.client = client;
   setConnectionUi("connecting");
 
-  state.client.onConnectionState((status) => {
+  client.onConnectionState((status) => {
+    if (!isCurrentClient()) return;
     setConnectionUi(status);
 
       if (status === "connected") {
@@ -15574,7 +15580,8 @@ async function connectMoonraker() {
     log.debug("Moonraker connection status update.", { status });
   });
 
-  state.client.onMessage((payload) => {
+  client.onMessage((payload) => {
+    if (!isCurrentClient()) return;
     if (state.console.rawOutput) {
       try {
         appendConsole(JSON.stringify(payload), "debug", {
@@ -15688,142 +15695,169 @@ async function connectMoonraker() {
     }
   });
 
-  state.client.connectWebSocket();
-  await refreshRunoutSensors({ source: "initial-connect", silent: true });
+  client.connectWebSocket();
 
-  try {
-    const statusResponse = await queryDashboardStatusSnapshot();
-    const statusSnapshot = statusResponse?.result?.status || {};
-    const printStats = statusSnapshot.print_stats || {};
-    const gcodeMove = statusSnapshot.gcode_move || null;
-    const motionReport = statusSnapshot.motion_report || null;
-    const toolhead = statusSnapshot.toolhead || null;
-    const virtualSd = mergeVirtualSdSnapshot(statusSnapshot.virtual_sdcard || null);
-    renderStatusProgress(virtualSd);
-    const printerState = printStats.state || printStats.status || "ready";
-    setPrinterState(printerState);
-    updateStatusFileInfo(printStats, gcodeMove, motionReport, toolhead);
-    mergeManualProbeStatusSnapshot(statusSnapshot.manual_probe || null);
-    updateStatusFanSnapshot(statusSnapshot.fan || null);
-    mergeRunoutSensorStatusSnapshot(statusSnapshot);
-    renderRunoutSensorsCard();
-    mergeBeaconStatusSnapshot(statusSnapshot);
-    renderBeaconCard();
-    mergeHeightmapStatusSnapshot(statusSnapshot);
-    if (state.activeView === "heightmap") {
-      renderHeightmapView();
-    }
-    log.debug("Initial printer state loaded.", { printerState });
-  } catch (error) {
-    const message = error?.message || String(error);
-    appendConsole(`Printer state load failed: ${message}`, "error");
-    log.error("Printer state load failed.", { error: message });
-  }
-
-  try {
-    const temperatureResponse = await state.client.call("/printer/objects/query?extruder&heater_bed");
-    const temperatureStatus = temperatureResponse?.result?.status || {};
-    updateTemperatureSnapshotFromStatus(temperatureStatus);
-  } catch (error) {
-    const message = error?.message || String(error);
-    appendConsole(`Temperature load failed: ${message}`, "warn");
-    log.warn("Temperature load failed.", { error: message });
-  }
-
-  try {
-    await refreshMachineLoadsSnapshot({ fetchStatic: true });
-  } catch (error) {
-    const message = error?.message || String(error);
-    state.machineLoads.lastError = message;
-    renderMachineLoadsCard();
-    log.debug("Initial machine loads snapshot failed.", { error: message });
-  }
-
-  try {
-    const macroResponse = await state.client.getMacros();
-    const settings = macroResponse?.result?.status?.configfile?.settings || {};
-    state.controls.configSettings = settings && typeof settings === "object" ? settings : {};
-    updateControlsToolsFromConfig(settings);
-    updateBeaconSupportFromConfig(settings);
-    if (state.beacon.supported) {
-      void refreshBeaconState({ source: "config-settings", silent: true });
-    }
-
-    let macros = mergeMacroKeys(
-      Object.keys(settings).filter((key) => String(key || "").toLowerCase().startsWith("gcode_macro "))
-    );
-
+  void (async () => {
+    if (!isCurrentClient()) return;
     try {
-      const printerConfigText = await state.client.getConfigFileText("printer.cfg");
-      const printerConfigMacros = extractMacroKeysFromConfigText(printerConfigText);
-      macros = mergeMacroKeys(macros, printerConfigMacros);
-    } catch (fallbackError) {
-      log.debug("printer.cfg macro parse fallback failed.", {
-        error: fallbackError?.message || String(fallbackError),
-      });
+      await refreshRunoutSensors({ source: "initial-connect", silent: true });
+    } catch (error) {
+      const message = error?.message || String(error);
+      log.warn("Initial runout sensor refresh failed.", { error: message });
     }
 
-    if (!macros.length) {
-      try {
-        const objectsResponse = await state.client.call("/printer/objects/list");
-        const objects = Array.isArray(objectsResponse?.result?.objects)
-          ? objectsResponse.result.objects
-          : [];
+    if (!isCurrentClient()) return;
+    try {
+      const statusResponse = await queryDashboardStatusSnapshot();
+      if (!isCurrentClient()) return;
+      const statusSnapshot = statusResponse?.result?.status || {};
+      const printStats = statusSnapshot.print_stats || {};
+      const gcodeMove = statusSnapshot.gcode_move || null;
+      const motionReport = statusSnapshot.motion_report || null;
+      const toolhead = statusSnapshot.toolhead || null;
+      const virtualSd = mergeVirtualSdSnapshot(statusSnapshot.virtual_sdcard || null);
+      renderStatusProgress(virtualSd);
+      const printerState = printStats.state || printStats.status || "ready";
+      setPrinterState(printerState);
+      updateStatusFileInfo(printStats, gcodeMove, motionReport, toolhead);
+      mergeManualProbeStatusSnapshot(statusSnapshot.manual_probe || null);
+      updateStatusFanSnapshot(statusSnapshot.fan || null);
+      mergeRunoutSensorStatusSnapshot(statusSnapshot);
+      renderRunoutSensorsCard();
+      mergeBeaconStatusSnapshot(statusSnapshot);
+      renderBeaconCard();
+      mergeHeightmapStatusSnapshot(statusSnapshot);
+      if (state.activeView === "heightmap") {
+        renderHeightmapView();
+      }
+      log.debug("Initial printer state loaded.", { printerState });
+    } catch (error) {
+      const message = error?.message || String(error);
+      appendConsole(`Printer state load failed: ${message}`, "error");
+      log.error("Printer state load failed.", { error: message });
+    }
 
-        macros = mergeMacroKeys(
-          objects.filter((entry) => String(entry || "").toLowerCase().startsWith("gcode_macro "))
-        );
+    if (!isCurrentClient()) return;
+    try {
+      const temperatureResponse = await client.call("/printer/objects/query?extruder&heater_bed");
+      if (!isCurrentClient()) return;
+      const temperatureStatus = temperatureResponse?.result?.status || {};
+      updateTemperatureSnapshotFromStatus(temperatureStatus);
+    } catch (error) {
+      const message = error?.message || String(error);
+      appendConsole(`Temperature load failed: ${message}`, "warn");
+      log.warn("Temperature load failed.", { error: message });
+    }
+
+    if (!isCurrentClient()) return;
+    try {
+      await refreshMachineLoadsSnapshot({ fetchStatic: true });
+    } catch (error) {
+      const message = error?.message || String(error);
+      state.machineLoads.lastError = message;
+      renderMachineLoadsCard();
+      log.debug("Initial machine loads snapshot failed.", { error: message });
+    }
+
+    if (!isCurrentClient()) return;
+    try {
+      const macroResponse = await client.getMacros();
+      if (!isCurrentClient()) return;
+      const settings = macroResponse?.result?.status?.configfile?.settings || {};
+      state.controls.configSettings = settings && typeof settings === "object" ? settings : {};
+      updateControlsToolsFromConfig(settings);
+      updateBeaconSupportFromConfig(settings);
+      if (state.beacon.supported) {
+        void refreshBeaconState({ source: "config-settings", silent: true });
+      }
+
+      let macros = mergeMacroKeys(
+        Object.keys(settings).filter((key) => String(key || "").toLowerCase().startsWith("gcode_macro "))
+      );
+
+      try {
+        const printerConfigText = await client.getConfigFileText("printer.cfg");
+        if (!isCurrentClient()) return;
+        const printerConfigMacros = extractMacroKeysFromConfigText(printerConfigText);
+        macros = mergeMacroKeys(macros, printerConfigMacros);
       } catch (fallbackError) {
-        log.debug("Macro object list fallback failed.", {
+        log.debug("printer.cfg macro parse fallback failed.", {
           error: fallbackError?.message || String(fallbackError),
         });
       }
-    }
 
-    if (!macros.length) {
-      try {
-        const helpResponse = await state.client.call("/printer/gcode/help");
-        const helperEntries = normalizeConsoleHelperEntries(helpResponse);
-        const helperMacroNames = helperEntries
-          .map((entry) => String(entry.command || "").trim())
-          .filter((command) => command.includes("_"))
-          .filter((command) => !/^[GMT]\d+$/i.test(command));
+      if (!macros.length) {
+        try {
+          const objectsResponse = await client.call("/printer/objects/list");
+          if (!isCurrentClient()) return;
+          const objects = Array.isArray(objectsResponse?.result?.objects)
+            ? objectsResponse.result.objects
+            : [];
 
-        macros = mergeMacroKeys(helperMacroNames.map((name) => `gcode_macro ${name}`));
-      } catch (fallbackError) {
-        log.debug("Macro gcode help fallback failed.", {
-          error: fallbackError?.message || String(fallbackError),
-        });
+          macros = mergeMacroKeys(
+            objects.filter((entry) => String(entry || "").toLowerCase().startsWith("gcode_macro "))
+          );
+        } catch (fallbackError) {
+          log.debug("Macro object list fallback failed.", {
+            error: fallbackError?.message || String(fallbackError),
+          });
+        }
       }
+
+      if (!macros.length) {
+        try {
+          const helpResponse = await client.call("/printer/gcode/help");
+          if (!isCurrentClient()) return;
+          const helperEntries = normalizeConsoleHelperEntries(helpResponse);
+          const helperMacroNames = helperEntries
+            .map((entry) => String(entry.command || "").trim())
+            .filter((command) => command.includes("_"))
+            .filter((command) => !/^[GMT]\d+$/i.test(command));
+
+          macros = mergeMacroKeys(helperMacroNames.map((name) => `gcode_macro ${name}`));
+        } catch (fallbackError) {
+          log.debug("Macro gcode help fallback failed.", {
+            error: fallbackError?.message || String(fallbackError),
+          });
+        }
+      }
+
+      renderMacros(macros);
+      log.info("Macros loaded.", { count: macros.length });
+    } catch (error) {
+      const message = error?.message || String(error);
+      appendConsole(`Macro load failed: ${message}`, "error");
+      log.error("Macro load failed.", { error: message });
     }
 
-    renderMacros(macros);
-    log.info("Macros loaded.", { count: macros.length });
-  } catch (error) {
-    const message = error?.message || String(error);
-    appendConsole(`Macro load failed: ${message}`, "error");
-    log.error("Macro load failed.", { error: message });
-  }
+    if (!isCurrentClient()) return;
+    try {
+      const files = await loadJobsFiles({ source: "connect", silent: true });
+      log.info("Print files loaded.", { count: files.length });
+    } catch (error) {
+      const message = error?.message || String(error);
+      appendConsole(`Print files load failed: ${message}`, "error");
+      log.error("Print files load failed.", { error: message });
+    }
 
-  try {
-    const files = await loadJobsFiles({ source: "connect", silent: true });
-    log.info("Print files loaded.", { count: files.length });
-  } catch (error) {
-    const message = error?.message || String(error);
-    appendConsole(`Print files load failed: ${message}`, "error");
-    log.error("Print files load failed.", { error: message });
-  }
+    if (!isCurrentClient()) return;
+    try {
+      const historyJobs = await loadPrintHistory({ source: "connect", silent: true });
+      log.info("Print history loaded.", { count: historyJobs.length });
+    } catch (error) {
+      const message = error?.message || String(error);
+      appendConsole(`Print history load failed: ${message}`, "error");
+      log.error("Print history load failed.", { error: message });
+    }
 
-  try {
-    const historyJobs = await loadPrintHistory({ source: "connect", silent: true });
-    log.info("Print history loaded.", { count: historyJobs.length });
-  } catch (error) {
-    const message = error?.message || String(error);
-    appendConsole(`Print history load failed: ${message}`, "error");
-    log.error("Print history load failed.", { error: message });
-  }
-
-  await loadConfigFiles({ preserveSelection: true });
+    if (!isCurrentClient()) return;
+    try {
+      await loadConfigFiles({ preserveSelection: true });
+    } catch (error) {
+      const message = error?.message || String(error);
+      log.warn("Initial config file load failed.", { error: message });
+    }
+  })();
 }
 
 function persistMacroSettings() {
