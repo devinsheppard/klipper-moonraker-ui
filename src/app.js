@@ -805,9 +805,73 @@ const PRETTY_GCODE_TRAVEL_RENDER_STYLE = {
 const PRETTY_GCODE_FUTURE_RENDER_STYLE = "rgba(100, 116, 139, 0.42)";
 const PRETTY_GCODE_3D_ORBIT_IDLE_SECONDS = 5;
 const PRETTY_GCODE_3D_MIRROR_OPACITY_SCALE = 0.42;
+const CSS_VAR_REF_PATTERN = /^var\(\s*(--[A-Za-z0-9_-]+)\s*(?:,\s*([^)]+))?\)$/i;
+let themeColorProbeElement = null;
+
+function resolveThemeCssVarValue(cssVarName, fallback = "") {
+  const varName = String(cssVarName || "").trim();
+  if (!varName) {
+    return String(fallback || "").trim();
+  }
+
+  const computed = getComputedStyle(document.documentElement);
+  let value = computed.getPropertyValue(varName).trim();
+  let depth = 0;
+
+  while (value && depth < 8) {
+    const match = value.match(CSS_VAR_REF_PATTERN);
+    if (!match) {
+      break;
+    }
+    const nestedName = String(match[1] || "").trim();
+    const nestedFallback = String(match[2] || "").trim();
+    const nestedValue = nestedName ? computed.getPropertyValue(nestedName).trim() : "";
+    value = nestedValue || nestedFallback;
+    depth += 1;
+  }
+
+  return value || String(fallback || "").trim();
+}
+
+function resolveThemeColorForGraphics(value, fallback) {
+  const candidate = String(value || "").trim();
+  const fallbackColor = String(fallback || "").trim();
+  if (!candidate) return fallbackColor;
+
+  try {
+    if (!themeColorProbeElement) {
+      const probe = document.createElement("span");
+      probe.setAttribute("aria-hidden", "true");
+      probe.style.position = "absolute";
+      probe.style.visibility = "hidden";
+      probe.style.pointerEvents = "none";
+      probe.style.width = "0";
+      probe.style.height = "0";
+      probe.style.overflow = "hidden";
+      if (document.body) {
+        document.body.appendChild(probe);
+      } else {
+        document.documentElement.appendChild(probe);
+      }
+      themeColorProbeElement = probe;
+    }
+
+    themeColorProbeElement.style.color = "";
+    themeColorProbeElement.style.color = candidate;
+    const resolved = getComputedStyle(themeColorProbeElement).color.trim();
+    if (resolved) {
+      return resolved;
+    }
+  } catch {
+    // fall through to raw candidate/fallback
+  }
+
+  return candidate || fallbackColor;
+}
+
 function getThemeColorValue(cssVarName, fallback) {
-  const value = getComputedStyle(document.documentElement).getPropertyValue(cssVarName).trim();
-  return value || fallback;
+  const raw = resolveThemeCssVarValue(cssVarName, fallback);
+  return resolveThemeColorForGraphics(raw, fallback);
 }
 
 function getTemperatureLineColors() {
@@ -1411,6 +1475,7 @@ let heightmapThreeState = {
   canvas: null,
   root: null,
   webglUnavailable: false,
+  webglUnavailableSince: 0,
   lastSceneKey: "",
 };
 
@@ -4006,6 +4071,9 @@ function createDefaultHeightmapState() {
     scaleZMax: loadStoredHeightmapScaleZMax(),
     defaultOrientation: loadStoredHeightmapOrientation(),
     colorScheme: loadStoredHeightmapColorScheme(),
+    lastBedMeshSignature: "",
+    lastPrintStatsSignature: "",
+    lastProfilesRenderSignature: "",
   };
 }
 
@@ -8569,6 +8637,33 @@ function getHeightmapProfileEntries(bedMesh) {
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
+function getHeightmapDataSignature(value) {
+  try {
+    return JSON.stringify(value ?? null) || "";
+  } catch {
+    return "";
+  }
+}
+
+function getHeightmapPrintStatsSignature(printStats) {
+  const stateValue = normalizePrinterState(printStats?.state || printStats?.status || "");
+  const filename = String(printStats?.filename || "").trim();
+  return `${stateValue}|${filename}`;
+}
+
+function getHeightmapProfilesRenderSignature(entries, { activeName = "", busy = false } = {}) {
+  const rows = Array.isArray(entries)
+    ? entries.map((entry) => {
+      const stats = entry?.stats || {};
+      const range = Number.isFinite(stats?.range) ? Number(stats.range).toFixed(4) : "";
+      const max = Number.isFinite(stats?.max) ? Number(stats.max).toFixed(4) : "";
+      const min = Number.isFinite(stats?.min) ? Number(stats.min).toFixed(4) : "";
+      return `${String(entry?.name || "").trim()}|${range}|${max}|${min}`;
+    })
+    : [];
+  return `${busy ? 1 : 0}|${String(activeName || "").trim()}|${rows.join("~")}`;
+}
+
 function getHeightmapVisibleRange(bedMesh) {
   const values = [];
   if (state.heightmap.showProbed) {
@@ -8808,7 +8903,13 @@ function disposeHeightmapThreeRoot() {
 
 function ensureHeightmapThreeContext(canvas) {
   if (!(canvas instanceof HTMLCanvasElement)) return null;
-  if (heightmapThreeState.webglUnavailable) return null;
+  if (heightmapThreeState.webglUnavailable) {
+    const elapsed = Date.now() - (Number(heightmapThreeState.webglUnavailableSince) || 0);
+    if (elapsed < 5000) {
+      return null;
+    }
+    heightmapThreeState.webglUnavailable = false;
+  }
 
   if (heightmapThreeState.canvas && heightmapThreeState.canvas !== canvas) {
     disposeHeightmapThreeRoot();
@@ -8856,11 +8957,13 @@ function ensureHeightmapThreeContext(canvas) {
     heightmapThreeState.controls = controls;
     heightmapThreeState.canvas = canvas;
     heightmapThreeState.webglUnavailable = false;
+    heightmapThreeState.webglUnavailableSince = 0;
     return heightmapThreeState;
   } catch (error) {
     const message = error?.message || String(error);
     log.warn("Heightmap WebGL initialization failed; using 2D fallback.", { error: message });
     heightmapThreeState.webglUnavailable = true;
+    heightmapThreeState.webglUnavailableSince = Date.now();
     return null;
   }
 }
@@ -9198,9 +9301,11 @@ function renderHeightmapCanvas2D() {
 
 function renderHeightmapCanvas() {
   const rendered3d = renderHeightmapCanvas3D();
-  if (!rendered3d) {
-    renderHeightmapCanvas2D();
+  if (rendered3d) {
+    return;
   }
+
+  renderHeightmapCanvas2D();
 }
 
 function setHeightmapStatusMessage(message, level = "info") {
@@ -9281,6 +9386,12 @@ function renderHeightmapProfiles() {
   const profiles = getHeightmapProfileEntries(bedMesh);
   const activeName = String(bedMesh?.profile_name || "").trim();
   const busy = !!state.heightmap.loading || !!state.heightmap.actionInFlight || state.connectionStatus !== "connected";
+  const renderSignature = getHeightmapProfilesRenderSignature(profiles, { activeName, busy });
+
+  if (state.heightmap.lastProfilesRenderSignature === renderSignature) {
+    return;
+  }
+  state.heightmap.lastProfilesRenderSignature = renderSignature;
 
   els.heightmapProfilesList.innerHTML = "";
 
@@ -9410,26 +9521,26 @@ function mergeHeightmapStatusSnapshot(status) {
 
   if (Object.prototype.hasOwnProperty.call(status, "bed_mesh")) {
     const snapshot = status.bed_mesh && typeof status.bed_mesh === "object" ? status.bed_mesh : null;
-    state.heightmap.bedMesh = snapshot;
-    changed = true;
-  }
-
-  if (Object.prototype.hasOwnProperty.call(status, "toolhead")) {
-    const toolhead = status.toolhead && typeof status.toolhead === "object" ? status.toolhead : {};
-    state.printStatus.lastToolhead = {
-      ...state.printStatus.lastToolhead,
-      ...toolhead,
-    };
-    changed = true;
+    const nextSignature = getHeightmapDataSignature(snapshot);
+    if (nextSignature !== state.heightmap.lastBedMeshSignature) {
+      state.heightmap.bedMesh = snapshot;
+      state.heightmap.lastBedMeshSignature = nextSignature;
+      changed = true;
+    }
   }
 
   if (Object.prototype.hasOwnProperty.call(status, "print_stats")) {
     const printStats = status.print_stats && typeof status.print_stats === "object" ? status.print_stats : {};
-    state.printStatus.lastPrintStats = {
+    const nextPrintStats = {
       ...state.printStatus.lastPrintStats,
       ...printStats,
     };
-    changed = true;
+    const nextSignature = getHeightmapPrintStatsSignature(nextPrintStats);
+    if (nextSignature !== state.heightmap.lastPrintStatsSignature) {
+      state.printStatus.lastPrintStats = nextPrintStats;
+      state.heightmap.lastPrintStatsSignature = nextSignature;
+      changed = true;
+    }
   }
 
   return changed;
@@ -9499,8 +9610,14 @@ function normalizeHeightmapProfileName(value) {
   return asciiOnly.trim();
 }
 
+function getHeightmapProfileScriptToken(name) {
+  const normalized = normalizeHeightmapProfileName(name);
+  if (!normalized) return "";
+  return /^[A-Za-z0-9_.-]+$/.test(normalized) ? normalized : "";
+}
+
 function formatHeightmapProfileScriptValue(name) {
-  return encodeGcodeParamValue(normalizeHeightmapProfileName(name));
+  return getHeightmapProfileScriptToken(name);
 }
 
 async function requestHeightmapCalibrate() {
@@ -9514,7 +9631,13 @@ async function requestHeightmapCalibrate() {
     return false;
   }
 
-  return runHeightmapGcodeAction(`BED_MESH_CALIBRATE PROFILE=${formatHeightmapProfileScriptValue(name)}`, "Bed mesh calibrate");
+  const token = formatHeightmapProfileScriptValue(name);
+  if (!token) {
+    appendConsole("Heightmap calibrate cancelled: profile name must only use letters, numbers, dot, dash, or underscore.", "warn");
+    return false;
+  }
+
+  return runHeightmapGcodeAction(`BED_MESH_CALIBRATE PROFILE=${token}`, "Bed mesh calibrate");
 }
 
 async function requestHeightmapRenameProfile(profileName) {
@@ -9535,15 +9658,50 @@ async function requestHeightmapRenameProfile(profileName) {
     return false;
   }
 
-  const script = `BED_MESH_PROFILE SAVE=${formatHeightmapProfileScriptValue(nextName)}\nBED_MESH_PROFILE REMOVE=${formatHeightmapProfileScriptValue(sourceName)}`;
+  const nextToken = formatHeightmapProfileScriptValue(nextName);
+  const sourceToken = formatHeightmapProfileScriptValue(sourceName);
+  if (!nextToken || !sourceToken) {
+    appendConsole("Heightmap rename cancelled: profile names must only use letters, numbers, dot, dash, or underscore.", "warn");
+    return false;
+  }
+
+  const script = `BED_MESH_PROFILE SAVE=${nextToken}\nBED_MESH_PROFILE REMOVE=${sourceToken}`;
   return runHeightmapGcodeAction(script, `Rename bed mesh profile ${sourceName}`);
 }
 
 async function requestHeightmapLoadProfile(profileName) {
   const name = normalizeHeightmapProfileName(profileName);
   if (!name) return false;
-  const script = `BED_MESH_PROFILE LOAD=${formatHeightmapProfileScriptValue(name)}`;
-  return runHeightmapGcodeAction(script, `Load bed mesh profile ${name}`);
+  const activeNow = normalizeHeightmapProfileName(state.heightmap.bedMesh?.profile_name || "");
+  if (activeNow && activeNow.toLowerCase() === name.toLowerCase()) {
+    setHeightmapStatusMessage(`Profile "${name}" is already active.`, "info");
+    return true;
+  }
+
+  setHeightmapStatusMessage(`Loading profile "${name}"...`, "info");
+  const script = `BED_MESH_PROFILE LOAD=${encodeGcodeParamValue(name)}`;
+  const sent = await runHeightmapGcodeAction(script, `Load bed mesh profile ${name}`);
+  if (!sent) {
+    return false;
+  }
+
+  await new Promise((resolve) => {
+    setTimeout(resolve, 450);
+  });
+  await refreshHeightmapState({ source: "profile-load", silent: true });
+
+  const activeAfter = normalizeHeightmapProfileName(state.heightmap.bedMesh?.profile_name || "");
+  if (activeAfter.toLowerCase() === name.toLowerCase()) {
+    setHeightmapStatusMessage(`Loaded profile "${name}".`, "info");
+    return true;
+  }
+
+  setHeightmapStatusMessage(`Load sent for "${name}". Active profile is "${activeAfter || "unknown"}".`, "warn");
+  appendConsole(
+    `Heightmap load warning: requested "${name}" but active profile is "${activeAfter || "unknown"}".`,
+    "warn"
+  );
+  return false;
 }
 
 async function requestHeightmapRemoveProfile(profileName) {
@@ -9551,7 +9709,12 @@ async function requestHeightmapRemoveProfile(profileName) {
   if (!name) return false;
   const confirmed = window.confirm(`Delete bed mesh profile "${name}"?`);
   if (!confirmed) return false;
-  const script = `BED_MESH_PROFILE REMOVE=${formatHeightmapProfileScriptValue(name)}`;
+  const token = formatHeightmapProfileScriptValue(name);
+  if (!token) {
+    appendConsole("Heightmap delete cancelled: profile name contains unsupported characters.", "warn");
+    return false;
+  }
+  const script = `BED_MESH_PROFILE REMOVE=${token}`;
   return runHeightmapGcodeAction(script, `Remove bed mesh profile ${name}`);
 }
 
