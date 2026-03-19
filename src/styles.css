@@ -1631,3 +1631,1752 @@ button.is-pending,
     min-width: 0;
   }
 }
+
+#card-runout-sensors {
+  display: grid;
+  gap: 10px;
+}
+
+#card-runout-sensors .card-head {
+  margin-bottom: 0;
+}
+
+.runout-sensor-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.runout-sensor-item,
+.runout-sensor-empty {
+  border: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg-soft) 74%, rgba(2, 6, 23, 0.4));
+  min-height: 44px;
+}
+
+.runout-sensor-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+}
+
+.runout-sensor-item.is-pending {
+  opacity: 0.78;
+}
+
+.runout-sensor-empty {
+  padding: 10px;
+}
+
+.runout-sensor-empty .muted {
+  margin: 0;
+  font-size: 0.78rem;
+}
+
+.runout-sensor-name-wrap {
+  min-width: 0;
+}
+
+.runout-sensor-name {
+  margin: 0;
+  min-width: 0;
+  font-size: 0.84rem;
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: color-mix(in srgb, var(--text) 95%, #ffffff 5%);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.runout-sensor-icon {
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  background: color-mix(in srgb, var(--bg) 82%, rgba(2, 6, 23, 0.36));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: color-mix(in srgb, var(--muted) 85%, #ffffff 15%);
+}
+
+.runout-sensor-icon svg {
+  width: 15px;
+  height: 15px;
+  display: block;
+}
+
+.runout-sensor-icon[data-state="detected"] {
+  color: color-mix(in srgb, var(--accent-2) 72%, #22c55e 28%);
+}
+
+.runout-sensor-icon[data-state="runout"] {
+  color: color-mix(in srgb, var(--danger) 82%, #f59e0b 18%);
+}
+
+.runout-sensor-switch {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.runout-sensor-switch input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.runout-sensor-switch input:disabled {
+  cursor: not-allowed;
+}
+
+.runout-sensor-switch-slider {
+  width: 44px;
+  height: 24px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--line) 74%, transparent);
+  background: color-mix(in srgb, var(--bg) 82%, rgba(2, 6, 23, 0.35));
+  position: relative;
+  transition: background 0.14s ease, border-color 0.14s ease;
+}
+
+.runout-sensor-switch-slider::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  transform: translateY(-50%);
+  background: color-mix(in srgb, var(--muted) 82%, #ffffff 18%);
+  transition: transform 0.14s ease, background 0.14s ease;
+}
+
+.runout-sensor-switch input:checked + .runout-sensor-switch-slider {
+  border-color: color-mix(in srgb, var(--accent-2) 76%, #ffffff 24%);
+  background: color-mix(in srgb, var(--accent-2) 34%, transparent);
+}
+
+.runout-sensor-switch input:checked + .runout-sensor-switch-slider::before {
+  transform: translate(20px, -50%);
+  background: color-mix(in srgb, var(--text) 90%, #ffffff 10%);
+}
+
+.runout-sensor-switch input:focus-visible + .runout-sensor-switch-slider {
+  outline: 2px solid color-mix(in srgb, var(--accent) 72%, #ffffff 28%);
+  outline-offset: 2px;
+}
+
+.runout-sensor-switch input:disabled + .runout-sensor-switch-slider {
+  opacity: 0.62;
+}
+
+.runout-sensor-status {
+  margin: 0;
+  font-size: 0.76rem;
+}
+
+.runout-sensor-status[data-level="warn"] {
+  color: color-mix(in srgb, #f59e0b 84%, #ffffff 16%);
+}
+
+.runout-sensor-status[data-level="error"] {
+  color: color-mix(in srgb, var(--danger) 88%, #ffffff 12%);
+}
+
+@media (max-width: 640px) {
+  .runout-sensor-item {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "name icon"
+      "switch switch";
+    row-gap: 8px;
+  }
+
+  .runout-sensor-name-wrap {
+    grid-area: name;
+  }
+
+  .runout-sensor-icon {
+    grid-area: icon;
+    justify-self: end;
+  }
+
+  .runout-sensor-switch {
+    grid-area: switch;
+    justify-self: start;
+  }
+}
+
+/* Three Rivers Raiders-inspired Forge skin */
+:root {
+  --primary: var(--accent);
+  --primary-hover: color-mix(in srgb, var(--accent) 86%, #ffffff 14%);
+  --primary-active: color-mix(in srgb, var(--accent) 76%, #000000 24%);
+  --secondary: var(--accent-2);
+  --secondary-hover: color-mix(in srgb, var(--accent-2) 80%, #ffffff 20%);
+  --app-background: var(--bg);
+  --page-background: color-mix(in srgb, var(--bg) 86%, #000000 14%);
+  --surface: var(--bg-soft);
+  --surface-raised: var(--card);
+  --surface-overlay: color-mix(in srgb, var(--bg-soft) 84%, rgba(2, 6, 23, 0.88));
+  --surface-selected: color-mix(in srgb, var(--accent) 24%, transparent);
+  --surface-hover: color-mix(in srgb, var(--bg-soft) 64%, rgba(2, 6, 23, 0.3));
+  --text-primary: var(--text);
+  --text-secondary: color-mix(in srgb, var(--text) 84%, var(--muted) 16%);
+  --text-muted: var(--muted);
+  --text-on-primary: #111111;
+  --text-on-dark: #ffffff;
+  --heading: var(--text);
+  --link: var(--accent);
+  --link-hover: color-mix(in srgb, var(--accent) 82%, #ffffff 18%);
+  --border-subtle: color-mix(in srgb, var(--line) 52%, transparent);
+  --border-default: var(--line);
+  --border-strong: color-mix(in srgb, var(--line) 82%, #ffffff 18%);
+  --divider: color-mix(in srgb, var(--line) 70%, transparent);
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --error: var(--danger);
+  --info: #38bdf8;
+  --status-idle: #64748b;
+  --status-printing: #16a34a;
+  --status-paused: #f59e0b;
+  --status-complete: #22d3ee;
+  --status-disconnected: #f97316;
+  --focus-ring: color-mix(in srgb, var(--accent) 76%, #ffffff 24%);
+  --focus-ring-offset: #020617;
+  --button-primary-bg: var(--primary);
+  --button-primary-text: var(--text-on-primary);
+  --button-primary-hover: var(--primary-hover);
+  --button-secondary-bg: color-mix(in srgb, var(--bg-soft) 74%, rgba(2, 6, 23, 0.74));
+  --button-secondary-text: var(--text-primary);
+  --button-secondary-hover: color-mix(in srgb, var(--bg-soft) 82%, rgba(2, 6, 23, 0.9));
+  --input-bg: color-mix(in srgb, var(--bg) 90%, rgba(2, 6, 23, 0.5));
+  --input-border: color-mix(in srgb, var(--line) 80%, transparent);
+  --input-focus: var(--focus-ring);
+  --toggle-on: var(--primary);
+  --toggle-off: color-mix(in srgb, var(--muted) 78%, #1f2937 22%);
+  --slider-track: color-mix(in srgb, var(--line) 70%, transparent);
+  --slider-fill: var(--primary);
+  --chart-primary: var(--accent);
+  --chart-secondary: var(--accent-2);
+  --chart-grid: color-mix(in srgb, var(--line) 52%, transparent);
+  --chart-text: var(--text-secondary);
+  --temperature-hot: var(--danger);
+  --temperature-bed: var(--accent);
+  --fan-speed: #38bdf8;
+  --progress-fill: var(--primary);
+  --bg-elevated: color-mix(in srgb, var(--card) 92%, #020617 8%);
+  /* Decorative watermark hook; keep disabled until an approved logo is provided. */
+  --raiders-watermark-approved-logo: none;
+  --raiders-watermark-image: none;
+  --raiders-watermark-opacity: 0;
+  --raiders-watermark-size: contain;
+  --raiders-watermark-position-x: 50%;
+  --raiders-watermark-position-y: 50%;
+  --raiders-watermark-blur: 0px;
+  --pbhs-watermark-approved-logo: none;
+  --pbhs-watermark-image: none;
+  --pbhs-watermark-opacity: 0;
+  --pbhs-watermark-size: contain;
+  --pbhs-watermark-position-x: 50%;
+  --pbhs-watermark-position-y: 50%;
+  --pbhs-watermark-blur: 0px;
+  --royals-watermark-approved-logo: none;
+  --royals-watermark-image: none;
+  --royals-watermark-opacity: 0;
+  --royals-watermark-size: contain;
+  --royals-watermark-position-x: 50%;
+  --royals-watermark-position-y: 50%;
+  --royals-watermark-blur: 0px;
+}
+
+:root[data-theme="raiders"] {
+  /* Core brand tokens */
+  --primary: #d4a017;
+  --primary-hover: #e4b63b;
+  --primary-active: #b98810;
+  --secondary: #9f7b19;
+  --secondary-hover: #b58c20;
+  --accent: #f5c543;
+  --accent-muted: #7d6622;
+
+  /* Background and surface tokens */
+  --app-background: #060607;
+  --page-background: #0a0a0d;
+  --surface: #121214;
+  --surface-raised: #19191d;
+  --surface-overlay: rgba(14, 14, 16, 0.94);
+  --surface-selected: #231c09;
+  --surface-hover: #1f1a12;
+
+  /* Text tokens */
+  --text-primary: #f6f3ea;
+  --text-secondary: #d8d1be;
+  --text-muted: #a89f86;
+  --text-on-primary: #161207;
+  --text-on-dark: #fbf8ef;
+  --heading: #fff8e3;
+  --link: #ffd44d;
+  --link-hover: #ffe38b;
+
+  /* Border tokens */
+  --border-subtle: rgba(212, 160, 23, 0.28);
+  --border-default: rgba(212, 160, 23, 0.48);
+  --border-strong: rgba(247, 198, 67, 0.76);
+  --divider: rgba(212, 160, 23, 0.34);
+
+  /* Feedback and status tokens */
+  --success: #32c76a;
+  --warning: #f1b235;
+  --error: #e05252;
+  --info: #5bb7ff;
+  --status-idle: #8f98a6;
+  --status-printing: #f5c543;
+  --status-paused: #eca93a;
+  --status-complete: #42ce78;
+  --status-disconnected: #b65b5b;
+
+  /* Interactive tokens */
+  --focus-ring: #f6cf61;
+  --focus-ring-offset: #060607;
+  --button-primary-bg: #d4a017;
+  --button-primary-text: #161207;
+  --button-primary-hover: #e4b63b;
+  --button-secondary-bg: #1a1a1f;
+  --button-secondary-text: #f6f3ea;
+  --button-secondary-hover: #24242b;
+  --input-bg: #0f1013;
+  --input-border: rgba(212, 160, 23, 0.42);
+  --input-focus: #f6cf61;
+  --toggle-on: #d4a017;
+  --toggle-off: #5a5650;
+  --slider-track: #3b372f;
+  --slider-fill: #d4a017;
+
+  /* Data visualization tokens */
+  --chart-primary: #f5c543;
+  --chart-secondary: #ffe38b;
+  --chart-grid: rgba(212, 160, 23, 0.22);
+  --chart-text: #e8dfc9;
+  --temperature-hot: #f1733f;
+  --temperature-bed: #f5c543;
+  --fan-speed: #5bb7ff;
+  --progress-fill: #d4a017;
+
+  /* Forge compatibility aliases */
+  --bg: var(--app-background);
+  --bg-soft: var(--surface);
+  --card: var(--surface-raised);
+  --line: var(--border-default);
+  --text: var(--text-primary);
+  --muted: var(--text-secondary);
+  --accent-2: var(--secondary);
+  --danger: var(--error);
+  --bg-elevated: color-mix(in srgb, var(--surface-raised) 88%, #050507 12%);
+
+  /* Logo watermark plumbing (no logo rendered until approved asset URL is set). */
+  --raiders-watermark-image: var(--raiders-watermark-approved-logo, none);
+  --raiders-watermark-opacity: 0.086;
+  --raiders-watermark-size: contain;
+  --raiders-watermark-position-x: 50%;
+  --raiders-watermark-position-y: 50%;
+  --raiders-watermark-blur: 0px;
+}
+
+:root[data-theme="raiders"] body {
+  background-image:
+    radial-gradient(1100px 520px at 0% 0%, color-mix(in srgb, var(--primary) 24%, transparent), transparent 62%),
+    radial-gradient(960px 480px at 100% 100%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 58%),
+    linear-gradient(var(--page-background), var(--app-background));
+  color: var(--text-primary);
+}
+
+:root[data-theme="raiders"] .app-layout {
+  position: relative;
+  isolation: isolate;
+}
+
+:root[data-theme="raiders"] .app-layout::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: var(--raiders-watermark-image);
+  background-repeat: no-repeat;
+  background-size: var(--raiders-watermark-size);
+  background-position: var(--raiders-watermark-position-x) var(--raiders-watermark-position-y);
+  opacity: var(--raiders-watermark-opacity);
+  filter: blur(var(--raiders-watermark-blur));
+  /* Keep full-screen coverage while fading edges for readability. */
+  mask-image: radial-gradient(circle at center, rgba(0, 0, 0, 0.92) 0%, rgba(0, 0, 0, 0.72) 58%, rgba(0, 0, 0, 0.22) 84%, transparent 100%);
+  -webkit-mask-image: radial-gradient(circle at center, rgba(0, 0, 0, 0.92) 0%, rgba(0, 0, 0, 0.72) 58%, rgba(0, 0, 0, 0.22) 84%, transparent 100%);
+}
+
+:root[data-theme="raiders"] .global-header,
+:root[data-theme="raiders"] .shell {
+  position: relative;
+  z-index: 1;
+}
+
+:root[data-theme="raiders"] .global-header,
+:root[data-theme="raiders"] .sidebar,
+:root[data-theme="raiders"] .tools-drawer {
+  background: color-mix(in srgb, var(--surface) 88%, rgba(6, 6, 7, 0.8));
+  border-color: var(--divider);
+}
+
+:root[data-theme="raiders"] .card,
+:root[data-theme="raiders"] .layout-dialog,
+:root[data-theme="raiders"] .jobs-move-dialog-card,
+:root[data-theme="raiders"] .manual-probe-dialog-card,
+:root[data-theme="raiders"] .controls-zoffset-dialog-card,
+:root[data-theme="raiders"] .settings-macro-dialog-card,
+:root[data-theme="raiders"] .settings-thermal-preset-dialog-card,
+:root[data-theme="raiders"] .spoolman-select-dialog-card {
+  background: linear-gradient(168deg, color-mix(in srgb, var(--surface-raised) 92%, #0b0b0d 8%), var(--surface));
+  border-color: var(--border-default);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(255, 227, 139, 0.05);
+  border-radius: 14px;
+}
+
+:root[data-theme="raiders"] .card-head,
+:root[data-theme="raiders"] .camera-card-head,
+:root[data-theme="raiders"] .temperature-card-head,
+:root[data-theme="raiders"] .jobs-head,
+:root[data-theme="raiders"] .machine-update-head,
+:root[data-theme="raiders"] .machine-endstops-head,
+:root[data-theme="raiders"] .machine-log-files-head {
+  border-bottom: 1px solid var(--divider);
+  padding-bottom: 10px;
+}
+
+:root[data-theme="raiders"] h1,
+:root[data-theme="raiders"] h2,
+:root[data-theme="raiders"] h3,
+:root[data-theme="raiders"] h4 {
+  color: var(--heading);
+}
+
+:root[data-theme="raiders"] .nav-item {
+  border-color: var(--border-subtle);
+  background: color-mix(in srgb, var(--surface-raised) 82%, rgba(8, 8, 9, 0.5));
+  color: var(--text-primary);
+}
+
+:root[data-theme="raiders"] .nav-item:hover {
+  border-color: var(--border-strong);
+  background: color-mix(in srgb, var(--surface-hover) 84%, rgba(10, 10, 10, 0.26));
+}
+
+:root[data-theme="raiders"] .nav-item.active {
+  border-color: var(--border-strong);
+  background: linear-gradient(120deg, color-mix(in srgb, var(--primary) 32%, transparent), color-mix(in srgb, var(--accent) 24%, transparent));
+  box-shadow: inset 3px 0 0 var(--primary);
+}
+
+:root[data-theme="raiders"] .nav-item-icon {
+  border-color: var(--border-subtle);
+  background: color-mix(in srgb, var(--surface) 84%, #061129 16%);
+}
+
+:root[data-theme="raiders"] .settings-subnav-item:hover {
+  border-color: var(--border-default);
+  background: color-mix(in srgb, var(--surface-hover) 82%, rgba(8, 8, 8, 0.25));
+}
+
+:root[data-theme="raiders"] .settings-subnav-item.active,
+:root[data-theme="raiders"] .settings-subnav-item[aria-current="location"] {
+  border-color: var(--border-strong);
+  background: linear-gradient(120deg, color-mix(in srgb, var(--primary) 34%, transparent), color-mix(in srgb, var(--accent) 20%, transparent));
+}
+
+:root[data-theme="raiders"] button:not(.emergency-stop-btn):not(.danger),
+:root[data-theme="raiders"] .status-job-action,
+:root[data-theme="raiders"] .history-action-btn,
+:root[data-theme="raiders"] .tools-drawer-action,
+:root[data-theme="raiders"] .jobs-job-action,
+:root[data-theme="raiders"] .machine-update-action-btn,
+:root[data-theme="raiders"] .machine-log-files-action-btn,
+:root[data-theme="raiders"] .machine-endstops-query-btn,
+:root[data-theme="raiders"] .layout-move-column {
+  background: var(--button-secondary-bg);
+  color: var(--button-secondary-text);
+  border: 1px solid var(--border-default);
+  border-radius: 9px;
+}
+
+:root[data-theme="raiders"] button:not(.emergency-stop-btn):not(.danger):hover,
+:root[data-theme="raiders"] .status-job-action:hover,
+:root[data-theme="raiders"] .history-action-btn:hover,
+:root[data-theme="raiders"] .tools-drawer-action:hover,
+:root[data-theme="raiders"] .jobs-job-action:hover,
+:root[data-theme="raiders"] .machine-update-action-btn:hover,
+:root[data-theme="raiders"] .machine-log-files-action-btn:hover,
+:root[data-theme="raiders"] .machine-endstops-query-btn:hover,
+:root[data-theme="raiders"] .layout-move-column:hover {
+  background: var(--button-secondary-hover);
+  border-color: var(--border-strong);
+}
+
+:root[data-theme="raiders"] #header-upload-print-btn,
+:root[data-theme="raiders"] #theme-community-apply,
+:root[data-theme="raiders"] #interface-bg-image-apply,
+:root[data-theme="raiders"] #jobs-upload-btn,
+:root[data-theme="raiders"] #jobs-print-btn,
+:root[data-theme="raiders"] #settings-spoolman-connect,
+:root[data-theme="raiders"] #settings-spoolman-save,
+:root[data-theme="raiders"] #status-print-resume,
+:root[data-theme="raiders"] #status-print-pause,
+:root[data-theme="raiders"] #status-print-cancel {
+  background: linear-gradient(135deg, var(--button-primary-bg), color-mix(in srgb, var(--button-primary-bg) 76%, #f9dc8f 24%));
+  color: var(--button-primary-text);
+  border-color: color-mix(in srgb, var(--button-primary-bg) 72%, #000000 28%);
+}
+
+:root[data-theme="raiders"] #header-upload-print-btn:hover,
+:root[data-theme="raiders"] #theme-community-apply:hover,
+:root[data-theme="raiders"] #interface-bg-image-apply:hover,
+:root[data-theme="raiders"] #jobs-upload-btn:hover,
+:root[data-theme="raiders"] #jobs-print-btn:hover,
+:root[data-theme="raiders"] #settings-spoolman-connect:hover,
+:root[data-theme="raiders"] #settings-spoolman-save:hover,
+:root[data-theme="raiders"] #status-print-resume:hover,
+:root[data-theme="raiders"] #status-print-pause:hover,
+:root[data-theme="raiders"] #status-print-cancel:hover {
+  background: linear-gradient(135deg, var(--button-primary-hover), color-mix(in srgb, var(--button-primary-hover) 78%, #ffffff 22%));
+}
+
+:root[data-theme="raiders"] button.danger,
+:root[data-theme="raiders"] .history-row-action.danger,
+:root[data-theme="raiders"] .tools-service-btn.danger {
+  background: color-mix(in srgb, var(--error) 26%, #2a1010 74%);
+  border-color: color-mix(in srgb, var(--error) 68%, #000000 32%);
+  color: #ffdede;
+}
+
+:root[data-theme="raiders"] input,
+:root[data-theme="raiders"] select,
+:root[data-theme="raiders"] textarea {
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  color: var(--text-primary);
+  border-radius: 8px;
+}
+
+:root[data-theme="raiders"] input::placeholder,
+:root[data-theme="raiders"] textarea::placeholder {
+  color: var(--text-muted);
+}
+
+:root[data-theme="raiders"] input:focus,
+:root[data-theme="raiders"] select:focus,
+:root[data-theme="raiders"] textarea:focus {
+  border-color: var(--input-focus);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--input-focus) 56%, transparent), 0 0 0 4px color-mix(in srgb, var(--input-focus) 16%, transparent);
+}
+
+:root[data-theme="raiders"] input[type="checkbox"],
+:root[data-theme="raiders"] input[type="radio"] {
+  accent-color: var(--toggle-on);
+}
+
+:root[data-theme="raiders"] input[type="range"] {
+  accent-color: var(--slider-fill);
+}
+
+:root[data-theme="raiders"] input[type="range"]::-webkit-slider-runnable-track {
+  background: var(--slider-track);
+}
+
+:root[data-theme="raiders"] input[type="range"]::-moz-range-track {
+  background: var(--slider-track);
+}
+
+:root[data-theme="raiders"] .runout-sensor-switch input:checked + .runout-sensor-switch-slider {
+  border-color: color-mix(in srgb, var(--toggle-on) 80%, #ffffff 20%);
+  background: color-mix(in srgb, var(--toggle-on) 34%, transparent);
+}
+
+:root[data-theme="raiders"] .runout-sensor-switch input:checked + .runout-sensor-switch-slider::before {
+  background: var(--text-on-dark);
+}
+
+:root[data-theme="raiders"] .status-pill,
+:root[data-theme="raiders"] .status-state-chip,
+:root[data-theme="raiders"] .history-status-pill,
+:root[data-theme="raiders"] .settings-macros-category-chip,
+:root[data-theme="raiders"] .runout-sensor-status {
+  border-color: var(--border-default);
+  background: color-mix(in srgb, var(--surface-selected) 54%, rgba(8, 8, 9, 0.4));
+  color: var(--text-primary);
+}
+
+:root[data-theme="raiders"] .muted,
+:root[data-theme="raiders"] .settings-console-note,
+:root[data-theme="raiders"] .settings-macros-note,
+:root[data-theme="raiders"] .settings-dashboard-note,
+:root[data-theme="raiders"] .settings-theme-note {
+  color: var(--text-muted);
+}
+
+:root[data-theme="raiders"] .status-progress-ring-value,
+:root[data-theme="raiders"] .spoolman-progress-linear > span,
+:root[data-theme="raiders"] #progress-bar,
+:root[data-theme="raiders"] .progress-fill {
+  background: var(--progress-fill);
+  stroke: var(--progress-fill);
+}
+
+:root[data-theme="raiders"] .status-progress-ring-track {
+  stroke: var(--chart-grid);
+}
+
+:root[data-theme="raiders"] #controls-fan-speed {
+  accent-color: var(--fan-speed);
+}
+
+:root[data-theme="raiders"] .temperature-chart-tooltip {
+  border-color: var(--border-default);
+  background: color-mix(in srgb, var(--surface-overlay) 90%, rgba(6, 6, 7, 0.1));
+  color: var(--chart-text);
+}
+
+:root[data-theme="raiders"] .console-card,
+:root[data-theme="raiders"] .console-log,
+:root[data-theme="raiders"] .machine-update-log,
+:root[data-theme="raiders"] .machine-log-files-list,
+:root[data-theme="raiders"] .history-table-wrap,
+:root[data-theme="raiders"] .history-status-table-wrap,
+:root[data-theme="raiders"] .config-editor {
+  border-color: var(--border-subtle);
+  background: color-mix(in srgb, var(--surface) 82%, rgba(5, 5, 6, 0.44));
+}
+
+:root[data-theme="raiders"] .camera-frame,
+:root[data-theme="raiders"] .pretty-gcode-canvas-wrap {
+  border-color: var(--border-default);
+  background: color-mix(in srgb, #040404 74%, var(--surface) 26%);
+}
+
+:root[data-theme="raiders"] table,
+:root[data-theme="raiders"] th,
+:root[data-theme="raiders"] td {
+  border-color: var(--border-subtle);
+  color: var(--text-primary);
+}
+
+:root[data-theme="raiders"] dialog::backdrop {
+  background: rgba(4, 4, 4, 0.74);
+}
+
+:root[data-theme="raiders"] a {
+  color: var(--link);
+}
+
+:root[data-theme="raiders"] a:hover {
+  color: var(--link-hover);
+}
+
+:root[data-theme="raiders"] *:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+@media (max-width: 1280px) {
+  :root[data-theme="raiders"] {
+    --raiders-watermark-opacity: 0.069;
+  }
+}
+
+@media (max-width: 980px) {
+  :root[data-theme="raiders"] {
+    --raiders-watermark-opacity: 0.052;
+  }
+}
+
+/* Raiders polish pass: typography hierarchy + athletic stat framing */
+:root[data-theme="raiders"] .global-header h1 {
+  letter-spacing: 0.32em;
+  font-weight: 700;
+  color: var(--heading);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.45);
+}
+
+:root[data-theme="raiders"] .brand h1 {
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--heading);
+}
+
+:root[data-theme="raiders"] .card-head h3,
+:root[data-theme="raiders"] .camera-card-head h3,
+:root[data-theme="raiders"] .temperature-card-head h3,
+:root[data-theme="raiders"] .jobs-head h3,
+:root[data-theme="raiders"] .machine-update-head h3,
+:root[data-theme="raiders"] .machine-endstops-head h3,
+:root[data-theme="raiders"] .machine-log-files-head h3 {
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+:root[data-theme="raiders"] .nav-item,
+:root[data-theme="raiders"] button:not(.emergency-stop-btn),
+:root[data-theme="raiders"] .card-collapse-toggle {
+  transition: border-color 0.1s ease, background 0.1s ease, transform 0.08s ease;
+}
+
+:root[data-theme="raiders"] .nav-item:hover,
+:root[data-theme="raiders"] button:not(.emergency-stop-btn):hover {
+  transform: translateY(-1px);
+}
+
+:root[data-theme="raiders"] .nav-item.active .nav-item-icon {
+  border-color: var(--border-strong);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--primary) 58%, transparent), color-mix(in srgb, var(--accent) 44%, transparent));
+  color: var(--heading);
+}
+
+:root[data-theme="raiders"] #card-print-progress .status-overview-item,
+:root[data-theme="raiders"] #card-print-progress .status-meta-item,
+:root[data-theme="raiders"] #card-print-progress .status-layer {
+  border-color: var(--border-subtle);
+  background: linear-gradient(155deg, color-mix(in srgb, var(--surface-raised) 88%, #080808 12%), color-mix(in srgb, var(--surface) 84%, #060606 16%));
+}
+
+:root[data-theme="raiders"] #card-print-progress .status-overview-value,
+:root[data-theme="raiders"] #card-print-progress .status-overview-sub,
+:root[data-theme="raiders"] #card-print-progress .status-progress-ring-text,
+:root[data-theme="raiders"] #card-print-progress .status-progress-head,
+:root[data-theme="raiders"] #card-print-progress .status-overview-progress .progress-text {
+  font-family: "JetBrains Mono", monospace;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+:root[data-theme="raiders"] #card-print-progress .status-state-chip {
+  border-color: var(--border-strong);
+  background: linear-gradient(120deg, color-mix(in srgb, var(--primary) 30%, transparent), color-mix(in srgb, var(--accent) 18%, transparent));
+}
+
+:root[data-theme="raiders"] #card-print-progress .status-file-row-mainsail,
+:root[data-theme="raiders"] .runout-sensor-item,
+:root[data-theme="raiders"] .settings-macros-item,
+:root[data-theme="raiders"] .settings-macros-category-item {
+  border-color: var(--border-subtle);
+  background: color-mix(in srgb, var(--surface) 82%, rgba(4, 4, 5, 0.48));
+}
+
+:root[data-theme="raiders"] .history-table tr:nth-child(even),
+:root[data-theme="raiders"] .temperature-table tbody tr:nth-child(even) {
+  background: color-mix(in srgb, var(--surface-hover) 44%, transparent);
+}
+
+:root[data-theme="raiders"] .history-status-pill.status-printing,
+:root[data-theme="raiders"] .history-status-pill.status-complete,
+:root[data-theme="raiders"] .history-status-pill.status-error,
+:root[data-theme="raiders"] .history-status-pill.status-cancelled {
+  font-family: "JetBrains Mono", monospace;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+}
+
+:root[data-theme="pbhs"] {
+  /* Core brand tokens */
+  --primary: #7a1b27;
+  --primary-hover: #922433;
+  --primary-active: #651520;
+  --secondary: #9ca2b1;
+  --secondary-hover: #b2b8c7;
+  --accent: #b32736;
+  --accent-muted: #62515a;
+
+  /* Background and surface tokens */
+  --app-background: #05060a;
+  --page-background: #090b11;
+  --surface: #10131a;
+  --surface-raised: #161a23;
+  --surface-overlay: rgba(12, 16, 24, 0.94);
+  --surface-selected: #24141a;
+  --surface-hover: #1a1f2b;
+
+  /* Text tokens */
+  --text-primary: #f5f7fb;
+  --text-secondary: #c9ceda;
+  --text-muted: #9ea6b6;
+  --text-on-primary: #fff7f8;
+  --text-on-dark: #f9fbff;
+  --heading: #ffffff;
+  --link: #cc5b6a;
+  --link-hover: #e17f8c;
+
+  /* Border tokens */
+  --border-subtle: rgba(122, 27, 39, 0.24);
+  --border-default: rgba(122, 27, 39, 0.45);
+  --border-strong: rgba(179, 39, 54, 0.72);
+  --divider: rgba(122, 27, 39, 0.32);
+
+  /* Feedback and status tokens */
+  --success: #32c76a;
+  --warning: #f1b235;
+  --error: #e16464;
+  --info: #5bb7ff;
+  --status-idle: #8d97ab;
+  --status-printing: #b32736;
+  --status-paused: #d6983e;
+  --status-complete: #42ce78;
+  --status-disconnected: #b55f6a;
+
+  /* Interactive tokens */
+  --focus-ring: #d56a79;
+  --focus-ring-offset: #05060a;
+  --button-primary-bg: #7a1b27;
+  --button-primary-text: #fff7f8;
+  --button-primary-hover: #922433;
+  --button-secondary-bg: #171b25;
+  --button-secondary-text: #f5f7fb;
+  --button-secondary-hover: #1f2533;
+  --input-bg: #0d1017;
+  --input-border: rgba(122, 27, 39, 0.42);
+  --input-focus: #d56a79;
+  --toggle-on: #7a1b27;
+  --toggle-off: #555e70;
+  --slider-track: #313a4b;
+  --slider-fill: #7a1b27;
+
+  /* Data visualization tokens */
+  --chart-primary: #b32736;
+  --chart-secondary: #9ca2b1;
+  --chart-grid: rgba(122, 27, 39, 0.22);
+  --chart-text: #dfe4ee;
+  --temperature-hot: #f1733f;
+  --temperature-bed: #b32736;
+  --fan-speed: #5bb7ff;
+  --progress-fill: #7a1b27;
+
+  /* Forge compatibility aliases */
+  --bg: var(--app-background);
+  --bg-soft: var(--surface);
+  --card: var(--surface-raised);
+  --line: var(--border-default);
+  --text: var(--text-primary);
+  --muted: var(--text-secondary);
+  --accent-2: var(--secondary);
+  --danger: var(--error);
+  --bg-elevated: color-mix(in srgb, var(--surface-raised) 88%, #04050a 12%);
+
+  /* Logo watermark plumbing (no logo rendered until approved asset URL is set). */
+  --pbhs-watermark-image: var(--pbhs-watermark-approved-logo, none);
+  --pbhs-watermark-opacity: 0.086;
+  --pbhs-watermark-size: contain;
+  --pbhs-watermark-position-x: 50%;
+  --pbhs-watermark-position-y: 50%;
+  --pbhs-watermark-blur: 0px;
+}
+
+:root[data-theme="pbhs"] body {
+  background-image:
+    radial-gradient(1100px 520px at 0% 0%, color-mix(in srgb, var(--primary) 24%, transparent), transparent 62%),
+    radial-gradient(960px 480px at 100% 100%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 58%),
+    linear-gradient(var(--page-background), var(--app-background));
+  color: var(--text-primary);
+}
+
+:root[data-theme="pbhs"] .app-layout {
+  position: relative;
+  isolation: isolate;
+}
+
+:root[data-theme="pbhs"] .app-layout::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: var(--pbhs-watermark-image);
+  background-repeat: no-repeat;
+  background-size: var(--pbhs-watermark-size);
+  background-position: var(--pbhs-watermark-position-x) var(--pbhs-watermark-position-y);
+  opacity: var(--pbhs-watermark-opacity);
+  filter: blur(var(--pbhs-watermark-blur));
+  /* Keep full-screen coverage while fading edges for readability. */
+  mask-image: radial-gradient(circle at center, rgba(0, 0, 0, 0.92) 0%, rgba(0, 0, 0, 0.72) 58%, rgba(0, 0, 0, 0.22) 84%, transparent 100%);
+  -webkit-mask-image: radial-gradient(circle at center, rgba(0, 0, 0, 0.92) 0%, rgba(0, 0, 0, 0.72) 58%, rgba(0, 0, 0, 0.22) 84%, transparent 100%);
+}
+
+:root[data-theme="pbhs"] .global-header,
+:root[data-theme="pbhs"] .shell {
+  position: relative;
+  z-index: 1;
+}
+
+:root[data-theme="pbhs"] .global-header,
+:root[data-theme="pbhs"] .sidebar,
+:root[data-theme="pbhs"] .tools-drawer {
+  background: color-mix(in srgb, var(--surface) 88%, rgba(6, 6, 7, 0.8));
+  border-color: var(--divider);
+}
+
+:root[data-theme="pbhs"] .card,
+:root[data-theme="pbhs"] .layout-dialog,
+:root[data-theme="pbhs"] .jobs-move-dialog-card,
+:root[data-theme="pbhs"] .manual-probe-dialog-card,
+:root[data-theme="pbhs"] .controls-zoffset-dialog-card,
+:root[data-theme="pbhs"] .settings-macro-dialog-card,
+:root[data-theme="pbhs"] .settings-thermal-preset-dialog-card,
+:root[data-theme="pbhs"] .spoolman-select-dialog-card {
+  background: linear-gradient(168deg, color-mix(in srgb, var(--surface-raised) 92%, #0b0b0d 8%), var(--surface));
+  border-color: var(--border-default);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(255, 227, 139, 0.05);
+  border-radius: 14px;
+}
+
+:root[data-theme="pbhs"] .card-head,
+:root[data-theme="pbhs"] .camera-card-head,
+:root[data-theme="pbhs"] .temperature-card-head,
+:root[data-theme="pbhs"] .jobs-head,
+:root[data-theme="pbhs"] .machine-update-head,
+:root[data-theme="pbhs"] .machine-endstops-head,
+:root[data-theme="pbhs"] .machine-log-files-head {
+  border-bottom: 1px solid var(--divider);
+  padding-bottom: 10px;
+}
+
+:root[data-theme="pbhs"] h1,
+:root[data-theme="pbhs"] h2,
+:root[data-theme="pbhs"] h3,
+:root[data-theme="pbhs"] h4 {
+  color: var(--heading);
+}
+
+:root[data-theme="pbhs"] .nav-item {
+  border-color: var(--border-subtle);
+  background: color-mix(in srgb, var(--surface-raised) 82%, rgba(8, 8, 9, 0.5));
+  color: var(--text-primary);
+}
+
+:root[data-theme="pbhs"] .nav-item:hover {
+  border-color: var(--border-strong);
+  background: color-mix(in srgb, var(--surface-hover) 84%, rgba(10, 10, 10, 0.26));
+}
+
+:root[data-theme="pbhs"] .nav-item.active {
+  border-color: var(--border-strong);
+  background: linear-gradient(120deg, color-mix(in srgb, var(--primary) 32%, transparent), color-mix(in srgb, var(--accent) 24%, transparent));
+  box-shadow: inset 3px 0 0 var(--primary);
+}
+
+:root[data-theme="pbhs"] .nav-item-icon {
+  border-color: var(--border-subtle);
+  background: color-mix(in srgb, var(--surface) 84%, #050507 16%);
+}
+
+:root[data-theme="pbhs"] .settings-subnav-item:hover {
+  border-color: var(--border-default);
+  background: color-mix(in srgb, var(--surface-hover) 82%, rgba(8, 8, 8, 0.25));
+}
+
+:root[data-theme="pbhs"] .settings-subnav-item.active,
+:root[data-theme="pbhs"] .settings-subnav-item[aria-current="location"] {
+  border-color: var(--border-strong);
+  background: linear-gradient(120deg, color-mix(in srgb, var(--primary) 34%, transparent), color-mix(in srgb, var(--accent) 20%, transparent));
+}
+
+:root[data-theme="pbhs"] button:not(.emergency-stop-btn):not(.danger),
+:root[data-theme="pbhs"] .status-job-action,
+:root[data-theme="pbhs"] .history-action-btn,
+:root[data-theme="pbhs"] .tools-drawer-action,
+:root[data-theme="pbhs"] .jobs-job-action,
+:root[data-theme="pbhs"] .machine-update-action-btn,
+:root[data-theme="pbhs"] .machine-log-files-action-btn,
+:root[data-theme="pbhs"] .machine-endstops-query-btn,
+:root[data-theme="pbhs"] .layout-move-column {
+  background: var(--button-secondary-bg);
+  color: var(--button-secondary-text);
+  border: 1px solid var(--border-default);
+  border-radius: 9px;
+}
+
+:root[data-theme="pbhs"] button:not(.emergency-stop-btn):not(.danger):hover,
+:root[data-theme="pbhs"] .status-job-action:hover,
+:root[data-theme="pbhs"] .history-action-btn:hover,
+:root[data-theme="pbhs"] .tools-drawer-action:hover,
+:root[data-theme="pbhs"] .jobs-job-action:hover,
+:root[data-theme="pbhs"] .machine-update-action-btn:hover,
+:root[data-theme="pbhs"] .machine-log-files-action-btn:hover,
+:root[data-theme="pbhs"] .machine-endstops-query-btn:hover,
+:root[data-theme="pbhs"] .layout-move-column:hover {
+  background: var(--button-secondary-hover);
+  border-color: var(--border-strong);
+}
+
+:root[data-theme="pbhs"] #header-upload-print-btn,
+:root[data-theme="pbhs"] #theme-community-apply,
+:root[data-theme="pbhs"] #interface-bg-image-apply,
+:root[data-theme="pbhs"] #jobs-upload-btn,
+:root[data-theme="pbhs"] #jobs-print-btn,
+:root[data-theme="pbhs"] #settings-spoolman-connect,
+:root[data-theme="pbhs"] #settings-spoolman-save,
+:root[data-theme="pbhs"] #status-print-resume,
+:root[data-theme="pbhs"] #status-print-pause,
+:root[data-theme="pbhs"] #status-print-cancel {
+  background: linear-gradient(135deg, var(--button-primary-bg), color-mix(in srgb, var(--button-primary-bg) 78%, #b9d9ff 22%));
+  color: var(--button-primary-text);
+  border-color: color-mix(in srgb, var(--button-primary-bg) 72%, #000000 28%);
+}
+
+:root[data-theme="pbhs"] #header-upload-print-btn:hover,
+:root[data-theme="pbhs"] #theme-community-apply:hover,
+:root[data-theme="pbhs"] #interface-bg-image-apply:hover,
+:root[data-theme="pbhs"] #jobs-upload-btn:hover,
+:root[data-theme="pbhs"] #jobs-print-btn:hover,
+:root[data-theme="pbhs"] #settings-spoolman-connect:hover,
+:root[data-theme="pbhs"] #settings-spoolman-save:hover,
+:root[data-theme="pbhs"] #status-print-resume:hover,
+:root[data-theme="pbhs"] #status-print-pause:hover,
+:root[data-theme="pbhs"] #status-print-cancel:hover {
+  background: linear-gradient(135deg, var(--button-primary-hover), color-mix(in srgb, var(--button-primary-hover) 78%, #ffffff 22%));
+}
+
+:root[data-theme="pbhs"] button.danger,
+:root[data-theme="pbhs"] .history-row-action.danger,
+:root[data-theme="pbhs"] .tools-service-btn.danger {
+  background: color-mix(in srgb, var(--error) 26%, #2a1010 74%);
+  border-color: color-mix(in srgb, var(--error) 68%, #000000 32%);
+  color: #ffdede;
+}
+
+:root[data-theme="pbhs"] input,
+:root[data-theme="pbhs"] select,
+:root[data-theme="pbhs"] textarea {
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  color: var(--text-primary);
+  border-radius: 8px;
+}
+
+:root[data-theme="pbhs"] input::placeholder,
+:root[data-theme="pbhs"] textarea::placeholder {
+  color: var(--text-muted);
+}
+
+:root[data-theme="pbhs"] input:focus,
+:root[data-theme="pbhs"] select:focus,
+:root[data-theme="pbhs"] textarea:focus {
+  border-color: var(--input-focus);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--input-focus) 56%, transparent), 0 0 0 4px color-mix(in srgb, var(--input-focus) 16%, transparent);
+}
+
+:root[data-theme="pbhs"] input[type="checkbox"],
+:root[data-theme="pbhs"] input[type="radio"] {
+  accent-color: var(--toggle-on);
+}
+
+:root[data-theme="pbhs"] input[type="range"] {
+  accent-color: var(--slider-fill);
+}
+
+:root[data-theme="pbhs"] input[type="range"]::-webkit-slider-runnable-track {
+  background: var(--slider-track);
+}
+
+:root[data-theme="pbhs"] input[type="range"]::-moz-range-track {
+  background: var(--slider-track);
+}
+
+:root[data-theme="pbhs"] .runout-sensor-switch input:checked + .runout-sensor-switch-slider {
+  border-color: color-mix(in srgb, var(--toggle-on) 80%, #ffffff 20%);
+  background: color-mix(in srgb, var(--toggle-on) 34%, transparent);
+}
+
+:root[data-theme="pbhs"] .runout-sensor-switch input:checked + .runout-sensor-switch-slider::before {
+  background: var(--text-on-dark);
+}
+
+:root[data-theme="pbhs"] .status-pill,
+:root[data-theme="pbhs"] .status-state-chip,
+:root[data-theme="pbhs"] .history-status-pill,
+:root[data-theme="pbhs"] .settings-macros-category-chip,
+:root[data-theme="pbhs"] .runout-sensor-status {
+  border-color: var(--border-default);
+  background: color-mix(in srgb, var(--surface-selected) 54%, rgba(8, 8, 9, 0.4));
+  color: var(--text-primary);
+}
+
+:root[data-theme="pbhs"] .muted,
+:root[data-theme="pbhs"] .settings-console-note,
+:root[data-theme="pbhs"] .settings-macros-note,
+:root[data-theme="pbhs"] .settings-dashboard-note,
+:root[data-theme="pbhs"] .settings-theme-note {
+  color: var(--text-muted);
+}
+
+:root[data-theme="pbhs"] .status-progress-ring-value,
+:root[data-theme="pbhs"] .spoolman-progress-linear > span,
+:root[data-theme="pbhs"] #progress-bar,
+:root[data-theme="pbhs"] .progress-fill {
+  background: var(--progress-fill);
+  stroke: var(--progress-fill);
+}
+
+:root[data-theme="pbhs"] .status-progress-ring-track {
+  stroke: var(--chart-grid);
+}
+
+:root[data-theme="pbhs"] #controls-fan-speed {
+  accent-color: var(--fan-speed);
+}
+
+:root[data-theme="pbhs"] .temperature-chart-tooltip {
+  border-color: var(--border-default);
+  background: color-mix(in srgb, var(--surface-overlay) 90%, rgba(6, 6, 7, 0.1));
+  color: var(--chart-text);
+}
+
+:root[data-theme="pbhs"] .console-card,
+:root[data-theme="pbhs"] .console-log,
+:root[data-theme="pbhs"] .machine-update-log,
+:root[data-theme="pbhs"] .machine-log-files-list,
+:root[data-theme="pbhs"] .history-table-wrap,
+:root[data-theme="pbhs"] .history-status-table-wrap,
+:root[data-theme="pbhs"] .config-editor {
+  border-color: var(--border-subtle);
+  background: color-mix(in srgb, var(--surface) 82%, rgba(5, 5, 6, 0.44));
+}
+
+:root[data-theme="pbhs"] .camera-frame,
+:root[data-theme="pbhs"] .pretty-gcode-canvas-wrap {
+  border-color: var(--border-default);
+  background: color-mix(in srgb, #040404 74%, var(--surface) 26%);
+}
+
+:root[data-theme="pbhs"] table,
+:root[data-theme="pbhs"] th,
+:root[data-theme="pbhs"] td {
+  border-color: var(--border-subtle);
+  color: var(--text-primary);
+}
+
+:root[data-theme="pbhs"] dialog::backdrop {
+  background: rgba(4, 4, 4, 0.74);
+}
+
+:root[data-theme="pbhs"] a {
+  color: var(--link);
+}
+
+:root[data-theme="pbhs"] a:hover {
+  color: var(--link-hover);
+}
+
+:root[data-theme="pbhs"] *:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+@media (max-width: 1280px) {
+  :root[data-theme="pbhs"] {
+    --pbhs-watermark-opacity: 0.069;
+  }
+}
+
+@media (max-width: 980px) {
+  :root[data-theme="pbhs"] {
+    --pbhs-watermark-opacity: 0.052;
+  }
+}
+
+/* PBHS polish pass: typography hierarchy + athletic stat framing */
+:root[data-theme="pbhs"] .global-header h1 {
+  letter-spacing: 0.32em;
+  font-weight: 700;
+  color: var(--heading);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.45);
+}
+
+:root[data-theme="pbhs"] .brand h1 {
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--heading);
+}
+
+:root[data-theme="pbhs"] .card-head h3,
+:root[data-theme="pbhs"] .camera-card-head h3,
+:root[data-theme="pbhs"] .temperature-card-head h3,
+:root[data-theme="pbhs"] .jobs-head h3,
+:root[data-theme="pbhs"] .machine-update-head h3,
+:root[data-theme="pbhs"] .machine-endstops-head h3,
+:root[data-theme="pbhs"] .machine-log-files-head h3 {
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+:root[data-theme="pbhs"] .nav-item,
+:root[data-theme="pbhs"] button:not(.emergency-stop-btn),
+:root[data-theme="pbhs"] .card-collapse-toggle {
+  transition: border-color 0.1s ease, background 0.1s ease, transform 0.08s ease;
+}
+
+:root[data-theme="pbhs"] .nav-item:hover,
+:root[data-theme="pbhs"] button:not(.emergency-stop-btn):hover {
+  transform: translateY(-1px);
+}
+
+:root[data-theme="pbhs"] .nav-item.active .nav-item-icon {
+  border-color: var(--border-strong);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--primary) 58%, transparent), color-mix(in srgb, var(--accent) 44%, transparent));
+  color: var(--heading);
+}
+
+:root[data-theme="pbhs"] #card-print-progress .status-overview-item,
+:root[data-theme="pbhs"] #card-print-progress .status-meta-item,
+:root[data-theme="pbhs"] #card-print-progress .status-layer {
+  border-color: var(--border-subtle);
+  background: linear-gradient(155deg, color-mix(in srgb, var(--surface-raised) 88%, #060d1b 12%), color-mix(in srgb, var(--surface) 84%, #050c19 16%));
+}
+
+:root[data-theme="pbhs"] #card-print-progress .status-overview-value,
+:root[data-theme="pbhs"] #card-print-progress .status-overview-sub,
+:root[data-theme="pbhs"] #card-print-progress .status-progress-ring-text,
+:root[data-theme="pbhs"] #card-print-progress .status-progress-head,
+:root[data-theme="pbhs"] #card-print-progress .status-overview-progress .progress-text {
+  font-family: "JetBrains Mono", monospace;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+:root[data-theme="pbhs"] #card-print-progress .status-state-chip {
+  border-color: var(--border-strong);
+  background: linear-gradient(120deg, color-mix(in srgb, var(--primary) 30%, transparent), color-mix(in srgb, var(--accent) 18%, transparent));
+}
+
+:root[data-theme="pbhs"] #card-print-progress .status-file-row-mainsail,
+:root[data-theme="pbhs"] .runout-sensor-item,
+:root[data-theme="pbhs"] .settings-macros-item,
+:root[data-theme="pbhs"] .settings-macros-category-item {
+  border-color: var(--border-subtle);
+  background: color-mix(in srgb, var(--surface) 82%, rgba(4, 4, 5, 0.48));
+}
+
+:root[data-theme="pbhs"] .history-table tr:nth-child(even),
+:root[data-theme="pbhs"] .temperature-table tbody tr:nth-child(even) {
+  background: color-mix(in srgb, var(--surface-hover) 44%, transparent);
+}
+
+:root[data-theme="pbhs"] .history-status-pill.status-printing,
+:root[data-theme="pbhs"] .history-status-pill.status-complete,
+:root[data-theme="pbhs"] .history-status-pill.status-error,
+:root[data-theme="pbhs"] .history-status-pill.status-cancelled {
+  font-family: "JetBrains Mono", monospace;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+}
+
+:root[data-theme="royals"] {
+  /* Core brand tokens */
+  --primary: #2f6fcf;
+  --primary-hover: #4a89e8;
+  --primary-active: #2458a9;
+  --secondary: #8fa6d6;
+  --secondary-hover: #a7bbe5;
+  --accent: #57b0ff;
+  --accent-muted: #5d7eb9;
+
+  /* Background and surface tokens */
+  --app-background: #060b17;
+  --page-background: #0a1223;
+  --surface: #0f1a31;
+  --surface-raised: #172440;
+  --surface-overlay: rgba(11, 19, 36, 0.94);
+  --surface-selected: #193257;
+  --surface-hover: #1b2d4f;
+
+  /* Text tokens */
+  --text-primary: #f4f8ff;
+  --text-secondary: #cedaf0;
+  --text-muted: #a8bbdf;
+  --text-on-primary: #f5f9ff;
+  --text-on-dark: #f7fbff;
+  --heading: #ffffff;
+  --link: #7ec3ff;
+  --link-hover: #a7d8ff;
+
+  /* Border tokens */
+  --border-subtle: rgba(87, 176, 255, 0.22);
+  --border-default: rgba(74, 137, 232, 0.46);
+  --border-strong: rgba(128, 197, 255, 0.72);
+  --divider: rgba(74, 137, 232, 0.34);
+
+  /* Feedback and status tokens */
+  --success: #32c76a;
+  --warning: #f1b235;
+  --error: #ec6b72;
+  --info: #5bb7ff;
+  --status-idle: #92a3c0;
+  --status-printing: #57b0ff;
+  --status-paused: #d6983e;
+  --status-complete: #42ce78;
+  --status-disconnected: #d47b86;
+
+  /* Interactive tokens */
+  --focus-ring: #85c9ff;
+  --focus-ring-offset: #060b17;
+  --button-primary-bg: #2f6fcf;
+  --button-primary-text: #f5f9ff;
+  --button-primary-hover: #4a89e8;
+  --button-secondary-bg: #172746;
+  --button-secondary-text: #f4f8ff;
+  --button-secondary-hover: #203458;
+  --input-bg: #0c1428;
+  --input-border: rgba(74, 137, 232, 0.44);
+  --input-focus: #85c9ff;
+  --toggle-on: #2f6fcf;
+  --toggle-off: #5a6f97;
+  --slider-track: #344a74;
+  --slider-fill: #2f6fcf;
+
+  /* Data visualization tokens */
+  --chart-primary: #57b0ff;
+  --chart-secondary: #8fa6d6;
+  --chart-grid: rgba(87, 176, 255, 0.24);
+  --chart-text: #dfe4ee;
+  --temperature-hot: #f1733f;
+  --temperature-bed: #57b0ff;
+  --fan-speed: #5bb7ff;
+  --progress-fill: #2f6fcf;
+
+  /* Forge compatibility aliases */
+  --bg: var(--app-background);
+  --bg-soft: var(--surface);
+  --card: var(--surface-raised);
+  --line: var(--border-default);
+  --text: var(--text-primary);
+  --muted: var(--text-secondary);
+  --accent-2: var(--secondary);
+  --danger: var(--error);
+  --bg-elevated: color-mix(in srgb, var(--surface-raised) 88%, #050a14 12%);
+
+  /* Logo watermark plumbing (no logo rendered until approved asset URL is set). */
+  --royals-watermark-image: var(--royals-watermark-approved-logo, none);
+  --royals-watermark-opacity: 0.086;
+  --royals-watermark-size: contain;
+  --royals-watermark-position-x: 50%;
+  --royals-watermark-position-y: 50%;
+  --royals-watermark-blur: 0px;
+}
+
+:root[data-theme="royals"] body {
+  background-image:
+    radial-gradient(1100px 520px at 0% 0%, color-mix(in srgb, var(--primary) 24%, transparent), transparent 62%),
+    radial-gradient(960px 480px at 100% 100%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 58%),
+    linear-gradient(var(--page-background), var(--app-background));
+  color: var(--text-primary);
+}
+
+:root[data-theme="royals"] .app-layout {
+  position: relative;
+  isolation: isolate;
+}
+
+:root[data-theme="royals"] .app-layout::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: var(--royals-watermark-image);
+  background-repeat: no-repeat;
+  background-size: var(--royals-watermark-size);
+  background-position: var(--royals-watermark-position-x) var(--royals-watermark-position-y);
+  opacity: var(--royals-watermark-opacity);
+  filter: blur(var(--royals-watermark-blur));
+  /* Keep full-screen coverage while fading edges for readability. */
+  mask-image: radial-gradient(circle at center, rgba(0, 0, 0, 0.92) 0%, rgba(0, 0, 0, 0.72) 58%, rgba(0, 0, 0, 0.22) 84%, transparent 100%);
+  -webkit-mask-image: radial-gradient(circle at center, rgba(0, 0, 0, 0.92) 0%, rgba(0, 0, 0, 0.72) 58%, rgba(0, 0, 0, 0.22) 84%, transparent 100%);
+}
+
+:root[data-theme="royals"] .global-header,
+:root[data-theme="royals"] .shell {
+  position: relative;
+  z-index: 1;
+}
+
+:root[data-theme="royals"] .global-header,
+:root[data-theme="royals"] .sidebar,
+:root[data-theme="royals"] .tools-drawer {
+  background: color-mix(in srgb, var(--surface) 88%, rgba(6, 6, 7, 0.8));
+  border-color: var(--divider);
+}
+
+:root[data-theme="royals"] .card,
+:root[data-theme="royals"] .layout-dialog,
+:root[data-theme="royals"] .jobs-move-dialog-card,
+:root[data-theme="royals"] .manual-probe-dialog-card,
+:root[data-theme="royals"] .controls-zoffset-dialog-card,
+:root[data-theme="royals"] .settings-macro-dialog-card,
+:root[data-theme="royals"] .settings-thermal-preset-dialog-card,
+:root[data-theme="royals"] .spoolman-select-dialog-card {
+  background: linear-gradient(168deg, color-mix(in srgb, var(--surface-raised) 92%, #0b0b0d 8%), var(--surface));
+  border-color: var(--border-default);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(255, 227, 139, 0.05);
+  border-radius: 14px;
+}
+
+:root[data-theme="royals"] .card-head,
+:root[data-theme="royals"] .camera-card-head,
+:root[data-theme="royals"] .temperature-card-head,
+:root[data-theme="royals"] .jobs-head,
+:root[data-theme="royals"] .machine-update-head,
+:root[data-theme="royals"] .machine-endstops-head,
+:root[data-theme="royals"] .machine-log-files-head {
+  border-bottom: 1px solid var(--divider);
+  padding-bottom: 10px;
+}
+
+:root[data-theme="royals"] h1,
+:root[data-theme="royals"] h2,
+:root[data-theme="royals"] h3,
+:root[data-theme="royals"] h4 {
+  color: var(--heading);
+}
+
+:root[data-theme="royals"] .nav-item {
+  border-color: var(--border-subtle);
+  background: color-mix(in srgb, var(--surface-raised) 82%, rgba(8, 8, 9, 0.5));
+  color: var(--text-primary);
+}
+
+:root[data-theme="royals"] .nav-item:hover {
+  border-color: var(--border-strong);
+  background: color-mix(in srgb, var(--surface-hover) 84%, rgba(10, 10, 10, 0.26));
+}
+
+:root[data-theme="royals"] .nav-item.active {
+  border-color: var(--border-strong);
+  background: linear-gradient(120deg, color-mix(in srgb, var(--primary) 32%, transparent), color-mix(in srgb, var(--accent) 24%, transparent));
+  box-shadow: inset 3px 0 0 var(--primary);
+}
+
+:root[data-theme="royals"] .nav-item-icon {
+  border-color: var(--border-subtle);
+  background: color-mix(in srgb, var(--surface) 84%, #050507 16%);
+}
+
+:root[data-theme="royals"] .settings-subnav-item:hover {
+  border-color: var(--border-default);
+  background: color-mix(in srgb, var(--surface-hover) 82%, rgba(8, 8, 8, 0.25));
+}
+
+:root[data-theme="royals"] .settings-subnav-item.active,
+:root[data-theme="royals"] .settings-subnav-item[aria-current="location"] {
+  border-color: var(--border-strong);
+  background: linear-gradient(120deg, color-mix(in srgb, var(--primary) 34%, transparent), color-mix(in srgb, var(--accent) 20%, transparent));
+}
+
+:root[data-theme="royals"] button:not(.emergency-stop-btn):not(.danger),
+:root[data-theme="royals"] .status-job-action,
+:root[data-theme="royals"] .history-action-btn,
+:root[data-theme="royals"] .tools-drawer-action,
+:root[data-theme="royals"] .jobs-job-action,
+:root[data-theme="royals"] .machine-update-action-btn,
+:root[data-theme="royals"] .machine-log-files-action-btn,
+:root[data-theme="royals"] .machine-endstops-query-btn,
+:root[data-theme="royals"] .layout-move-column {
+  background: var(--button-secondary-bg);
+  color: var(--button-secondary-text);
+  border: 1px solid var(--border-default);
+  border-radius: 9px;
+}
+
+:root[data-theme="royals"] button:not(.emergency-stop-btn):not(.danger):hover,
+:root[data-theme="royals"] .status-job-action:hover,
+:root[data-theme="royals"] .history-action-btn:hover,
+:root[data-theme="royals"] .tools-drawer-action:hover,
+:root[data-theme="royals"] .jobs-job-action:hover,
+:root[data-theme="royals"] .machine-update-action-btn:hover,
+:root[data-theme="royals"] .machine-log-files-action-btn:hover,
+:root[data-theme="royals"] .machine-endstops-query-btn:hover,
+:root[data-theme="royals"] .layout-move-column:hover {
+  background: var(--button-secondary-hover);
+  border-color: var(--border-strong);
+}
+
+:root[data-theme="royals"] #header-upload-print-btn,
+:root[data-theme="royals"] #theme-community-apply,
+:root[data-theme="royals"] #interface-bg-image-apply,
+:root[data-theme="royals"] #jobs-upload-btn,
+:root[data-theme="royals"] #jobs-print-btn,
+:root[data-theme="royals"] #settings-spoolman-connect,
+:root[data-theme="royals"] #settings-spoolman-save,
+:root[data-theme="royals"] #status-print-resume,
+:root[data-theme="royals"] #status-print-pause,
+:root[data-theme="royals"] #status-print-cancel {
+  background: linear-gradient(135deg, var(--button-primary-bg), color-mix(in srgb, var(--button-primary-bg) 78%, #f1c4cc 22%));
+  color: var(--button-primary-text);
+  border-color: color-mix(in srgb, var(--button-primary-bg) 72%, #000000 28%);
+}
+
+:root[data-theme="royals"] #header-upload-print-btn:hover,
+:root[data-theme="royals"] #theme-community-apply:hover,
+:root[data-theme="royals"] #interface-bg-image-apply:hover,
+:root[data-theme="royals"] #jobs-upload-btn:hover,
+:root[data-theme="royals"] #jobs-print-btn:hover,
+:root[data-theme="royals"] #settings-spoolman-connect:hover,
+:root[data-theme="royals"] #settings-spoolman-save:hover,
+:root[data-theme="royals"] #status-print-resume:hover,
+:root[data-theme="royals"] #status-print-pause:hover,
+:root[data-theme="royals"] #status-print-cancel:hover {
+  background: linear-gradient(135deg, var(--button-primary-hover), color-mix(in srgb, var(--button-primary-hover) 78%, #ffffff 22%));
+}
+
+:root[data-theme="royals"] button.danger,
+:root[data-theme="royals"] .history-row-action.danger,
+:root[data-theme="royals"] .tools-service-btn.danger {
+  background: color-mix(in srgb, var(--error) 26%, #2a1010 74%);
+  border-color: color-mix(in srgb, var(--error) 68%, #000000 32%);
+  color: #ffdede;
+}
+
+:root[data-theme="royals"] input,
+:root[data-theme="royals"] select,
+:root[data-theme="royals"] textarea {
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  color: var(--text-primary);
+  border-radius: 8px;
+}
+
+:root[data-theme="royals"] input::placeholder,
+:root[data-theme="royals"] textarea::placeholder {
+  color: var(--text-muted);
+}
+
+:root[data-theme="royals"] input:focus,
+:root[data-theme="royals"] select:focus,
+:root[data-theme="royals"] textarea:focus {
+  border-color: var(--input-focus);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--input-focus) 56%, transparent), 0 0 0 4px color-mix(in srgb, var(--input-focus) 16%, transparent);
+}
+
+:root[data-theme="royals"] input[type="checkbox"],
+:root[data-theme="royals"] input[type="radio"] {
+  accent-color: var(--toggle-on);
+}
+
+:root[data-theme="royals"] input[type="range"] {
+  accent-color: var(--slider-fill);
+}
+
+:root[data-theme="royals"] input[type="range"]::-webkit-slider-runnable-track {
+  background: var(--slider-track);
+}
+
+:root[data-theme="royals"] input[type="range"]::-moz-range-track {
+  background: var(--slider-track);
+}
+
+:root[data-theme="royals"] .runout-sensor-switch input:checked + .runout-sensor-switch-slider {
+  border-color: color-mix(in srgb, var(--toggle-on) 80%, #ffffff 20%);
+  background: color-mix(in srgb, var(--toggle-on) 34%, transparent);
+}
+
+:root[data-theme="royals"] .runout-sensor-switch input:checked + .runout-sensor-switch-slider::before {
+  background: var(--text-on-dark);
+}
+
+:root[data-theme="royals"] .status-pill,
+:root[data-theme="royals"] .status-state-chip,
+:root[data-theme="royals"] .history-status-pill,
+:root[data-theme="royals"] .settings-macros-category-chip,
+:root[data-theme="royals"] .runout-sensor-status {
+  border-color: var(--border-default);
+  background: color-mix(in srgb, var(--surface-selected) 54%, rgba(8, 8, 9, 0.4));
+  color: var(--text-primary);
+}
+
+:root[data-theme="royals"] .muted,
+:root[data-theme="royals"] .settings-console-note,
+:root[data-theme="royals"] .settings-macros-note,
+:root[data-theme="royals"] .settings-dashboard-note,
+:root[data-theme="royals"] .settings-theme-note {
+  color: var(--text-muted);
+}
+
+:root[data-theme="royals"] .status-progress-ring-value,
+:root[data-theme="royals"] .spoolman-progress-linear > span,
+:root[data-theme="royals"] #progress-bar,
+:root[data-theme="royals"] .progress-fill {
+  background: var(--progress-fill);
+  stroke: var(--progress-fill);
+}
+
+:root[data-theme="royals"] .status-progress-ring-track {
+  stroke: var(--chart-grid);
+}
+
+:root[data-theme="royals"] #controls-fan-speed {
+  accent-color: var(--fan-speed);
+}
+
+:root[data-theme="royals"] .temperature-chart-tooltip {
+  border-color: var(--border-default);
+  background: color-mix(in srgb, var(--surface-overlay) 90%, rgba(6, 6, 7, 0.1));
+  color: var(--chart-text);
+}
+
+:root[data-theme="royals"] .console-card,
+:root[data-theme="royals"] .console-log,
+:root[data-theme="royals"] .machine-update-log,
+:root[data-theme="royals"] .machine-log-files-list,
+:root[data-theme="royals"] .history-table-wrap,
+:root[data-theme="royals"] .history-status-table-wrap,
+:root[data-theme="royals"] .config-editor {
+  border-color: var(--border-subtle);
+  background: color-mix(in srgb, var(--surface) 82%, rgba(5, 5, 6, 0.44));
+}
+
+:root[data-theme="royals"] .camera-frame,
+:root[data-theme="royals"] .pretty-gcode-canvas-wrap {
+  border-color: var(--border-default);
+  background: color-mix(in srgb, #040404 74%, var(--surface) 26%);
+}
+
+:root[data-theme="royals"] table,
+:root[data-theme="royals"] th,
+:root[data-theme="royals"] td {
+  border-color: var(--border-subtle);
+  color: var(--text-primary);
+}
+
+:root[data-theme="royals"] dialog::backdrop {
+  background: rgba(4, 4, 4, 0.74);
+}
+
+:root[data-theme="royals"] a {
+  color: var(--link);
+}
+
+:root[data-theme="royals"] a:hover {
+  color: var(--link-hover);
+}
+
+:root[data-theme="royals"] *:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+@media (max-width: 1280px) {
+  :root[data-theme="royals"] {
+    --royals-watermark-opacity: 0.069;
+  }
+}
+
+@media (max-width: 980px) {
+  :root[data-theme="royals"] {
+    --royals-watermark-opacity: 0.052;
+  }
+}
+
+/* Royals polish pass: typography hierarchy + athletic stat framing */
+:root[data-theme="royals"] .global-header h1 {
+  letter-spacing: 0.32em;
+  font-weight: 700;
+  color: var(--heading);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.45);
+}
+
+:root[data-theme="royals"] .brand h1 {
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--heading);
+}
+
+:root[data-theme="royals"] .card-head h3,
+:root[data-theme="royals"] .camera-card-head h3,
+:root[data-theme="royals"] .temperature-card-head h3,
+:root[data-theme="royals"] .jobs-head h3,
+:root[data-theme="royals"] .machine-update-head h3,
+:root[data-theme="royals"] .machine-endstops-head h3,
+:root[data-theme="royals"] .machine-log-files-head h3 {
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+:root[data-theme="royals"] .nav-item,
+:root[data-theme="royals"] button:not(.emergency-stop-btn),
+:root[data-theme="royals"] .card-collapse-toggle {
+  transition: border-color 0.1s ease, background 0.1s ease, transform 0.08s ease;
+}
+
+:root[data-theme="royals"] .nav-item:hover,
+:root[data-theme="royals"] button:not(.emergency-stop-btn):hover {
+  transform: translateY(-1px);
+}
+
+:root[data-theme="royals"] .nav-item.active .nav-item-icon {
+  border-color: var(--border-strong);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--primary) 58%, transparent), color-mix(in srgb, var(--accent) 44%, transparent));
+  color: var(--heading);
+}
+
+:root[data-theme="royals"] #card-print-progress .status-overview-item,
+:root[data-theme="royals"] #card-print-progress .status-meta-item,
+:root[data-theme="royals"] #card-print-progress .status-layer {
+  border-color: var(--border-subtle);
+  background: linear-gradient(155deg, color-mix(in srgb, var(--surface-raised) 88%, #080808 12%), color-mix(in srgb, var(--surface) 84%, #060606 16%));
+}
+
+:root[data-theme="royals"] #card-print-progress .status-overview-value,
+:root[data-theme="royals"] #card-print-progress .status-overview-sub,
+:root[data-theme="royals"] #card-print-progress .status-progress-ring-text,
+:root[data-theme="royals"] #card-print-progress .status-progress-head,
+:root[data-theme="royals"] #card-print-progress .status-overview-progress .progress-text {
+  font-family: "JetBrains Mono", monospace;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+:root[data-theme="royals"] #card-print-progress .status-state-chip {
+  border-color: var(--border-strong);
+  background: linear-gradient(120deg, color-mix(in srgb, var(--primary) 30%, transparent), color-mix(in srgb, var(--accent) 18%, transparent));
+}
+
+:root[data-theme="royals"] #card-print-progress .status-file-row-mainsail,
+:root[data-theme="royals"] .runout-sensor-item,
+:root[data-theme="royals"] .settings-macros-item,
+:root[data-theme="royals"] .settings-macros-category-item {
+  border-color: var(--border-subtle);
+  background: color-mix(in srgb, var(--surface) 82%, rgba(4, 4, 5, 0.48));
+}
+
+:root[data-theme="royals"] .history-table tr:nth-child(even),
+:root[data-theme="royals"] .temperature-table tbody tr:nth-child(even) {
+  background: color-mix(in srgb, var(--surface-hover) 44%, transparent);
+}
+
+:root[data-theme="royals"] .history-status-pill.status-printing,
+:root[data-theme="royals"] .history-status-pill.status-complete,
+:root[data-theme="royals"] .history-status-pill.status-error,
+:root[data-theme="royals"] .history-status-pill.status-cancelled {
+  font-family: "JetBrains Mono", monospace;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+}
+

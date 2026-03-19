@@ -8,7 +8,7 @@ const CAMERA_MODES = {
   IFRAME: "iframe",
 };
 
-const INTERFACE_THEMES = ["ocean", "ember", "graphite"];
+const INTERFACE_THEMES = ["ocean", "ember", "graphite", "raiders", "pbhs", "royals"];
 const DEFAULT_INTERFACE_THEME = "ember";
 const INTERFACE_DENSITIES = ["comfortable", "compact"];
 const INTERFACE_THEME_PALETTE_STORAGE_KEY = "interface_theme_palette_v1";
@@ -16,6 +16,31 @@ const INTERFACE_THEME_PRESET_STORAGE_KEY = "interface_theme_preset_v1";
 const INTERFACE_THEME_PRESET_CUSTOM = "custom";
 const INTERFACE_BACKGROUND_IMAGE_URL_STORAGE_KEY = "interface_background_image_url_v1";
 const INTERFACE_BACKGROUND_IMAGE_ENABLED_STORAGE_KEY = "interface_background_image_enabled_v1";
+const THEME_WATERMARK_LOGO_CANDIDATES = Object.freeze({
+  raiders: Object.freeze([
+    "/branding/three-rivers-college-logo.svg",
+    "/branding/three-rivers-college-logo.png",
+    "/branding/three-rivers-college-logo.webp",
+  ]),
+  pbhs: Object.freeze([
+    "/branding/poplar-bluff-mules-logo.png",
+    "/branding/poplar-bluff-mules-logo.webp",
+    "/branding/poplar-bluff-mules-logo.svg",
+    "/branding/poplar-bluff-high-school-logo.svg",
+    "/branding/poplar-bluff-high-school-logo.png",
+    "/branding/poplar-bluff-high-school-logo.webp",
+  ]),
+  royals: Object.freeze([
+    "/branding/twin-rivers-royals-logo.png",
+    "/branding/twin-rivers-royals-logo.webp",
+    "/branding/twin-rivers-royals-logo.svg",
+  ]),
+});
+const THEME_WATERMARK_CSS_VARIABLES = Object.freeze({
+  raiders: "--raiders-watermark-approved-logo",
+  pbhs: "--pbhs-watermark-approved-logo",
+  royals: "--royals-watermark-approved-logo",
+});
 const INTERFACE_THEME_COLOR_FIELDS = Object.freeze([
   { key: "bg", cssVar: "--bg", elKey: "themeColorBg" },
   { key: "bgSoft", cssVar: "--bg-soft", elKey: "themeColorBgSoft" },
@@ -52,6 +77,33 @@ const INTERFACE_THEME_BASE_PALETTES = Object.freeze({
     accent: "#7cb6ff",
     accent2: "#2dd4bf",
     danger: "#f87171",
+  }),
+  raiders: Object.freeze({
+    bg: "#060607",
+    bgSoft: "#121214",
+    text: "#f6f3ea",
+    muted: "#d8d1be",
+    accent: "#f5c543",
+    accent2: "#9f7b19",
+    danger: "#e05252",
+  }),
+  pbhs: Object.freeze({
+    bg: "#07080b",
+    bgSoft: "#12141a",
+    text: "#f5f6fa",
+    muted: "#cfd3df",
+    accent: "#6b1722",
+    accent2: "#9a9ea9",
+    danger: "#e16464",
+  }),
+  royals: Object.freeze({
+    bg: "#070d1b",
+    bgSoft: "#111b32",
+    text: "#f5f8ff",
+    muted: "#ced9f1",
+    accent: "#3f9dff",
+    accent2: "#2a5fba",
+    danger: "#ec6b72",
   }),
 });
 const COMMUNITY_THEME_PRESETS = Object.freeze([
@@ -125,6 +177,48 @@ const COMMUNITY_THEME_PRESETS = Object.freeze([
       danger: "#ff7f8e",
     },
   },
+  {
+    id: "raiders-spirit",
+    name: "Raiders Spirit",
+    baseTheme: "raiders",
+    palette: {
+      bg: "#050506",
+      bgSoft: "#111215",
+      text: "#f8f4e8",
+      muted: "#d9d0b8",
+      accent: "#f7ca4f",
+      accent2: "#ab8320",
+      danger: "#e65a5a",
+    },
+  },
+  {
+    id: "pbhs-mules",
+    name: "PBHS Mules",
+    baseTheme: "pbhs",
+    palette: {
+      bg: "#06070a",
+      bgSoft: "#10131a",
+      text: "#f6f7fb",
+      muted: "#c9ced9",
+      accent: "#701925",
+      accent2: "#a8adb9",
+      danger: "#e56666",
+    },
+  },
+  {
+    id: "twin-rivers-royals",
+    name: "Twin Rivers Royals",
+    baseTheme: "royals",
+    palette: {
+      bg: "#060b17",
+      bgSoft: "#0f1a31",
+      text: "#f6f9ff",
+      muted: "#c7d4ee",
+      accent: "#49a5ff",
+      accent2: "#3169c5",
+      danger: "#f06f76",
+    },
+  },
 ]);
 const COMMUNITY_THEME_PRESET_IDS = COMMUNITY_THEME_PRESETS.map((preset) => preset.id);
 const CONTROL_DISTANCE_VALUES = [0.1, 1, 10, 100];
@@ -134,12 +228,17 @@ const CONTROL_Z_OFFSET_SAVE_OPTION_VALUES = ["Z_OFFSET_APPLY_ENDSTOP", "Z_OFFSET
 const MANUAL_PROBE_STEPS = Object.freeze([0.005, 0.01, 0.05, 0.1, 1]);
 const CARD_COLLAPSE_KEY_PREFIX = "card_collapsed_";
 const KLIPPERVIEW_CARD_ID = "card-klipperview";
+const RUNOUT_SENSOR_OBJECT_PREFIXES = Object.freeze([
+  "filament_switch_sensor ",
+  "filament_motion_sensor ",
+]);
 const DASHBOARD_CARD_IDS = [
   "card-print-progress",
   "card-temperatures",
   "card-motion",
   "card-quick-commands",
   "card-macros",
+  "card-runout-sensors",
   "card-dashboard-console",
   "camera-main-card",
   "camera-toolhead-card",
@@ -147,7 +246,7 @@ const DASHBOARD_CARD_IDS = [
 ];
 
 const DASHBOARD_LAYOUT_DEFAULT = {
-  left: ["card-print-progress", "card-motion", "camera-main-card", "card-macros"],
+  left: ["card-print-progress", "card-motion", "camera-main-card", "card-macros", "card-runout-sensors"],
   right: ["card-temperatures", "card-quick-commands", "card-dashboard-console", KLIPPERVIEW_CARD_ID, "camera-toolhead-card"],
 };
 
@@ -170,7 +269,7 @@ const DASHBOARD_LAYOUT_DEFAULTS = Object.freeze({
   }),
   widescreen: Object.freeze({
     columns: [
-      Object.freeze(["card-print-progress", "card-motion", "card-macros"]),
+      Object.freeze(["card-print-progress", "card-motion", "card-macros", "card-runout-sensors"]),
       Object.freeze(["card-temperatures", "card-quick-commands", "card-dashboard-console"]),
       Object.freeze(["camera-main-card", "camera-toolhead-card", KLIPPERVIEW_CARD_ID]),
     ],
@@ -190,6 +289,7 @@ const DASHBOARD_VISIBILITY_STORAGE_KEYS = Object.freeze({
   "card-motion": "dashboard_show_motion",
   "card-quick-commands": "dashboard_show_quick_commands",
   "card-macros": "dashboard_show_macros",
+  "card-runout-sensors": "dashboard_show_runout_sensors",
   "camera-main-card": "dashboard_show_main_camera",
   "camera-toolhead-card": "dashboard_show_toolhead_camera",
   "card-dashboard-console": "dashboard_show_console",
@@ -201,6 +301,7 @@ const DASHBOARD_CARD_LABELS = {
   "card-motion": "Controls",
   "card-quick-commands": "Quick Commands",
   "card-macros": "Macros",
+  "card-runout-sensors": "Runout Sensors",
   "card-dashboard-console": "Console",
   "camera-main-card": "Main Camera",
   "camera-toolhead-card": "Toolhead Cam",
@@ -208,15 +309,15 @@ const DASHBOARD_CARD_LABELS = {
 };
 
 const PRINTER_STATE_META = {
-  unknown: { label: "Unknown", color: "#64748b" },
-  connecting: { label: "Connecting", color: "#f59e0b" },
-  disconnected: { label: "Disconnected", color: "#f97316" },
-  ready: { label: "Ready", color: "#22c55e" },
-  printing: { label: "Printing", color: "#16a34a" },
-  paused: { label: "Paused", color: "#f59e0b" },
-  complete: { label: "Complete", color: "#22d3ee" },
-  cancelled: { label: "Cancelled", color: "#94a3b8" },
-  error: { label: "Error", color: "#ef4444" },
+  unknown: { label: "Unknown", color: "var(--status-idle, #64748b)" },
+  connecting: { label: "Connecting", color: "var(--warning, #f59e0b)" },
+  disconnected: { label: "Disconnected", color: "var(--status-disconnected, #f97316)" },
+  ready: { label: "Ready", color: "var(--success, #22c55e)" },
+  printing: { label: "Printing", color: "var(--status-printing, #16a34a)" },
+  paused: { label: "Paused", color: "var(--status-paused, #f59e0b)" },
+  complete: { label: "Complete", color: "var(--status-complete, #22d3ee)" },
+  cancelled: { label: "Cancelled", color: "var(--status-idle, #94a3b8)" },
+  error: { label: "Error", color: "var(--error, #ef4444)" },
 };
 
 const VIEW_TITLES = {
@@ -675,8 +776,8 @@ function getThemeColorValue(cssVarName, fallback) {
 
 function getTemperatureLineColors() {
   return {
-    hotend: getThemeColorValue("--danger", TEMPERATURE_COLORS.hotend),
-    bed: getThemeColorValue("--accent", TEMPERATURE_COLORS.bed),
+    hotend: getThemeColorValue("--temperature-hot", getThemeColorValue("--danger", TEMPERATURE_COLORS.hotend)),
+    bed: getThemeColorValue("--temperature-bed", getThemeColorValue("--accent", TEMPERATURE_COLORS.bed)),
   };
 }
 const log = createLogger("app");
@@ -764,6 +865,8 @@ const els = {
   statusBedSummary: document.getElementById("status-bed-summary"),
   statusFanSpeed: document.getElementById("status-fan-speed"),
   statusLayer: document.getElementById("status-layer"),
+  runoutSensorList: document.getElementById("runout-sensor-list"),
+  runoutSensorStatus: document.getElementById("runout-sensor-status"),
   statusClearFile: document.getElementById("status-clear-file"),
   statusPrintActions: document.getElementById("status-print-actions"),
   statusPrintPause: document.getElementById("status-print-pause"),
@@ -1111,6 +1214,7 @@ const els = {
   dashShowMotion: document.getElementById("dash-show-motion"),
   dashShowQuickCommands: document.getElementById("dash-show-quick-commands"),
   dashShowMacros: document.getElementById("dash-show-macros"),
+  dashShowRunoutSensors: document.getElementById("dash-show-runout-sensors"),
   dashShowMainCamera: document.getElementById("dash-show-main-camera"),
   dashShowToolheadCamera: document.getElementById("dash-show-toolhead-camera"),
   dashShowConsole: document.getElementById("dash-show-console"),
@@ -1130,6 +1234,7 @@ const els = {
   cardMotion: document.getElementById("card-motion"),
   cardQuickCommands: document.getElementById("card-quick-commands"),
   cardMacros: document.getElementById("card-macros"),
+  cardRunoutSensors: document.getElementById("card-runout-sensors"),
   cardDashboardConsole: document.getElementById("card-dashboard-console"),
   cardMainCamera: document.getElementById("camera-main-card"),
   cardToolheadCamera: document.getElementById("camera-toolhead-card"),
@@ -2699,6 +2804,8 @@ function getDashboardCardVisibilityValue(cardId) {
       return !!state.dashboard.showQuickCommands;
     case "card-macros":
       return !!state.dashboard.showMacros;
+    case "card-runout-sensors":
+      return !!state.dashboard.showRunoutSensors;
     case "camera-main-card":
       return !!state.dashboard.showMainCamera;
     case "camera-toolhead-card":
@@ -2731,6 +2838,9 @@ function setDashboardCardVisibilityValue(cardId, visible) {
     case "card-macros":
       state.dashboard.showMacros = nextValue;
       break;
+    case "card-runout-sensors":
+      state.dashboard.showRunoutSensors = nextValue;
+      break;
     case "camera-main-card":
       state.dashboard.showMainCamera = nextValue;
       break;
@@ -2760,6 +2870,7 @@ function syncDashboardVisibilityInputs() {
   if (els.dashShowMotion) els.dashShowMotion.checked = state.dashboard.showMotion;
   if (els.dashShowQuickCommands) els.dashShowQuickCommands.checked = state.dashboard.showQuickCommands;
   if (els.dashShowMacros) els.dashShowMacros.checked = state.dashboard.showMacros;
+  if (els.dashShowRunoutSensors) els.dashShowRunoutSensors.checked = state.dashboard.showRunoutSensors;
   if (els.dashShowMainCamera) els.dashShowMainCamera.checked = state.dashboard.showMainCamera;
   if (els.dashShowToolheadCamera) els.dashShowToolheadCamera.checked = state.dashboard.showToolheadCamera;
   if (els.dashShowConsole) els.dashShowConsole.checked = state.dashboard.showConsole;
@@ -3680,6 +3791,15 @@ function createDefaultManualProbeState() {
     snapshot: {},
   };
 }
+function createDefaultRunoutSensorsState() {
+  return {
+    objectKeys: [],
+    sensorsByKey: {},
+    loading: false,
+    lastError: "",
+    lastUpdatedMs: null,
+  };
+}
 
 const initialClearedStatusFilename = loadStoredStatusClearedFilename();
 
@@ -3720,6 +3840,7 @@ const state = {
     showMotion: loadStoredBool(DASHBOARD_VISIBILITY_STORAGE_KEYS["card-motion"], true),
     showQuickCommands: loadStoredBool(DASHBOARD_VISIBILITY_STORAGE_KEYS["card-quick-commands"], true),
     showMacros: loadStoredBool(DASHBOARD_VISIBILITY_STORAGE_KEYS["card-macros"], true),
+    showRunoutSensors: loadStoredBool(DASHBOARD_VISIBILITY_STORAGE_KEYS["card-runout-sensors"], true),
     showMainCamera: loadStoredBool(DASHBOARD_VISIBILITY_STORAGE_KEYS["camera-main-card"], true),
     showToolheadCamera: loadStoredBool(DASHBOARD_VISIBILITY_STORAGE_KEYS["camera-toolhead-card"], true),
     showConsole: loadStoredBool(DASHBOARD_VISIBILITY_STORAGE_KEYS["card-dashboard-console"], true),
@@ -3779,6 +3900,7 @@ const state = {
   updateManager: createDefaultUpdateManagerState(),
   endstops: createDefaultEndstopsState(),
   logFiles: createDefaultMachineLogFilesState(),
+  runoutSensors: createDefaultRunoutSensorsState(),
   jobs: createDefaultJobsState(),
   printHistory: createDefaultPrintHistoryState(),
   prettyGcode: createDefaultPrettyGcodeState(),
@@ -5140,6 +5262,99 @@ function updateMachineSideToggleUi() {
   els.machineSideToggle.setAttribute("title", label);
 }
 
+const themeWatermarkResolvedLogoUrls = new Map();
+const themeWatermarkResolutionAttempted = new Set();
+const themeWatermarkResolvePromises = new Map();
+
+function probeImageUrl(url) {
+  return new Promise((resolve) => {
+    const image = new Image();
+    image.decoding = "async";
+    image.onload = () => resolve(true);
+    image.onerror = () => resolve(false);
+    image.src = url;
+  });
+}
+
+async function resolveThemeWatermarkLogoUrl(themeName) {
+  const candidates = Array.isArray(THEME_WATERMARK_LOGO_CANDIDATES[themeName])
+    ? THEME_WATERMARK_LOGO_CANDIDATES[themeName]
+    : [];
+
+  for (const candidate of candidates) {
+    try {
+      const found = await probeImageUrl(candidate);
+      if (found) return candidate;
+    } catch {
+      // Ignore probe failures and continue to next candidate.
+    }
+  }
+
+  return "";
+}
+
+function applyThemeWatermarkLogo(themeName) {
+  const cssVar = THEME_WATERMARK_CSS_VARIABLES[themeName];
+  if (!cssVar) return;
+
+  if (themeName === "pbhs") {
+    const resolvedPbhsUrl = themeWatermarkResolvedLogoUrls.get("pbhs") || "";
+    if (resolvedPbhsUrl.includes("/branding/poplar-bluff-high-school-logo")) {
+      themeWatermarkResolvedLogoUrls.delete("pbhs");
+      themeWatermarkResolutionAttempted.delete("pbhs");
+    }
+  }
+
+  if (state.interface.theme !== themeName) {
+    document.documentElement.style.removeProperty(cssVar);
+    return;
+  }
+
+  if (themeWatermarkResolutionAttempted.has(themeName)) {
+    const resolvedUrl = themeWatermarkResolvedLogoUrls.get(themeName) || "";
+    if (resolvedUrl) {
+      document.documentElement.style.setProperty(
+        cssVar,
+        getCssUrlValue(resolvedUrl)
+      );
+    } else {
+      document.documentElement.style.removeProperty(cssVar);
+    }
+    return;
+  }
+
+  if (themeWatermarkResolvePromises.has(themeName)) return;
+
+  const resolvePromise = resolveThemeWatermarkLogoUrl(themeName)
+    .then((resolvedUrl) => {
+      const normalizedResolvedUrl = resolvedUrl || "";
+      themeWatermarkResolutionAttempted.add(themeName);
+      themeWatermarkResolvedLogoUrls.set(themeName, normalizedResolvedUrl);
+
+      if (state.interface.theme !== themeName) return;
+
+      if (normalizedResolvedUrl) {
+        document.documentElement.style.setProperty(
+          cssVar,
+          getCssUrlValue(normalizedResolvedUrl)
+        );
+      } else {
+        document.documentElement.style.removeProperty(cssVar);
+      }
+    })
+    .finally(() => {
+      themeWatermarkResolvePromises.delete(themeName);
+    });
+
+  themeWatermarkResolvePromises.set(themeName, resolvePromise);
+}
+
+function applyInterfaceThemeWatermarkLogos() {
+  Object.keys(THEME_WATERMARK_CSS_VARIABLES).forEach((themeName) => {
+    applyThemeWatermarkLogo(themeName);
+  });
+}
+
 function persistInterfaceThemeSettings() {
   localStorage.setItem("interface_theme", state.interface.theme);
   localStorage.setItem(INTERFACE_THEME_PRESET_STORAGE_KEY, state.interface.themePreset || INTERFACE_THEME_PRESET_CUSTOM);
@@ -5286,6 +5501,7 @@ function applyThemePresetById(presetId, { persist = true } = {}) {
 function applyInterfaceSettings() {
   document.documentElement.dataset.theme = state.interface.theme;
   applyThemePaletteOverrides();
+  applyInterfaceThemeWatermarkLogos();
   applyInterfaceBackgroundImage();
   document.documentElement.dataset.density = state.interface.density;
   document.body.classList.toggle("compact-mode", state.interface.compact);
@@ -5354,6 +5570,7 @@ function applyDashboardSettings() {
     [els.cardMotion, state.dashboard.showMotion],
     [els.cardQuickCommands, state.dashboard.showQuickCommands],
     [els.cardMacros, state.dashboard.showMacros],
+    [els.cardRunoutSensors, state.dashboard.showRunoutSensors],
     [els.cardMainCamera, state.dashboard.showMainCamera],
     [els.cardToolheadCamera, state.dashboard.showToolheadCamera],
     [els.cardDashboardConsole, state.dashboard.showConsole],
@@ -7155,6 +7372,7 @@ function setConnectionUi(status) {
   renderTimelapseSettingsCard();
   renderSpoolmanView();
   renderSpoolmanSettingsCard();
+  renderRunoutSensorsCard();
   if (status === "connected" && state.activeView === "timelapse") {
     if (!state.timelapseMedia.files.length && !state.timelapseMedia.directories.length && !state.timelapseMedia.isLoading) {
       void loadTimelapseMediaFiles({ source: "connect", silent: true });
@@ -7196,6 +7414,397 @@ function setPrinterState(value) {
   renderControlsPanel();
   renderStatusClearFileButton(state.printStatus.lastPrintStats);
   refreshMacroActionButtonState();
+}
+
+function encodeGcodeParamValue(value) {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) return "\"\"";
+  return `"${normalized.replace(/\\/g, "\\\\").replace(/"/g, "\\\"")}"`;
+}
+
+function normalizeRunoutSensorObjectKey(value) {
+  const normalized = String(value || "").trim();
+  if (!normalized) return "";
+
+  const lowered = normalized.toLowerCase();
+  if (!RUNOUT_SENSOR_OBJECT_PREFIXES.some((prefix) => lowered.startsWith(prefix))) {
+    return "";
+  }
+
+  return normalized;
+}
+
+function isRunoutSensorObjectKey(value) {
+  return !!normalizeRunoutSensorObjectKey(value);
+}
+
+function getRunoutSensorNameFromObjectKey(objectKey) {
+  const normalized = normalizeRunoutSensorObjectKey(objectKey);
+  if (!normalized) return "";
+  return normalized.split(/\s+/).pop() || "";
+}
+
+function formatRunoutSensorPrettyName(name) {
+  const cleaned = String(name || "")
+    .replace(/[_-]+/g, " ")
+    .trim();
+
+  if (!cleaned) return "Sensor";
+
+  return cleaned
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function normalizeRunoutSensorBoolean(value, fallback = null) {
+  if (typeof value === "boolean") return value;
+  if (value == null || value === "") return fallback;
+
+  const numeric = Number(value);
+  if (Number.isFinite(numeric)) {
+    return numeric !== 0;
+  }
+
+  const normalized = String(value).trim().toLowerCase();
+  if (["true", "on", "enabled", "yes", "detected", "triggered", "active"].includes(normalized)) return true;
+  if (["false", "off", "disabled", "no", "open", "inactive"].includes(normalized)) return false;
+  return fallback;
+}
+
+function sortRunoutSensorObjectKeys(objectKeys = []) {
+  const deduped = [...new Set(
+    (Array.isArray(objectKeys) ? objectKeys : [])
+      .map((key) => normalizeRunoutSensorObjectKey(key))
+      .filter(Boolean)
+  )];
+
+  deduped.sort((a, b) => {
+    const aName = formatRunoutSensorPrettyName(getRunoutSensorNameFromObjectKey(a));
+    const bName = formatRunoutSensorPrettyName(getRunoutSensorNameFromObjectKey(b));
+    return aName.localeCompare(bName, undefined, { numeric: true, sensitivity: "base" });
+  });
+
+  return deduped;
+}
+
+function setRunoutSensorObjectKeys(objectKeys = []) {
+  const nextKeys = sortRunoutSensorObjectKeys(objectKeys);
+  const previousKeys = Array.isArray(state.runoutSensors?.objectKeys) ? state.runoutSensors.objectKeys : [];
+  const previousMap = state.runoutSensors?.sensorsByKey && typeof state.runoutSensors.sensorsByKey === "object"
+    ? state.runoutSensors.sensorsByKey
+    : {};
+
+  const nextMap = {};
+  nextKeys.forEach((key) => {
+    const existing = previousMap[key] || {};
+    const name = String(existing.name || getRunoutSensorNameFromObjectKey(key)).trim();
+    nextMap[key] = {
+      objectKey: key,
+      name,
+      prettyName: String(existing.prettyName || formatRunoutSensorPrettyName(name)),
+      filamentDetected: normalizeRunoutSensorBoolean(existing.filamentDetected, null),
+      enabled: normalizeRunoutSensorBoolean(existing.enabled, true),
+      pending: !!existing.pending,
+    };
+  });
+
+  state.runoutSensors.objectKeys = nextKeys;
+  state.runoutSensors.sensorsByKey = nextMap;
+  return nextKeys.join("|") !== previousKeys.join("|");
+}
+
+function getRunoutSensorEntries() {
+  const keys = Array.isArray(state.runoutSensors?.objectKeys) ? state.runoutSensors.objectKeys : [];
+  return keys
+    .map((key) => state.runoutSensors.sensorsByKey?.[key])
+    .filter((entry) => entry && typeof entry === "object");
+}
+
+function mergeRunoutSensorStatusSnapshot(statusSnapshot) {
+  const snapshot = statusSnapshot && typeof statusSnapshot === "object" ? statusSnapshot : {};
+  let changed = false;
+  const currentKeys = new Set(Array.isArray(state.runoutSensors.objectKeys) ? state.runoutSensors.objectKeys : []);
+
+  Object.entries(snapshot).forEach(([rawObjectKey, rawStatus]) => {
+    const objectKey = normalizeRunoutSensorObjectKey(rawObjectKey);
+    if (!objectKey) return;
+
+    const prior = state.runoutSensors.sensorsByKey?.[objectKey] || null;
+    const priorName = String(prior?.name || getRunoutSensorNameFromObjectKey(objectKey)).trim();
+    const nextDetected = normalizeRunoutSensorBoolean(rawStatus?.filament_detected, prior?.filamentDetected ?? null);
+    const nextEnabled = normalizeRunoutSensorBoolean(rawStatus?.enabled, prior?.enabled ?? true);
+
+    const nextEntry = {
+      objectKey,
+      name: priorName,
+      prettyName: String(prior?.prettyName || formatRunoutSensorPrettyName(priorName)),
+      filamentDetected: nextDetected,
+      enabled: nextEnabled,
+      pending: !!prior?.pending,
+    };
+
+    if (
+      !prior
+      || prior.filamentDetected !== nextEntry.filamentDetected
+      || prior.enabled !== nextEntry.enabled
+      || prior.name !== nextEntry.name
+      || prior.prettyName !== nextEntry.prettyName
+    ) {
+      state.runoutSensors.sensorsByKey = {
+        ...state.runoutSensors.sensorsByKey,
+        [objectKey]: nextEntry,
+      };
+      changed = true;
+    }
+
+    if (!currentKeys.has(objectKey)) {
+      currentKeys.add(objectKey);
+      changed = true;
+    }
+  });
+
+  if (changed) {
+    state.runoutSensors.objectKeys = sortRunoutSensorObjectKeys([...currentKeys]);
+    state.runoutSensors.lastUpdatedMs = Date.now();
+  }
+
+  return changed;
+}
+
+function setRunoutSensorsStatusMessage(message, level = "info") {
+  if (!els.runoutSensorStatus) return;
+  els.runoutSensorStatus.textContent = String(message || "").trim();
+  els.runoutSensorStatus.dataset.level = level;
+}
+
+function renderRunoutSensorsCard() {
+  if (!els.runoutSensorList || !els.runoutSensorStatus) return;
+
+  const sensors = getRunoutSensorEntries();
+  const isConnected = state.connectionStatus === "connected";
+  const isLoading = !!state.runoutSensors.loading;
+  const hasError = !!state.runoutSensors.lastError;
+
+  els.runoutSensorList.innerHTML = "";
+
+  if (!sensors.length) {
+    const emptyItem = document.createElement("li");
+    emptyItem.className = "runout-sensor-empty";
+
+    const emptyMessage = document.createElement("p");
+    emptyMessage.className = "muted";
+    emptyMessage.textContent = isConnected
+      ? (isLoading ? "Loading runout sensors..." : "No filament runout sensors detected.")
+      : "Connect to Moonraker to load runout sensors.";
+    emptyItem.appendChild(emptyMessage);
+    els.runoutSensorList.appendChild(emptyItem);
+  } else {
+    sensors.forEach((sensor, index) => {
+      const item = document.createElement("li");
+      item.className = "runout-sensor-item";
+      if (sensor.pending) {
+        item.classList.add("is-pending");
+      }
+
+      const nameWrap = document.createElement("div");
+      nameWrap.className = "runout-sensor-name-wrap";
+
+      const nameEl = document.createElement("p");
+      nameEl.className = "runout-sensor-name";
+      nameEl.id = `runout-sensor-name-${index}`;
+      nameEl.textContent = sensor.prettyName || "Sensor";
+      nameWrap.appendChild(nameEl);
+
+      const icon = document.createElement("span");
+      icon.className = "runout-sensor-icon";
+      icon.setAttribute("role", "img");
+
+      if (sensor.filamentDetected === true) {
+        icon.dataset.state = "detected";
+        icon.setAttribute("aria-label", "Filament detected");
+        icon.innerHTML = '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"></circle><path d="m8.2 12.4 2.4 2.4 5.2-5.4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>';
+      } else if (sensor.filamentDetected === false) {
+        icon.dataset.state = "runout";
+        icon.setAttribute("aria-label", "Runout triggered");
+        icon.innerHTML = '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 4.5 3.8 19.5h16.4L12 4.5Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"></path><path d="M12 9.4v4.7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path><circle cx="12" cy="16.9" r="1.1" fill="currentColor"></circle></svg>';
+      } else {
+        icon.dataset.state = "unknown";
+        icon.setAttribute("aria-label", "Sensor state unknown");
+        icon.innerHTML = '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="8.8" stroke="currentColor" stroke-width="1.8"></circle><path d="M12 9.2v3.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path><circle cx="12" cy="15.8" r="1.1" fill="currentColor"></circle></svg>';
+      }
+
+      const toggle = document.createElement("label");
+      toggle.className = "runout-sensor-switch";
+
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      input.checked = sensor.enabled !== false;
+      input.disabled = !isConnected || sensor.pending || isLoading;
+      input.dataset.runoutSensorToggle = "true";
+      input.dataset.runoutSensorKey = sensor.objectKey;
+      input.setAttribute("aria-labelledby", nameEl.id);
+      input.setAttribute("aria-label", `Toggle ${sensor.prettyName || "sensor"}`);
+      input.title = input.checked ? "Disable sensor" : "Enable sensor";
+
+      const slider = document.createElement("span");
+      slider.className = "runout-sensor-switch-slider";
+      slider.setAttribute("aria-hidden", "true");
+
+      toggle.append(input, slider);
+      item.append(nameWrap, icon, toggle);
+      els.runoutSensorList.appendChild(item);
+    });
+  }
+
+  if (!isConnected) {
+    setRunoutSensorsStatusMessage("Connect to Moonraker to load runout sensor state.", "warn");
+    return;
+  }
+
+  if (isLoading) {
+    setRunoutSensorsStatusMessage("Loading runout sensors...", "info");
+    return;
+  }
+
+  if (hasError) {
+    setRunoutSensorsStatusMessage(`Runout sensor update issue: ${state.runoutSensors.lastError}`, "error");
+    return;
+  }
+
+  if (!sensors.length) {
+    setRunoutSensorsStatusMessage("No runout sensors found in printer objects.", "info");
+    return;
+  }
+
+  const enabledCount = sensors.filter((entry) => entry.enabled !== false).length;
+  setRunoutSensorsStatusMessage(
+    `${sensors.length} sensor${sensors.length === 1 ? "" : "s"} loaded (${enabledCount} enabled).`,
+    "info"
+  );
+}
+
+async function setRunoutSensorEnabled(objectKey, enabled) {
+  const normalizedKey = normalizeRunoutSensorObjectKey(objectKey);
+  if (!normalizedKey) return false;
+
+  const current = state.runoutSensors.sensorsByKey?.[normalizedKey];
+  if (!current || current.pending || !current.name) return false;
+
+  const targetEnabled = !!enabled;
+  state.runoutSensors.sensorsByKey = {
+    ...state.runoutSensors.sensorsByKey,
+    [normalizedKey]: {
+      ...current,
+      pending: true,
+    },
+  };
+  renderRunoutSensorsCard();
+
+  const script = `SET_FILAMENT_SENSOR SENSOR=${encodeGcodeParamValue(current.name)} ENABLE=${targetEnabled ? 1 : 0}`;
+  const actionLabel = `${targetEnabled ? "Enable" : "Disable"} runout sensor ${current.prettyName || current.name}`;
+  const sent = await executeGcodeAction(script, { actionLabel });
+
+  const latest = state.runoutSensors.sensorsByKey?.[normalizedKey] || current;
+  state.runoutSensors.sensorsByKey = {
+    ...state.runoutSensors.sensorsByKey,
+    [normalizedKey]: {
+      ...latest,
+      enabled: sent ? targetEnabled : latest.enabled,
+      pending: false,
+    },
+  };
+
+  if (sent) {
+    state.runoutSensors.lastError = "";
+    state.runoutSensors.lastUpdatedMs = Date.now();
+  } else {
+    state.runoutSensors.lastError = `Failed to update ${current.prettyName || current.name}.`;
+  }
+
+  renderRunoutSensorsCard();
+  return sent;
+}
+
+function getDashboardStatusQueryObjects() {
+  const baseObjects = [
+    "extruder",
+    "heater_bed",
+    "print_stats",
+    "virtual_sdcard",
+    "gcode_move",
+    "motion_report",
+    "toolhead",
+    "manual_probe",
+    "fan",
+  ];
+  const runoutObjects = Array.isArray(state.runoutSensors?.objectKeys) ? state.runoutSensors.objectKeys : [];
+  return [...new Set([...baseObjects, ...runoutObjects])];
+}
+
+async function queryDashboardStatusSnapshot() {
+  if (!state.client) {
+    throw new Error("Moonraker is not connected.");
+  }
+
+  const objects = getDashboardStatusQueryObjects();
+  if (typeof state.client.queryPrinterObjects === "function") {
+    return state.client.queryPrinterObjects(objects);
+  }
+  return state.client.call(`/printer/objects/query?${objects.map((entry) => encodeURIComponent(entry)).join("&")}`);
+}
+
+async function refreshRunoutSensors({ source = "manual", silent = false } = {}) {
+  if (!state.client) {
+    state.runoutSensors.loading = false;
+    renderRunoutSensorsCard();
+    return [];
+  }
+
+  if (state.runoutSensors.loading) {
+    return getRunoutSensorEntries();
+  }
+
+  state.runoutSensors.loading = true;
+  if (!silent) {
+    state.runoutSensors.lastError = "";
+  }
+  renderRunoutSensorsCard();
+
+  try {
+    const objectsResponse = await state.client.call("/printer/objects/list");
+    const objects = Array.isArray(objectsResponse?.result?.objects)
+      ? objectsResponse.result.objects
+      : [];
+
+    const runoutKeys = objects.filter((entry) => isRunoutSensorObjectKey(entry));
+    setRunoutSensorObjectKeys(runoutKeys);
+
+    if (runoutKeys.length) {
+      let statusResponse;
+      if (typeof state.client.queryPrinterObjects === "function") {
+        statusResponse = await state.client.queryPrinterObjects(runoutKeys);
+      } else {
+        statusResponse = await state.client.call(`/printer/objects/query?${runoutKeys.map((key) => encodeURIComponent(key)).join("&")}`);
+      }
+
+      mergeRunoutSensorStatusSnapshot(statusResponse?.result?.status || {});
+    }
+
+    state.runoutSensors.lastUpdatedMs = Date.now();
+    state.runoutSensors.lastError = "";
+    log.info("Runout sensors refreshed.", { source, count: runoutKeys.length });
+    return getRunoutSensorEntries();
+  } catch (error) {
+    const message = error?.message || String(error);
+    state.runoutSensors.lastError = message;
+    log.warn("Runout sensor refresh failed.", { source, error: message });
+    return getRunoutSensorEntries();
+  } finally {
+    state.runoutSensors.loading = false;
+    renderRunoutSensorsCard();
+  }
 }
 
 function setStatusFilename(filename) {
@@ -9014,7 +9623,7 @@ function startTemperaturePolling() {
     inFlight = true;
 
     try {
-      const statusResponse = await state.client.call("/printer/objects/query?extruder&heater_bed&print_stats&virtual_sdcard&gcode_move&motion_report&toolhead&manual_probe&fan");
+      const statusResponse = await queryDashboardStatusSnapshot();
       const statusSnapshot = statusResponse?.result?.status || {};
 
       updateTemperatureSnapshotFromStatus(statusSnapshot);
@@ -9029,6 +9638,10 @@ function startTemperaturePolling() {
         statusSnapshot?.toolhead || null
       );
       mergeManualProbeStatusSnapshot(statusSnapshot?.manual_probe || null);
+      const runoutUpdated = mergeRunoutSensorStatusSnapshot(statusSnapshot);
+      if (runoutUpdated) {
+        renderRunoutSensorsCard();
+      }
     } catch (error) {
       const message = error?.message || String(error);
       log.debug("Status poll skipped.", { error: message });
@@ -11722,6 +12335,15 @@ async function connectMoonraker() {
   resetEndstopsState();
   resetMachineLogFilesState();
   resetManualProbeState({ render: true });
+  state.runoutSensors.loading = false;
+  state.runoutSensors.lastError = "";
+  state.runoutSensors.sensorsByKey = Object.fromEntries(
+    Object.entries(state.runoutSensors.sensorsByKey || {}).map(([key, value]) => ([
+      key,
+      value && typeof value === "object" ? { ...value, pending: false } : value,
+    ]))
+  );
+  renderRunoutSensorsCard();
 
   if (printHistoryRefreshTimer) {
     clearTimeout(printHistoryRefreshTimer);
@@ -11747,11 +12369,11 @@ async function connectMoonraker() {
   state.client.onConnectionState((status) => {
     setConnectionUi(status);
 
-    if (status === "connected") {
-      appendConsole("Moonraker connected.", "info");
-      startTemperaturePolling();
-      startMachineLoadPolling();
-      startUpdateManagerPolling();
+      if (status === "connected") {
+        appendConsole("Moonraker connected.", "info");
+        startTemperaturePolling();
+        startMachineLoadPolling();
+        startUpdateManagerPolling();
       resetConsoleStoreTracking();
       startConsoleStorePolling();
       void loadConsoleHelperEntries();
@@ -11766,13 +12388,14 @@ async function connectMoonraker() {
       if (state.activeView === "timelapse") {
         void loadTimelapseMediaFiles({ source: "connect", silent: true });
       }
-      if (state.activeView === "spoolman") {
-        void refreshSpoolmanState({ source: "connect", silent: true });
+        if (state.activeView === "spoolman") {
+          void refreshSpoolmanState({ source: "connect", silent: true });
+        }
+        void refreshTimelapseSettings({ silent: true });
+        void refreshRunoutSensors({ source: "connect", silent: true });
+        log.info("Moonraker websocket connected.");
+        return;
       }
-      void refreshTimelapseSettings({ silent: true });
-      log.info("Moonraker websocket connected.");
-      return;
-    }
 
     if (status === "disconnected") {
       appendConsole("Moonraker disconnected.", "warn");
@@ -11812,6 +12435,13 @@ async function connectMoonraker() {
       state.printHistory.actionInFlight = false;
       state.printHistory.actionLabel = "";
       state.printHistory.activeJobId = "";
+      state.runoutSensors.loading = false;
+      state.runoutSensors.sensorsByKey = Object.fromEntries(
+        Object.entries(state.runoutSensors.sensorsByKey || {}).map(([key, value]) => ([
+          key,
+          value && typeof value === "object" ? { ...value, pending: false } : value,
+        ]))
+      );
       resetManualProbeState({ render: true });
       renderMachineLoadsCard();
       renderUpdateManagerCard();
@@ -11822,6 +12452,7 @@ async function connectMoonraker() {
       renderTimelapseSettingsCard();
       renderSpoolmanView();
       renderSpoolmanSettingsCard();
+      renderRunoutSensorsCard();
       renderPrintHistoryCard();
       log.warn("Moonraker websocket disconnected.");
       return;
@@ -11865,6 +12496,13 @@ async function connectMoonraker() {
       state.printHistory.actionInFlight = false;
       state.printHistory.actionLabel = "";
       state.printHistory.activeJobId = "";
+      state.runoutSensors.loading = false;
+      state.runoutSensors.sensorsByKey = Object.fromEntries(
+        Object.entries(state.runoutSensors.sensorsByKey || {}).map(([key, value]) => ([
+          key,
+          value && typeof value === "object" ? { ...value, pending: false } : value,
+        ]))
+      );
       resetManualProbeState({ render: true });
       renderMachineLoadsCard();
       renderUpdateManagerCard();
@@ -11875,6 +12513,7 @@ async function connectMoonraker() {
       renderTimelapseSettingsCard();
       renderSpoolmanView();
       renderSpoolmanSettingsCard();
+      renderRunoutSensorsCard();
       renderPrintHistoryCard();
       log.error("Moonraker websocket error.");
       return;
@@ -11929,6 +12568,10 @@ async function connectMoonraker() {
         status?.toolhead || null
       );
       mergeManualProbeStatusSnapshot(status?.manual_probe || null);
+      const runoutUpdated = mergeRunoutSensorStatusSnapshot(status);
+      if (runoutUpdated) {
+        renderRunoutSensorsCard();
+      }
 
       updateTemperatureSnapshotFromStatus(status);
       updateStatusFanSnapshot(status?.fan || null);
@@ -11968,9 +12611,10 @@ async function connectMoonraker() {
   });
 
   state.client.connectWebSocket();
+  await refreshRunoutSensors({ source: "initial-connect", silent: true });
 
   try {
-    const statusResponse = await state.client.call("/printer/objects/query?print_stats&gcode_move&virtual_sdcard&motion_report&toolhead&manual_probe&fan");
+    const statusResponse = await queryDashboardStatusSnapshot();
     const statusSnapshot = statusResponse?.result?.status || {};
     const printStats = statusSnapshot.print_stats || {};
     const gcodeMove = statusSnapshot.gcode_move || null;
@@ -11983,6 +12627,8 @@ async function connectMoonraker() {
     updateStatusFileInfo(printStats, gcodeMove, motionReport, toolhead);
     mergeManualProbeStatusSnapshot(statusSnapshot.manual_probe || null);
     updateStatusFanSnapshot(statusSnapshot.fan || null);
+    mergeRunoutSensorStatusSnapshot(statusSnapshot);
+    renderRunoutSensorsCard();
     log.debug("Initial printer state loaded.", { printerState });
   } catch (error) {
     const message = error?.message || String(error);
@@ -17725,13 +18371,13 @@ function getPrintHistoryChartContext(canvas, { minHeight = 170 } = {}) {
 function getPrintHistoryStatusChartColor(status) {
   const normalized = normalizePrintHistoryStatus(status);
   const map = {
-    completed: "#bdbdbd",
-    in_progress: "#eeeeee",
-    printing: "#eeeeee",
-    cancelled: "#616161",
-    other: "#616161",
+    completed: getThemeColorValue("--status-complete", "#bdbdbd"),
+    in_progress: getThemeColorValue("--status-printing", "#eeeeee"),
+    printing: getThemeColorValue("--status-printing", "#eeeeee"),
+    cancelled: getThemeColorValue("--status-disconnected", "#616161"),
+    other: getThemeColorValue("--status-idle", "#616161"),
   };
-  return map[normalized] || "#424242";
+  return map[normalized] || getThemeColorValue("--chart-grid", "#424242");
 }
 
 function buildPrintHistoryStatusEntries(jobs, valueMode = "jobs") {
@@ -20979,6 +21625,7 @@ function wireEvents() {
     state.dashboard.showMotion = els.dashShowMotion?.checked ?? state.dashboard.showMotion;
     state.dashboard.showQuickCommands = els.dashShowQuickCommands?.checked ?? state.dashboard.showQuickCommands;
     state.dashboard.showMacros = els.dashShowMacros?.checked ?? state.dashboard.showMacros;
+    state.dashboard.showRunoutSensors = els.dashShowRunoutSensors?.checked ?? state.dashboard.showRunoutSensors;
     state.dashboard.showMainCamera = els.dashShowMainCamera?.checked ?? state.dashboard.showMainCamera;
     state.dashboard.showToolheadCamera = els.dashShowToolheadCamera?.checked ?? state.dashboard.showToolheadCamera;
     state.dashboard.showConsole = els.dashShowConsole?.checked ?? state.dashboard.showConsole;
@@ -21418,6 +22065,20 @@ function wireEvents() {
     handleControlsKeyboardEvent(event);
   });
 
+  els.runoutSensorList?.addEventListener("change", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement)) return;
+    if (target.dataset.runoutSensorToggle !== "true") return;
+
+    const sensorKey = normalizeRunoutSensorObjectKey(target.dataset.runoutSensorKey || "");
+    if (!sensorKey) {
+      renderRunoutSensorsCard();
+      return;
+    }
+
+    void setRunoutSensorEnabled(sensorKey, target.checked);
+  });
+
   els.mainCameraFullscreen.addEventListener("click", () => openCameraFullscreen(state.camera, "Main Camera"));
   els.toolheadCameraFullscreen.addEventListener("click", () => openCameraFullscreen(state.toolheadCamera, "Toolhead Cam"));
   els.cameraDialogClose.addEventListener("click", closeCameraFullscreen);
@@ -21445,6 +22106,7 @@ async function init() {
   renderTimelapseSettingsCard();
   renderSpoolmanView();
   renderSpoolmanSettingsCard();
+  renderRunoutSensorsCard();
 
   els.cameraEnabled.checked = state.camera.enabled;
   els.cameraUrl.value = state.camera.url;

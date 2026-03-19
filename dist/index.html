@@ -7,8 +7,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
-  <script type="module" crossorigin src="/assets/index-BfSLQKjm.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-8OpkPuZ5.css">
+  <script type="module" crossorigin src="/assets/index-DDG_5R9h.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-9jivhgRz.css">
 </head>
 <body>
   <div class="app-layout">
@@ -557,6 +557,25 @@
             </div>
             <p class="muted">Loaded from Moonraker configuration.</p>
             <div id="dashboard-macro-list" class="macro-list"></div>
+          </article>
+
+          <article class="card runout-sensors-card" id="card-runout-sensors">
+            <div class="card-head">
+              <h3 class="dashboard-title-with-icon">
+                <span class="dashboard-title-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none">
+                    <path d="M7 4h10v5H7z" stroke="currentColor" stroke-width="1.8"></path>
+                    <path d="M7 13h10v7H7z" stroke="currentColor" stroke-width="1.8"></path>
+                    <path d="m9.2 16.2 2 2 3.8-3.9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+                  </svg>
+                </span>
+                <span>Runout Sensors</span>
+              </h3>
+            </div>
+            <ul id="runout-sensor-list" class="runout-sensor-list" aria-label="Filament runout sensors"></ul>
+            <p id="runout-sensor-status" class="muted runout-sensor-status" data-level="info" aria-live="polite">
+              Connect to Moonraker to load runout sensors.
+            </p>
           </article>
 
           <article class="card console-card" id="card-dashboard-console">
@@ -1567,6 +1586,9 @@
                 <option value="ocean">Ocean</option>
                 <option value="ember">Ember (Default)</option>
                 <option value="graphite">Graphite</option>
+                <option value="raiders">Raiders Gold</option>
+                <option value="pbhs">PBHS Mules</option>
+                <option value="royals">Twin Rivers Royals</option>
               </select>
 
               <label for="theme-community-preset">Community Preset</label>
@@ -1578,7 +1600,9 @@
                   <option value="solder-sunset">Solder Sunset</option>
                   <option value="mint-shift">Mint Shift</option>
                   <option value="steel-dawn">Steel Dawn</option>
-
+                  <option value="raiders-spirit">Raiders Spirit</option>
+                  <option value="pbhs-mules">PBHS Mules</option>
+                  <option value="twin-rivers-royals">Twin Rivers Royals</option>
                 </select>
                 <button type="button" id="theme-community-apply">Apply Preset</button>
               </div>

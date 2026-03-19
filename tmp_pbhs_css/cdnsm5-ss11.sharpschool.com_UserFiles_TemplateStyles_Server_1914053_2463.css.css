@@ -1,0 +1,612 @@
+@import url(https://fonts.googleapis.com/css?family=Open+Sans:400,300,700,400italic);
+/*
+font-family: 'Open Sans', sans-serif;
+*/
+/* --------------------- COLORS ---------------------- */
+/*- Light Background Color -*/
+.row.bg-d {
+  background: #f8f8f8; }
+
+/*- Menubar Background Color -*/
+#menubar {
+  background: #411111; }
+
+/*- Section Title Text Color -*/
+.sectionName {
+  color: #411111; }
+
+/*- Quick Link Color -*/
+.quickLinks a {
+  color: #411111; }
+
+/*- Quick Link Color HOVER -*/
+.quickLinks a:hover {
+  color: #C2C2C2; }
+
+/*- Event Date Circle Background and Text Color -*/
+.dateOrb {
+  background: #411111;
+  color: #ffffff; }
+
+/*- News Date Background and Text Color -*/
+.newsItem .newsDate {
+  background: #411111;
+  color: #ffffff; }
+
+/*- News Title Text Color -*/
+.newsItem .newsTitle {
+  color: #584731; }
+
+/*- News Read More Text Color -*/
+.newsItem .readMore {
+  color: #411111; }
+
+/*- News Read More Text Color HOVER -*/
+a.newsItem:hover .readMore {
+  color: #5d3434; }
+
+/*- Subpage Title Text Color -*/
+h2.pageTitle {
+  color: #411111; }
+
+/*- Mobile Sub-Menu Toggle Background -*/
+.nav-toggle {
+  background: #C2C2C2; }
+
+/*- Mobile Sub-Menu Toggle Text Color -*/
+.nav-toggle a {
+  color: #ffffff; }
+
+/*- Mobile Sub-Menu Color (Hidden Item should match background) -*/
+.nav-toggle span {
+  color: #C2C2C2; }
+
+/*- Mobile Sub-Menu '+' Color -*/
+.nav-toggle span {
+  color: #ffffff; }
+
+/*- Sub Menu Background -*/
+#inside-nav {
+  background: #f8f8f8;
+  padding: 10px; }
+
+/*- Sub Menu Active Page Background -*/
+.currentpage a.navLink {
+  background: #C2C2C2;
+  color: #ffffff;
+  font-weight: 700; }
+
+/*- Breadcrumb Text and Background Color -*/
+#breadcrumbs {
+  background: #f8f8f8;
+  color: #C2C2C2; }
+
+/*---- TELERIK COLORS ----*/
+/*--TOP LEVEL STYLES--*/
+/*--Normal State--*/
+.inner-bar a, .telerik_main_menu .rmRootGroup a {
+  color: #ffffff; }
+
+.telerik_main_menu .rmRootGroup a span {
+  color: #ffffff; }
+
+/*--Over and Focused State ***/
+.inner-bar a:hover, .telerik_main_menu .rmRootGroup a:hover, .telerik_main_menu .rmRootGroup a.rmFocused {
+  color: #ffffff; }
+
+.telerik_main_menu .rmRootGroup a:hover span, .telerik_main_menu .rmRootGroup a.rmFocused span {
+  color: #ffffff; }
+
+/*--TOP LEVEL HOVER BG COLOR AND IMAGES (two images)--*/
+.telerik_main_menu .rmRootGroup a:hover, .telerik_main_menu .rmRootGroup a.rmFocused {
+  background-color: #190606; }
+
+/*--END OF TOP LEVEL STYLES--*/
+/*--DROPDOWN MENU STYLES--*/
+/*--Normal State--*/
+.telerik_main_menu .rmGroup a {
+  color: #ffffff;
+  background: #5d3434; }
+
+.telerik_main_menu .rmGroup a span {
+  color: #ffffff;
+  background: #5d3434; }
+
+/*--Over and Focused State--*/
+.telerik_main_menu .rmGroup a:hover, .telerik_main_menu .rmGroup a.rmFocused {
+  background: #190606;
+  color: #ffffff; }
+
+.telerik_main_menu .rmGroup a:hover span, .telerik_main_menu .rmGroup a.rmFocused span {
+  background: #190606;
+  color: #ffffff; }
+
+/*--END OF DROPDOWN MENU STYLES--*/
+.rmItem:hover {
+  background-color: #190606;
+  color: #ffffff; }
+
+.telerik_main_menu .rmRootGroup > li:hover > a span {
+  color: #ffffff; }
+
+.rmVertical .rmItem:hover a span, .rmVertical .rmItem:hover a {
+  background-color: #190606; }
+
+/*--DROPDOWN LV2 MENU STYLES--*/
+/*--Normal State--*/
+.telerik_main_menu .rmGroup .rmGroup a {
+  color: #ffffff;
+  background: #222A2B; }
+
+.telerik_main_menu .rmGroup .rmGroup a span {
+  color: #ffffff;
+  background: #222A2B; }
+
+/*--Over and Focused State--*/
+.telerik_main_menu .rmGroup .rmGroup a:hover, .telerik_main_menu .rmGroup .rmGroup a.rmFocused {
+  background: #2d3738;
+  color: #ffffff; }
+
+.telerik_main_menu .rmGroup .rmGroup a:hover span, .telerik_main_menu .rmGroup .rmGroup a.rmFocused span {
+  background: #2d3738;
+  color: #ffffff; }
+
+/*--SECOND LEVEL BORDER LEFT--*/
+.rmLevel2 {
+  border-left: 4px solid #190606; }
+
+/*--END OF DROPDOWN MENU STYLES--*/
+/*---- END TELERIK COLORS ----*/
+/*------------------------------- END COLORS -------------------------------*/
+/* --------------------- IMAGES ---------------------- */
+/*--Navigation Arrow BG--*/
+.telerik_main_menu .rmGroup .rmItem .rmExpandRight:after {
+  background: url(/Common/resources/DesignPortfolio/SiteThemes/Metric/Blue/arrows-sprite.png); }
+
+/*--Navigation Arrow--*/
+/*--Light--*/
+.telerik_main_menu .rmGroup .rmItem .rmExpandRight:after {
+  background-position: -18px -44px !important; }
+
+/*or*/
+/*--Dark--*/
+/*
+.telerik_main_menu .rmGroup .rmItem .rmExpandRight:after {
+ background-position: -18px -8px !important;
+}
+*/
+/*------------------------------- END IMAGES -------------------------------*/
+.row.bg-d .inside-padding {
+  padding: 20px; }
+
+.homepage .ptl_portlet_vertical {
+  overflow: visible; }
+
+a:not(.link) {
+  transition: all 0.2s ease-in-out; }
+
+.portletEditMode a, .designMode a {
+  transition: none; }
+
+.subpage .ptl_page a {
+  text-decoration: underline;
+  font-weight: bold; }
+
+.w-20 {
+  width: 20%;
+  display: inline-block;
+  vertical-align: top; }
+
+html body {
+  font-family: 'Open Sans', sans-serif;
+  font-size: 16px;
+  line-height: normal;
+  color: #4C4E4E;
+  -webkit-font-smoothing: antialiased; }
+
+#theme {
+  position: relative; }
+
+#menubar {
+  position: absolute;
+  top: 0px;
+  left: 0px;
+  width: 100%;
+  color: #ffffff; }
+
+.portletEditMode #menubar {
+  position: static; }
+
+#menubar .inside-padding {
+  padding: 0px 10px 0px 10px; }
+
+#menubar .row {
+  margin: 0px; }
+
+/*---- HEADER ----*/
+#header.row {
+  display: table;
+  width: 100%;
+  min-height: 500px;
+  background-size: cover;
+  background-position: center top;
+  margin-bottom: 0px;
+   background-image: url("/UserFiles/Servers/Server_1914053/Image/TemplateImages/HighSchool.jpg") !important;
+   }
+
+#header > .inside-padding {
+  display: table-cell;
+  vertical-align: middle;
+  text-align: center;
+  color: #ffffff; }
+
+.headerContent {
+  background: rgba(239, 235, 230, 0.33);
+  padding: 20px;
+  width: 50%;
+  margin: 0px auto; }
+
+.headerContent a {
+  color: #7E8084;
+  display: inline-block;
+  width: 100%; }
+
+.headerContent a:hover {
+  color: #7E8084;
+  text-decoration: none;
+  -ms-transform: scale(1.1, 1.1);
+  -webkit-transform: scale(1.1, 1.1);
+  transform: scale(1.1, 1.1); }
+
+.headerContent a > div {
+  margin-bottom: 10px; }
+
+.headerContent a > div.schoolName {
+  margin-bottom: 0px; 
+}
+
+ul.socialMedia {
+  list-style: none;
+  margin: 20px 0px 0px 0px;
+  padding: 0px; }
+
+ul.socialMedia li {
+  display: inline; }
+
+ul.socialMedia li a {
+  width: 50px;
+  line-height: 50px;
+  text-align: center;
+  background: #333333;
+  color: #ffffff;
+  margin: 0px 5px 0px 5px;
+  font-size: 18px; }
+
+ul.socialMedia li a:hover {
+  text-decoration: none;
+  opacity: 0.7;
+  color: #ffffff; }
+
+ul.socialMedia li.facebook a {
+  background-color: #507cbe; }
+
+ul.socialMedia li.twitter a {
+  background-color: #63cdf1; }
+
+ul.socialMedia li.youtube a {
+  background-color: #f16261; }
+
+ul.socialMedia li.instagram a {
+  background-color: #a57d60; }
+
+ul.socialMedia li.email a {
+  background-color: #fcc95d; }
+
+/*---- HOMEPAGE LAYOUT ----*/
+.sectionName {
+  font-weight: 700;
+  display: block;
+  text-transform: uppercase;
+  text-align: center;
+  margin: 20px 0px 30px;
+  font-size: 25px; }
+
+.homepage .row .table.inside-padding {
+  display: table;
+  width: 100%;
+  box-sizing: border-box; }
+
+.homepage .w-33, .homepage .w-66 {
+  float: none;
+  display: table-cell;
+  vertical-align: middle; }
+
+/*---- QUICK LINKS ----*/
+.row.bg-d.quickLinks {
+  text-align: center;
+  margin-bottom: 20px; }
+
+.quickLinks a {
+  text-align: center;
+  font-weight: bold; }
+
+.quickLinks a:hover {
+  text-decoration: none; }
+
+.quickLinks a span {
+  display: block;
+  transition: all 0.2s ease-in-out; }
+
+.quickLinks a:hover span {
+  -ms-transform: scale(1.1, 1.1);
+  -webkit-transform: scale(1.1, 1.1);
+  transform: scale(1.1, 1.1); }
+
+/*--- FOOTER ----*/
+#footer {
+  background: #333333;
+  color: #eeeeee;
+  text-align: center;
+  font-size: 15px; }
+
+#footer .phone a {
+  color: #ffffff; }
+
+#footer .inside-padding {
+  padding: 30px 10px 30px 10px; }
+
+#footer .schoolName {
+  font-size: 34px; }
+
+.credits {
+  background: #212121;
+  color: #eeeeee;
+  text-align: center; }
+
+.credits a {
+  color: #ffffff; }
+
+.credits a:hover {
+  color: #ffffff;
+  text-decoration: underline; }
+
+/*---- SUBPAGE LAYOUT ----*/
+
+
+.subHero {
+  /* background-position: center center;
+ background-size: cover;
+ height: 250px;*/
+  display: table;
+  width: 100%;
+  text-align: center; }
+
+.subHero > .inside-padding {
+  display: table-cell;
+  vertical-align: middle;
+  text-align: center;
+  color: #ffffff; }
+
+.subHero .headerContent {
+  width: auto; }
+
+.sideBar {
+  width: 23%;
+  float: left; }
+
+.mainContent {
+  width: 77%;
+  float: left; }
+
+h2.pageTitle {
+  font-weight: 700;
+  display: block;
+  text-transform: uppercase;
+  text-align: center;
+  margin: 30px 0px 30px;
+  font-size: 25px; }
+
+#inside-nav {
+  padding: 10px; }
+
+#breadcrumbs {
+  padding: 10px;
+  font-weight: 700;
+  margin-bottom: 20px; }
+
+a.navLink {
+  display: block;
+  padding: 10px; }
+
+.currentpage a.navLink {
+  color: #ffffff;
+  font-weight: 700; }
+
+a.navLink:hover {
+  text-decoration: none;
+  opacity: 0.6; }
+
+.RadMenu a.rmLink {
+  line-height: 45px; }
+
+/*** START OF TOP LEVEL MENU STYLES ***/
+.telerik_main_menu a, .telerik_main_menu a:hover {
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: normal; }
+
+.telerik_main_menu .rmText {
+  padding-top: 5px !important;
+  padding-bottom: 15px !important; }
+
+.telerik_main_menu .rmGroup .rmText {
+  padding-bottom: 5px !important; }
+
+.RadMenu .rmItem {
+  height: auto;
+  margin-right: 0px; }
+
+.RadMenu .rmText {
+  font-weight: normal;
+  font-size: 12pt; }
+
+.RadMenu .rmLink {
+  float: left;
+  outline: 0 none;
+  padding-left: 0px !important; }
+
+.RadMenu .rmHorizontal .rmText {
+  padding: 0px 10px 0px 10px !important; }
+
+.RadMenu .rmGroup .rmText {
+  margin-left: 0px !important;
+  padding: 8px 10px 8px 10px !important;
+  margin-bottom: 4px; }
+
+.rmrootGroup .rmHorizontal li.rmItem {
+  margin-left: 10px; }
+
+/*** Normal State ***/
+.telerik_main_menu .rmRootGroup a {
+  text-decoration: none;
+  font-size: 18px; }
+
+.telerik_main_menu .rmRootGroup a span {
+  text-decoration: none;
+  font-size: 17px;
+  font-weight: 400; }
+
+/*** Over and Focused State ***/
+.telerik_main_menu .rmRootGroup a:hover, .telerik_main_menu .rmRootGroup a.rmFocused {
+  text-decoration: none;
+  background-position: left top, right top;
+  background-repeat: no-repeat; }
+
+.telerik_main_menu .rmRootGroup a:hover span, .telerik_main_menu .rmRootGroup a.rmFocused span {
+  text-decoration: none; }
+
+/*** END OF TOP LEVEL MENU STYLES ***/
+/*** START OF DROPDOWN MENU STYLES ***/
+/*** Normal State ***/
+.telerik_main_menu .rmGroup a {
+  text-decoration: none;
+  font-size: 10pt;
+  font-weight: normal; }
+
+.telerik_main_menu .rmGroup a span {
+  text-decoration: none;
+  font-size: 15px;
+  font-weight: 400;
+  line-height: normal !important;
+  text-transform: none; }
+
+.telerik_main_menu .rmGroup .rmItem .rmExpandRight:after {
+  content: '';
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 18px;
+  height: 26px; }
+
+/*** Over and Focused State ***/
+.telerik_main_menu .rmGroup a:hover, .telerik_main_menu .rmGroup a.rmFocused {
+  text-decoration: none;
+  border-bottom: none !important; }
+
+.telerik_main_menu .rmGroup a:hover span, .telerik_main_menu .rmGroup a.rmFocused span {
+  text-decoration: none; }
+
+/*** Dropdown border ***/
+.RadMenu .rmRootGroup .rmItem ul.rmGroup {
+  width: 200px;
+  padding: 0px; }
+
+/*** END OF DROPDOWN MENU STYLES ***/
+a#mobile-bar {
+  text-decoration: none;
+  font-size: 17px;
+  font-weight: 400;
+  line-height: 45px;
+  color: #ffffff;
+  font-weight: 700; }
+
+a#mobile-bar span {
+  margin-right: 15px; }
+
+@media screen and (max-width: 1020px) {
+  .subpage #page .sideBar {
+    width: 28%; }
+
+  .subpage #page .mainContent {
+    width: 71%; }
+ }
+
+@media screen and (max-width: 900px) {
+  body #header, body #content-wrapper {
+    position: static; }
+
+  #menubar {
+    z-index: 999; }
+ }
+
+@media screen and (max-width: 840px) {
+  .w-20 {
+    width: 33.33334%; }
+
+  .homepage .row .table.inside-padding {
+    display: block;
+    width: auto; }
+
+  .homepage .w-33, .homepage .w-66 {
+    display: block;
+    width: 100%; }
+
+  a.event {
+    display: inline-block;
+    width: 50%;
+    margin-bottom: 20px;
+    text-align: center;
+    vertical-align: top; }
+
+  a.event .inside {
+    display: block; }
+
+  a.event .eventDate {
+    display: block;
+    width: auto; }
+
+  .dateOrb {
+    margin: 0px auto 10px; }
+
+  a.event .eventDetails {
+    display: block;
+    padding: 0px; }
+
+  a.newsItem {
+    width: 100%;
+    display: block; }
+
+  .newsItem > .inside {
+    min-height: auto; }
+ }
+
+@media screen and (max-width: 730px) {
+
+#header .logo img{
+width: 100%;
+}
+
+  .subpage #page .sideBar, .subpage #page .mainContent {
+    width: auto;
+    float: none; }
+ }
+
+@media screen and (max-width: 470px) {
+  .w-20 {
+    width: 50%; }
+
+  a.event {
+    display: block;
+    width: 100%; }
+ }
+

@@ -1,0 +1,11 @@
+/* Fix */
+
+.headerContent a {
+	color: #000 !Important;
+}
+
+.quickLinks a:hover {
+  color: #190606 !important;
+}
+
+ul.socialMedia a { color: #FFF !important; }

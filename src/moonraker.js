@@ -438,6 +438,7 @@ export class MoonrakerClient {
     const query = objectList
       .map((entry) => String(entry || "").trim())
       .filter(Boolean)
+      .map((entry) => encodeURIComponent(entry))
       .join("&");
 
     if (!query) {
