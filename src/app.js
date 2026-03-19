@@ -17,6 +17,12 @@ const INTERFACE_THEME_PRESET_CUSTOM = "custom";
 const INTERFACE_THEME_BASE_PRESET_PREFIX = "base:";
 const INTERFACE_BACKGROUND_IMAGE_URL_STORAGE_KEY = "interface_background_image_url_v1";
 const INTERFACE_BACKGROUND_IMAGE_ENABLED_STORAGE_KEY = "interface_background_image_enabled_v1";
+const INTERFACE_BACKGROUND_IMAGE_SOURCE_STORAGE_KEY = "interface_background_image_source_v1";
+const INTERFACE_BACKGROUND_IMAGE_URL_MAX_LENGTH = 4 * 1024 * 1024;
+const INTERFACE_BACKGROUND_IMAGE_REMOTE_URL_MAX_LENGTH = 8192;
+const INTERFACE_BACKGROUND_IMAGE_DB_NAME = "forge-interface-media";
+const INTERFACE_BACKGROUND_IMAGE_DB_STORE = "background-images";
+const INTERFACE_BACKGROUND_IMAGE_DB_KEY = "active";
 const THEME_WATERMARK_LOGO_CANDIDATES = Object.freeze({
   raiders: Object.freeze([
     "/branding/three-rivers-college-logo.svg",
@@ -229,6 +235,12 @@ const CONTROL_Z_OFFSET_SAVE_OPTION_VALUES = ["Z_OFFSET_APPLY_ENDSTOP", "Z_OFFSET
 const MANUAL_PROBE_STEPS = Object.freeze([0.005, 0.01, 0.05, 0.1, 1]);
 const CARD_COLLAPSE_KEY_PREFIX = "card_collapsed_";
 const KLIPPERVIEW_CARD_ID = "card-klipperview";
+const NOTIFICATION_SNOOZE_PRESETS = Object.freeze([
+  Object.freeze({ key: "1h", label: "1h", seconds: 60 * 60 }),
+  Object.freeze({ key: "1d", label: "1d", seconds: 24 * 60 * 60 }),
+  Object.freeze({ key: "7d", label: "7d", seconds: 7 * 24 * 60 * 60 }),
+]);
+const NOTIFICATION_TYPES = Object.freeze(["success", "info", "warning", "error", "announcement"]);
 // Fluidd parity reference:
 // - _fluidd_ref/src/store/layout/state.ts (dashboard beacon-card registration)
 // - _fluidd_ref/src/views/Dashboard.vue (runtime visibility filtering)
@@ -908,6 +920,13 @@ const els = {
   settingsSubnav: document.getElementById("settings-subnav"),
   settingsSubnavItems: [...document.querySelectorAll(".settings-subnav-item")],
   settingsSections: [...document.querySelectorAll("[data-settings-section]")],
+  headerBrandImage: document.getElementById("header-brand-image"),
+  emergencyStop: document.getElementById("emergency-stop"),
+  notificationsToggle: document.getElementById("notifications-toggle"),
+  notificationsCount: document.getElementById("notifications-count"),
+  notificationsMenu: document.getElementById("notifications-menu"),
+  notificationsList: document.getElementById("notifications-list"),
+  notificationsClearAll: document.getElementById("notifications-clear-all"),
   toolsMenuToggle: document.getElementById("tools-menu-toggle"),
   toolsMenuClose: document.getElementById("tools-menu-close"),
   toolsDrawer: document.getElementById("tools-drawer"),
@@ -1274,6 +1293,7 @@ const els = {
   interfaceDensity: document.getElementById("interface-density"),
   interfaceBgImageEnabled: document.getElementById("interface-bg-image-enabled"),
   interfaceBgImageUrl: document.getElementById("interface-bg-image-url"),
+  interfaceBgImageSource: document.getElementById("interface-bg-image-source"),
   interfaceBgImageApply: document.getElementById("interface-bg-image-apply"),
   interfaceBgImageClear: document.getElementById("interface-bg-image-clear"),
   settingsWarningCpuThrottled: document.getElementById("settings-warning-cpu-throttled"),
@@ -1471,7 +1491,7 @@ const els = {
   manualProbeAdvancedDown: document.getElementById("manual-probe-advanced-down"),
   manualProbeAbort: document.getElementById("manual-probe-abort"),
   manualProbeAccept: document.getElementById("manual-probe-accept"),
-  quickGcode: [...document.querySelectorAll("[data-gcode]")],
+  quickGcode: [...document.querySelectorAll("[data-gcode]:not(#emergency-stop)")],
 };
 
 let runtimeDashboardViewport = getDashboardRuntimeViewport();
@@ -1629,15 +1649,38 @@ function loadStoredThemePreset() {
 
 function normalizeInterfaceBackgroundImageUrl(value) {
   const normalized = String(value || "").trim();
-  return normalized.length <= 8192 ? normalized : normalized.slice(0, 8192);
+  if (!normalized) return "";
+
+  if (/^data:image\//i.test(normalized)) {
+    return normalized.length <= INTERFACE_BACKGROUND_IMAGE_URL_MAX_LENGTH
+      ? normalized
+      : normalized.slice(0, INTERFACE_BACKGROUND_IMAGE_URL_MAX_LENGTH);
+  }
+
+  return normalized.length <= INTERFACE_BACKGROUND_IMAGE_REMOTE_URL_MAX_LENGTH
+    ? normalized
+    : normalized.slice(0, INTERFACE_BACKGROUND_IMAGE_REMOTE_URL_MAX_LENGTH);
+}
+
+function normalizeInterfaceBackgroundImageSource(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "local" || normalized === "url") return normalized;
+  return "none";
 }
 
 function loadStoredInterfaceBackgroundImageUrl() {
   return normalizeInterfaceBackgroundImageUrl(localStorage.getItem(INTERFACE_BACKGROUND_IMAGE_URL_STORAGE_KEY));
 }
 
+function loadStoredInterfaceBackgroundImageSource() {
+  const stored = normalizeInterfaceBackgroundImageSource(localStorage.getItem(INTERFACE_BACKGROUND_IMAGE_SOURCE_STORAGE_KEY));
+  if (stored !== "none") return stored;
+  return loadStoredInterfaceBackgroundImageUrl() ? "url" : "none";
+}
+
 function createInterfaceState() {
   const theme = loadStoredChoice("interface_theme", DEFAULT_INTERFACE_THEME, INTERFACE_THEMES);
+  const backgroundImageSource = loadStoredInterfaceBackgroundImageSource();
   return {
     theme,
     compact: loadStoredBool("interface_compact", false),
@@ -1647,7 +1690,8 @@ function createInterfaceState() {
     themePreset: loadStoredThemePreset(),
     themePalette: loadStoredThemePalette(theme),
     backgroundImageEnabled: loadStoredBool(INTERFACE_BACKGROUND_IMAGE_ENABLED_STORAGE_KEY, false),
-    backgroundImageUrl: loadStoredInterfaceBackgroundImageUrl(),
+    backgroundImageSource,
+    backgroundImageUrl: backgroundImageSource === "url" ? loadStoredInterfaceBackgroundImageUrl() : "",
   };
 }
 
@@ -3964,6 +4008,19 @@ function createDefaultTimelapseMediaState() {
     selectedType: "",
   };
 }
+
+function createDefaultNotificationsState() {
+  return {
+    open: false,
+    loading: false,
+    actionInFlight: false,
+    lastError: "",
+    lastFetchedMs: null,
+    notifications: [],
+    announcements: [],
+  };
+}
+
 function createDefaultToolsMenuState() {
   return {
     open: false,
@@ -4269,6 +4326,7 @@ const state = {
     },
   },
   machineLoads: createDefaultMachineLoadsState(),
+  notifications: createDefaultNotificationsState(),
   toolsMenu: createDefaultToolsMenuState(),
   timelapse: createDefaultTimelapseControlState(),
   timelapseMedia: createDefaultTimelapseMediaState(),
@@ -5744,15 +5802,115 @@ function persistInterfaceThemeSettings() {
   );
 }
 
-function persistInterfaceBackgroundImageSettings() {
-  localStorage.setItem(INTERFACE_BACKGROUND_IMAGE_ENABLED_STORAGE_KEY, String(!!state.interface.backgroundImageEnabled));
-  const url = normalizeInterfaceBackgroundImageUrl(state.interface.backgroundImageUrl);
-  state.interface.backgroundImageUrl = url;
+let interfaceBackgroundObjectUrl = "";
 
-  if (url) {
-    localStorage.setItem(INTERFACE_BACKGROUND_IMAGE_URL_STORAGE_KEY, url);
-  } else {
-    localStorage.removeItem(INTERFACE_BACKGROUND_IMAGE_URL_STORAGE_KEY);
+function revokeInterfaceBackgroundObjectUrl() {
+  if (!interfaceBackgroundObjectUrl) return;
+  try {
+    URL.revokeObjectURL(interfaceBackgroundObjectUrl);
+  } catch {
+    // Ignore revoke errors.
+  }
+  interfaceBackgroundObjectUrl = "";
+}
+
+function openInterfaceBackgroundImageDatabase() {
+  return new Promise((resolve, reject) => {
+    if (typeof indexedDB === "undefined") {
+      reject(new Error("Local image storage is unavailable in this browser."));
+      return;
+    }
+
+    const request = indexedDB.open(INTERFACE_BACKGROUND_IMAGE_DB_NAME, 1);
+
+    request.onupgradeneeded = () => {
+      const database = request.result;
+      if (!database.objectStoreNames.contains(INTERFACE_BACKGROUND_IMAGE_DB_STORE)) {
+        database.createObjectStore(INTERFACE_BACKGROUND_IMAGE_DB_STORE);
+      }
+    };
+
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error("Unable to open local image storage."));
+  });
+}
+
+async function saveInterfaceBackgroundLocalBlob(blob) {
+  const database = await openInterfaceBackgroundImageDatabase();
+  await new Promise((resolve, reject) => {
+    const transaction = database.transaction(INTERFACE_BACKGROUND_IMAGE_DB_STORE, "readwrite");
+    const store = transaction.objectStore(INTERFACE_BACKGROUND_IMAGE_DB_STORE);
+    store.put(blob, INTERFACE_BACKGROUND_IMAGE_DB_KEY);
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error || new Error("Unable to save local background image."));
+    transaction.onabort = () => reject(transaction.error || new Error("Local background image save was aborted."));
+  });
+  database.close();
+}
+
+async function loadInterfaceBackgroundLocalBlob() {
+  const database = await openInterfaceBackgroundImageDatabase();
+  const blob = await new Promise((resolve, reject) => {
+    const transaction = database.transaction(INTERFACE_BACKGROUND_IMAGE_DB_STORE, "readonly");
+    const store = transaction.objectStore(INTERFACE_BACKGROUND_IMAGE_DB_STORE);
+    const request = store.get(INTERFACE_BACKGROUND_IMAGE_DB_KEY);
+    request.onsuccess = () => resolve(request.result || null);
+    request.onerror = () => reject(request.error || new Error("Unable to load local background image."));
+  });
+  database.close();
+  return blob instanceof Blob ? blob : null;
+}
+
+async function clearInterfaceBackgroundLocalBlob() {
+  try {
+    const database = await openInterfaceBackgroundImageDatabase();
+    await new Promise((resolve, reject) => {
+      const transaction = database.transaction(INTERFACE_BACKGROUND_IMAGE_DB_STORE, "readwrite");
+      const store = transaction.objectStore(INTERFACE_BACKGROUND_IMAGE_DB_STORE);
+      store.delete(INTERFACE_BACKGROUND_IMAGE_DB_KEY);
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error || new Error("Unable to clear local background image."));
+      transaction.onabort = () => reject(transaction.error || new Error("Local background image clear was aborted."));
+    });
+    database.close();
+  } catch {
+    // Ignore clear failures.
+  }
+}
+
+function persistInterfaceBackgroundImageSettings() {
+  const source = normalizeInterfaceBackgroundImageSource(state.interface.backgroundImageSource);
+  state.interface.backgroundImageSource = source;
+  try {
+    localStorage.setItem(INTERFACE_BACKGROUND_IMAGE_ENABLED_STORAGE_KEY, String(!!state.interface.backgroundImageEnabled));
+    localStorage.setItem(INTERFACE_BACKGROUND_IMAGE_SOURCE_STORAGE_KEY, source);
+  } catch {
+    // Ignore storage write errors for background flags.
+  }
+
+  const persistableUrl = source === "url"
+    ? normalizeInterfaceBackgroundImageUrl(state.interface.backgroundImageUrl)
+    : "";
+  if (source === "url") {
+    state.interface.backgroundImageUrl = persistableUrl;
+  }
+
+  try {
+    if (persistableUrl) {
+      localStorage.setItem(INTERFACE_BACKGROUND_IMAGE_URL_STORAGE_KEY, persistableUrl);
+    } else {
+      localStorage.removeItem(INTERFACE_BACKGROUND_IMAGE_URL_STORAGE_KEY);
+    }
+  } catch {
+    try {
+      localStorage.removeItem(INTERFACE_BACKGROUND_IMAGE_URL_STORAGE_KEY);
+    } catch {
+      // Ignore secondary storage failure.
+    }
+    if (source === "url") {
+      state.interface.backgroundImageUrl = "";
+      state.interface.backgroundImageSource = "none";
+    }
   }
 }
 
@@ -5763,11 +5921,123 @@ function getCssUrlValue(url) {
   return `url("${escaped}")`;
 }
 
+function getForgeSkinDefaultBackgroundImageUrl() {
+  if (state.interface.theme !== DEFAULT_INTERFACE_THEME) {
+    return "";
+  }
+  const src = String(els.headerBrandImage?.getAttribute("src") || "").trim();
+  return normalizeInterfaceBackgroundImageUrl(src);
+}
+
 function applyInterfaceBackgroundImage() {
   const enabled = !!state.interface.backgroundImageEnabled;
+  const selectedUrl = normalizeInterfaceBackgroundImageUrl(state.interface.backgroundImageUrl);
+  const defaultUrl = getForgeSkinDefaultBackgroundImageUrl();
+  const effectiveUrl = enabled && selectedUrl ? selectedUrl : defaultUrl;
+  const hasImage = !!effectiveUrl;
+  document.documentElement.style.setProperty("--app-bg-image", hasImage ? getCssUrlValue(effectiveUrl) : "none");
+}
+
+function getInterfaceBackgroundImageSourceText() {
+  const source = normalizeInterfaceBackgroundImageSource(state.interface.backgroundImageSource);
   const url = normalizeInterfaceBackgroundImageUrl(state.interface.backgroundImageUrl);
-  const hasImage = enabled && !!url;
-  document.documentElement.style.setProperty("--app-bg-image", hasImage ? getCssUrlValue(url) : "none");
+  if (!url) {
+    const defaultUrl = getForgeSkinDefaultBackgroundImageUrl();
+    if (defaultUrl) {
+      return "Using default Forge background image.";
+    }
+    return "No local background image selected.";
+  }
+  if (source === "local") return "Local image loaded from this browser.";
+  return `Image source: ${url}`;
+}
+
+async function setInterfaceBackgroundFromLocalFile(file) {
+  if (!(file instanceof File)) {
+    throw new Error("Invalid file selection.");
+  }
+  if (!String(file.type || "").toLowerCase().startsWith("image/")) {
+    throw new Error("Choose an image file.");
+  }
+
+  await saveInterfaceBackgroundLocalBlob(file);
+  revokeInterfaceBackgroundObjectUrl();
+  interfaceBackgroundObjectUrl = URL.createObjectURL(file);
+  state.interface.backgroundImageSource = "local";
+  state.interface.backgroundImageUrl = interfaceBackgroundObjectUrl;
+}
+
+async function restoreInterfaceBackgroundImageFromStorage() {
+  const source = normalizeInterfaceBackgroundImageSource(state.interface.backgroundImageSource);
+  if (source !== "local") {
+    if (source === "url") {
+      state.interface.backgroundImageUrl = normalizeInterfaceBackgroundImageUrl(state.interface.backgroundImageUrl);
+    } else {
+      state.interface.backgroundImageUrl = "";
+    }
+    return;
+  }
+
+  try {
+    const blob = await loadInterfaceBackgroundLocalBlob();
+    if (!blob) {
+      state.interface.backgroundImageSource = "none";
+      state.interface.backgroundImageUrl = "";
+      state.interface.backgroundImageEnabled = false;
+      persistInterfaceBackgroundImageSettings();
+      return;
+    }
+
+    revokeInterfaceBackgroundObjectUrl();
+    interfaceBackgroundObjectUrl = URL.createObjectURL(blob);
+    state.interface.backgroundImageUrl = interfaceBackgroundObjectUrl;
+  } catch (error) {
+    const message = error?.message || String(error);
+    state.interface.backgroundImageSource = "none";
+    state.interface.backgroundImageUrl = "";
+    state.interface.backgroundImageEnabled = false;
+    persistInterfaceBackgroundImageSettings();
+    appendConsole(`Background image restore failed: ${message}`, "warn");
+  }
+}
+
+async function applyInterfaceBackgroundImageFromLocalFileInput({ appendAppliedMessage = true } = {}) {
+  state.interface.backgroundImageEnabled = !!els.interfaceBgImageEnabled?.checked;
+
+  if (!state.interface.backgroundImageEnabled) {
+    persistInterfaceBackgroundImageSettings();
+    applyInterfaceSettings();
+    syncInterfaceBackgroundImageControls();
+    return true;
+  }
+
+  const input = els.interfaceBgImageUrl;
+  const selectedFile = input?.files?.[0] || null;
+
+  if (selectedFile) {
+    try {
+      await setInterfaceBackgroundFromLocalFile(selectedFile);
+    } catch (error) {
+      const message = error?.message || String(error);
+      appendConsole(`Background image load failed: ${message}`, "warn");
+      syncInterfaceBackgroundImageControls();
+      return false;
+    }
+  }
+
+  if (!state.interface.backgroundImageUrl) {
+    appendConsole("Select a local image file before applying background.", "warn");
+    syncInterfaceBackgroundImageControls();
+    return false;
+  }
+
+  persistInterfaceBackgroundImageSettings();
+  applyInterfaceSettings();
+  syncInterfaceBackgroundImageControls();
+  if (appendAppliedMessage) {
+    appendConsole("Background image settings applied.", "info");
+  }
+  return true;
 }
 
 function syncInterfaceBackgroundImageControls() {
@@ -5776,8 +6046,11 @@ function syncInterfaceBackgroundImageControls() {
   }
 
   if (els.interfaceBgImageUrl) {
-    els.interfaceBgImageUrl.value = normalizeInterfaceBackgroundImageUrl(state.interface.backgroundImageUrl);
     els.interfaceBgImageUrl.disabled = !state.interface.backgroundImageEnabled;
+  }
+
+  if (els.interfaceBgImageSource) {
+    els.interfaceBgImageSource.textContent = getInterfaceBackgroundImageSourceText();
   }
 
   if (els.interfaceBgImageApply) {
@@ -6282,6 +6555,466 @@ function toggleMachineSideColumn() {
   applyInterfaceSettings();
 }
 
+function syncHeaderEmergencyStopSizeToLogo() {
+  const logo = els.headerBrandImage;
+  if (!(logo instanceof HTMLImageElement)) return;
+  const renderedHeight = Math.round(logo.getBoundingClientRect().height || 0);
+  if (renderedHeight > 0) {
+    document.documentElement.style.setProperty("--global-header-stop-size", `${renderedHeight}px`);
+  }
+}
+
+function normalizeNotificationType(type) {
+  const normalized = String(type || "info").trim().toLowerCase();
+  return NOTIFICATION_TYPES.includes(normalized) ? normalized : "info";
+}
+
+function normalizeNotificationTimestampSeconds(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return Math.floor(Date.now() / 1000);
+  }
+  if (numeric > 1_000_000_000_000) {
+    return Math.floor(numeric / 1000);
+  }
+  return Math.floor(numeric);
+}
+
+function normalizeNotificationLink(value) {
+  const link = String(value || "").trim();
+  if (!link) return "";
+  if (link.startsWith("/")) return link;
+  if (/^https?:\/\//i.test(link)) return link;
+  return "";
+}
+
+function normalizeAnnouncementEntry(entry) {
+  const entryId = String(entry?.entry_id ?? "").trim();
+  if (!entryId) return null;
+
+  const priority = String(entry?.priority || "normal").trim().toLowerCase() === "high" ? "high" : "normal";
+  return {
+    entry_id: entryId,
+    url: String(entry?.url || "").trim(),
+    title: String(entry?.title || "Announcement").trim() || "Announcement",
+    description: String(entry?.description || "").trim(),
+    priority,
+    date: normalizeNotificationTimestampSeconds(entry?.date),
+    dismissed: !!entry?.dismissed,
+    date_dismissed: Number.isFinite(Number(entry?.date_dismissed)) ? Number(entry.date_dismissed) : null,
+    dismiss_wake: Number.isFinite(Number(entry?.dismiss_wake)) ? Number(entry.dismiss_wake) : null,
+    source: String(entry?.source || "").trim(),
+    feed: String(entry?.feed || "").trim(),
+  };
+}
+
+function extractAnnouncementsEntries(payload) {
+  const candidates = [
+    payload?.result,
+    Array.isArray(payload?.params) ? payload.params[0] : null,
+    payload,
+  ];
+
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    if (Array.isArray(candidate?.entries)) return candidate.entries;
+    if (Array.isArray(candidate)) return candidate;
+  }
+
+  return [];
+}
+
+function setAnnouncementsFromPayload(payload) {
+  const rawEntries = extractAnnouncementsEntries(payload);
+  const normalized = rawEntries
+    .map((entry) => normalizeAnnouncementEntry(entry))
+    .filter(Boolean)
+    .sort((a, b) => Number(b.date || 0) - Number(a.date || 0));
+  state.notifications.announcements = normalized;
+  state.notifications.lastFetchedMs = Date.now();
+}
+
+function setAnnouncementDismissed(entryId, dismissed) {
+  const normalizedId = String(entryId || "").trim();
+  if (!normalizedId) return;
+
+  state.notifications.announcements = state.notifications.announcements.map((entry) => (
+    entry.entry_id === normalizedId
+      ? {
+        ...entry,
+        dismissed: !!dismissed,
+        date_dismissed: dismissed ? Date.now() : null,
+      }
+      : entry
+  ));
+}
+
+function getAnnouncementNotifications() {
+  return state.notifications.announcements
+    .filter((entry) => !entry.dismissed)
+    .map((entry) => ({
+      id: entry.entry_id,
+      type: "announcement",
+      title: entry.title,
+      description: entry.description,
+      to: normalizeNotificationLink(entry.url),
+      timestamp: entry.date,
+      clear: true,
+      merge: true,
+      noCount: false,
+      sourceType: "announcement",
+      priority: entry.priority,
+      announcementId: entry.entry_id,
+    }));
+}
+
+function getOrderedNotifications() {
+  const appNotifications = [...(state.notifications.notifications || [])]
+    .filter((entry) => entry && typeof entry === "object")
+    .map((entry) => ({
+      id: String(entry.id || "").trim(),
+      type: normalizeNotificationType(entry.type),
+      title: String(entry.title || "").trim(),
+      description: String(entry.description || "").trim(),
+      to: normalizeNotificationLink(entry.to),
+      timestamp: normalizeNotificationTimestampSeconds(entry.timestamp),
+      clear: entry.clear !== false,
+      merge: !!entry.merge,
+      noCount: !!entry.noCount,
+      sourceType: "app",
+    }))
+    .filter((entry) => entry.id && entry.title);
+
+  const merged = appNotifications
+    .concat(getAnnouncementNotifications())
+    .sort((a, b) => Number(b.timestamp || 0) - Number(a.timestamp || 0));
+
+  return [
+    ...merged.filter((entry) => entry.type === "error"),
+    ...merged.filter((entry) => entry.type !== "error"),
+  ];
+}
+
+function getNotificationCounter() {
+  return getOrderedNotifications().filter((entry) => !entry.noCount).length;
+}
+
+function getNotificationBadgeTone(notifications) {
+  if (!Array.isArray(notifications) || !notifications.length) return "";
+  let tone = "";
+  for (const notification of notifications) {
+    if (notification.type === "error") return "error";
+    if (notification.type === "warning") tone = "warning";
+    if (!tone && notification.priority === "high") tone = "warning";
+    if (!tone && ["info", "success", "announcement"].includes(notification.type)) tone = "info";
+  }
+  return tone;
+}
+
+function formatNotificationRelativeTime(timestampSeconds) {
+  const seconds = normalizeNotificationTimestampSeconds(timestampSeconds);
+  const delta = Math.max(0, Math.floor(Date.now() / 1000) - seconds);
+  if (delta < 5) return "just now";
+  if (delta < 60) return `${delta}s ago`;
+  if (delta < 3600) return `${Math.floor(delta / 60)}m ago`;
+  if (delta < 86400) return `${Math.floor(delta / 3600)}h ago`;
+  if (delta < 604800) return `${Math.floor(delta / 86400)}d ago`;
+  return `${Math.floor(delta / 604800)}w ago`;
+}
+
+function formatNotificationAbsoluteTime(timestampSeconds) {
+  const seconds = normalizeNotificationTimestampSeconds(timestampSeconds);
+  return new Date(seconds * 1000).toLocaleString();
+}
+
+function setNotificationsMenuOpen(isOpen) {
+  const open = !!isOpen;
+  state.notifications.open = open;
+
+  if (els.notificationsToggle) {
+    els.notificationsToggle.setAttribute("aria-expanded", String(open));
+  }
+
+  if (els.notificationsMenu) {
+    els.notificationsMenu.hidden = !open;
+    els.notificationsMenu.setAttribute("aria-hidden", String(!open));
+  }
+
+  if (open && state.connectionStatus === "connected") {
+    void refreshAnnouncementsList({ silent: true });
+  }
+}
+
+function renderNotificationsMenu() {
+  const notifications = getOrderedNotifications();
+  const counter = getNotificationCounter();
+  const tone = getNotificationBadgeTone(notifications);
+
+  if (els.notificationsToggle) {
+    els.notificationsToggle.dataset.tone = tone || "";
+    els.notificationsToggle.classList.toggle("has-alert", !!tone);
+    els.notificationsToggle.classList.toggle("wiggle", tone === "error");
+    const label = counter > 0 ? `Open notifications (${counter})` : "Open notifications";
+    els.notificationsToggle.setAttribute("aria-label", label);
+  }
+
+  if (els.notificationsCount) {
+    els.notificationsCount.hidden = counter <= 0;
+    els.notificationsCount.textContent = String(counter);
+    els.notificationsCount.dataset.tone = tone || "";
+  }
+
+  if (els.notificationsClearAll) {
+    const clearableCount = notifications.filter((entry) => entry.clear).length;
+    els.notificationsClearAll.disabled = clearableCount <= 0 || state.notifications.actionInFlight;
+  }
+
+  if (!els.notificationsList) return;
+
+  els.notificationsList.innerHTML = "";
+
+  if (state.notifications.loading && notifications.length === 0) {
+    const loading = document.createElement("p");
+    loading.className = "notifications-menu-empty";
+    loading.textContent = "Loading notifications...";
+    els.notificationsList.appendChild(loading);
+    return;
+  }
+
+  if (!notifications.length) {
+    const empty = document.createElement("p");
+    empty.className = "notifications-menu-empty";
+    empty.textContent = "No notifications";
+    els.notificationsList.appendChild(empty);
+    return;
+  }
+
+  notifications.forEach((entry, index) => {
+    const item = document.createElement("article");
+    item.className = `notification-item notification-item-${entry.type}`;
+    item.dataset.notificationId = entry.id;
+    item.dataset.notificationSource = entry.sourceType || "app";
+
+    const title = document.createElement("h3");
+    title.className = "notification-item-title";
+    title.textContent = entry.title;
+    item.appendChild(title);
+
+    if (entry.description) {
+      const description = document.createElement("p");
+      description.className = "notification-item-description";
+      description.textContent = entry.description;
+      item.appendChild(description);
+    }
+
+    const meta = document.createElement("p");
+    meta.className = "notification-item-time";
+    meta.textContent = formatNotificationRelativeTime(entry.timestamp);
+    meta.title = formatNotificationAbsoluteTime(entry.timestamp);
+    item.appendChild(meta);
+
+    const actions = document.createElement("div");
+    actions.className = "notification-item-actions";
+
+    if (entry.to) {
+      const link = document.createElement("a");
+      link.className = "notification-item-link";
+      link.textContent = "More info";
+      link.href = entry.to;
+      if (/^https?:\/\//i.test(entry.to)) {
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+      }
+      actions.appendChild(link);
+    }
+
+    if (entry.sourceType === "announcement") {
+      NOTIFICATION_SNOOZE_PRESETS.forEach((preset) => {
+        const snoozeButton = document.createElement("button");
+        snoozeButton.type = "button";
+        snoozeButton.className = "notification-item-snooze";
+        snoozeButton.textContent = preset.label;
+        snoozeButton.dataset.notificationAction = "snooze";
+        snoozeButton.dataset.notificationId = entry.id;
+        snoozeButton.dataset.notificationSnoozeSeconds = String(preset.seconds);
+        snoozeButton.disabled = !!state.notifications.actionInFlight;
+        actions.appendChild(snoozeButton);
+      });
+    }
+
+    if (entry.clear) {
+      const clearButton = document.createElement("button");
+      clearButton.type = "button";
+      clearButton.className = "notification-item-clear";
+      clearButton.textContent = "Dismiss";
+      clearButton.dataset.notificationAction = "clear";
+      clearButton.dataset.notificationId = entry.id;
+      clearButton.dataset.notificationSource = entry.sourceType || "app";
+      clearButton.disabled = !!state.notifications.actionInFlight;
+      actions.appendChild(clearButton);
+    }
+
+    if (actions.children.length) {
+      item.appendChild(actions);
+    }
+
+    els.notificationsList.appendChild(item);
+
+    if (index < notifications.length - 1) {
+      const divider = document.createElement("div");
+      divider.className = "notification-item-divider";
+      els.notificationsList.appendChild(divider);
+    }
+  });
+}
+
+function pushAppNotification(payload = {}) {
+  const title = String(payload.title || "").trim();
+  if (!title || title === "?") return null;
+
+  const notification = {
+    id: String(payload.id || `${Date.now()}-${Math.random().toString(16).slice(2)}`),
+    type: normalizeNotificationType(payload.type),
+    title,
+    description: String(payload.description || "").trim(),
+    to: normalizeNotificationLink(payload.to),
+    timestamp: normalizeNotificationTimestampSeconds(payload.timestamp),
+    clear: payload.clear !== false,
+    merge: !!payload.merge,
+    noCount: !!payload.noCount,
+  };
+
+  const existingIndex = notification.merge
+    ? state.notifications.notifications.findIndex((entry) => String(entry?.title || "").trim() === notification.title)
+    : -1;
+
+  if (existingIndex >= 0) {
+    state.notifications.notifications[existingIndex] = {
+      ...state.notifications.notifications[existingIndex],
+      ...notification,
+      id: state.notifications.notifications[existingIndex].id || notification.id,
+    };
+  } else {
+    state.notifications.notifications.push(notification);
+  }
+
+  renderNotificationsMenu();
+  return notification;
+}
+
+async function clearNotificationById(notificationId, { snoozeSeconds = 0 } = {}) {
+  const id = String(notificationId || "").trim();
+  if (!id) return false;
+
+  const announcement = state.notifications.announcements.find((entry) => entry.entry_id === id);
+  if (announcement) {
+    const wakeTime = snoozeSeconds > 0
+      ? Math.floor(Date.now() / 1000) + Math.floor(snoozeSeconds)
+      : undefined;
+
+    try {
+      state.notifications.actionInFlight = true;
+      renderNotificationsMenu();
+      await dismissAnnouncement(id, wakeTime);
+      return true;
+    } finally {
+      state.notifications.actionInFlight = false;
+      renderNotificationsMenu();
+    }
+  }
+
+  const beforeLength = state.notifications.notifications.length;
+  state.notifications.notifications = state.notifications.notifications.filter((entry) => String(entry?.id || "").trim() !== id);
+  renderNotificationsMenu();
+  return state.notifications.notifications.length < beforeLength;
+}
+
+async function clearAllNotifications() {
+  const notifications = getOrderedNotifications();
+  if (!notifications.some((entry) => entry.clear)) return;
+
+  state.notifications.actionInFlight = true;
+  renderNotificationsMenu();
+
+  try {
+    state.notifications.notifications = state.notifications.notifications.filter((entry) => !entry?.clear);
+    const announcements = state.notifications.announcements.filter((entry) => !entry.dismissed);
+    for (const entry of announcements) {
+      await dismissAnnouncement(entry.entry_id);
+    }
+  } finally {
+    state.notifications.actionInFlight = false;
+    renderNotificationsMenu();
+  }
+}
+
+async function requestMoonrakerJsonRpc(method, params = {}) {
+  if (!state.client) {
+    throw new Error("Moonraker client unavailable.");
+  }
+
+  const websocketReady = !!state.client.ws && state.client.ws.readyState === WebSocket.OPEN;
+  if (websocketReady) {
+    return state.client.callWebSocketJsonRpc(method, params, { timeoutMs: 6000 });
+  }
+  return state.client.callJsonRpc(method, params);
+}
+
+async function refreshAnnouncementsList({ silent = false } = {}) {
+  if (!state.client || state.connectionStatus !== "connected") {
+    state.notifications.loading = false;
+    if (!silent) {
+      state.notifications.lastError = "";
+    }
+    renderNotificationsMenu();
+    return false;
+  }
+
+  state.notifications.loading = true;
+  if (!silent) {
+    state.notifications.lastError = "";
+  }
+  renderNotificationsMenu();
+
+  try {
+    const payload = await requestMoonrakerJsonRpc("server.announcements.list", {});
+    setAnnouncementsFromPayload(payload);
+    state.notifications.lastError = "";
+    return true;
+  } catch (error) {
+    const message = error?.message || String(error);
+    state.notifications.lastError = message;
+    if (!silent) {
+      appendConsole(`Notifications refresh failed: ${message}`, "warn");
+    }
+    return false;
+  } finally {
+    state.notifications.loading = false;
+    renderNotificationsMenu();
+  }
+}
+
+async function dismissAnnouncement(entryId, wakeTime) {
+  const normalizedId = String(entryId || "").trim();
+  if (!normalizedId || !state.client) return false;
+
+  try {
+    await requestMoonrakerJsonRpc("server.announcements.dismiss", {
+      entry_id: normalizedId,
+      wake_time: Number.isFinite(Number(wakeTime)) ? Math.floor(Number(wakeTime)) : undefined,
+    });
+    setAnnouncementDismissed(normalizedId, true);
+    renderNotificationsMenu();
+    return true;
+  } catch (error) {
+    const message = error?.message || String(error);
+    state.notifications.lastError = message;
+    appendConsole(`Notification dismiss failed: ${message}`, "warn");
+    renderNotificationsMenu();
+    return false;
+  }
+}
+
 function normalizeToolsMenuPowerDevices(payload) {
   const root = payload?.result?.devices ?? payload?.result ?? payload?.devices ?? payload;
   if (!Array.isArray(root)) return [];
@@ -6345,6 +7078,9 @@ function isPrintActiveForSystemActions() {
 
 function setToolsMenuOpen(isOpen, { refresh = true } = {}) {
   const open = !!isOpen;
+  if (open && state.notifications.open) {
+    setNotificationsMenuOpen(false);
+  }
   state.toolsMenu.open = open;
 
   if (els.toolsMenuToggle) {
@@ -7864,6 +8600,7 @@ function setConnectionUi(status) {
   renderSpoolmanView();
   renderSpoolmanSettingsCard();
   renderRunoutSensorsCard();
+  renderNotificationsMenu();
   renderBeaconCard();
   renderBeaconCard();
   if (status === "connected" && state.activeView === "heightmap") {
@@ -14539,6 +15276,7 @@ async function connectMoonraker() {
       void refreshUpdateManagerStatus({ forceRefresh: false, source: "connect" });
       void requestEndstopsStatus({ source: "connect", silent: true });
       void loadMachineLogFiles({ source: "connect", silent: true });
+      void refreshAnnouncementsList({ silent: true });
       void loadPrintHistoryTotals({ silent: true });
       if (state.activeView === "history") {
         void loadPrintHistory({ source: "connect", silent: true });
@@ -14603,6 +15341,9 @@ async function connectMoonraker() {
           value && typeof value === "object" ? { ...value, pending: false } : value,
         ]))
       );
+      state.notifications.loading = false;
+      state.notifications.actionInFlight = false;
+      setNotificationsMenuOpen(false);
       state.beacon.loading = false;
       state.beacon.actionInFlight = "";
       state.heightmap.loading = false;
@@ -14620,6 +15361,7 @@ async function connectMoonraker() {
       renderSpoolmanSettingsCard();
       renderRunoutSensorsCard();
       renderBeaconCard();
+      renderNotificationsMenu();
       renderPrintHistoryCard();
       log.warn("Moonraker websocket disconnected.");
       return;
@@ -14670,6 +15412,9 @@ async function connectMoonraker() {
           value && typeof value === "object" ? { ...value, pending: false } : value,
         ]))
       );
+      state.notifications.loading = false;
+      state.notifications.actionInFlight = false;
+      setNotificationsMenuOpen(false);
       state.beacon.loading = false;
       state.beacon.actionInFlight = "";
       state.heightmap.loading = false;
@@ -14687,6 +15432,7 @@ async function connectMoonraker() {
       renderSpoolmanSettingsCard();
       renderRunoutSensorsCard();
       renderBeaconCard();
+      renderNotificationsMenu();
       renderPrintHistoryCard();
       log.error("Moonraker websocket error.");
       return;
@@ -14726,6 +15472,23 @@ async function connectMoonraker() {
       if (entries.length) {
         processGcodeStoreEntries(entries);
       }
+      return;
+    }
+    if (payload.method === "notify_announcement_update") {
+      setAnnouncementsFromPayload(payload);
+      renderNotificationsMenu();
+      return;
+    }
+    if (payload.method === "notify_announcement_dismissed") {
+      const entry = Array.isArray(payload?.params) ? payload.params[0] : payload?.params || payload;
+      setAnnouncementDismissed(entry?.entry_id, true);
+      renderNotificationsMenu();
+      return;
+    }
+    if (payload.method === "notify_announcement_wake") {
+      const entry = Array.isArray(payload?.params) ? payload.params[0] : payload?.params || payload;
+      setAnnouncementDismissed(entry?.entry_id, false);
+      renderNotificationsMenu();
       return;
     }
     if (payload.method === "notify_status_update") {
@@ -22838,6 +23601,7 @@ function wireEvents() {
   }, { passive: true });
 
   window.addEventListener("resize", () => {
+    syncHeaderEmergencyStopSizeToLogo();
     handleDashboardViewportResize();
     if (state.activeView === "heightmap") {
       renderHeightmapView();
@@ -22846,9 +23610,49 @@ function wireEvents() {
 
   els.sidebarToggle?.addEventListener("click", toggleSidebar);
   els.machineSideToggle?.addEventListener("click", toggleMachineSideColumn);
+  els.headerBrandImage?.addEventListener("load", syncHeaderEmergencyStopSizeToLogo);
+
+  els.notificationsToggle?.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setToolsMenuOpen(false, { refresh: false });
+    setNotificationsMenuOpen(!state.notifications.open);
+  });
+
+  els.notificationsClearAll?.addEventListener("click", async (event) => {
+    event.preventDefault();
+    if (els.notificationsClearAll?.disabled) return;
+    await clearAllNotifications();
+  });
+
+  els.notificationsList?.addEventListener("click", async (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+
+    const actionButton = target.closest("[data-notification-action]");
+    if (actionButton instanceof HTMLButtonElement) {
+      const action = String(actionButton.dataset.notificationAction || "").trim().toLowerCase();
+      const notificationId = String(actionButton.dataset.notificationId || "").trim();
+      if (!notificationId) return;
+
+      if (action === "clear") {
+        await clearNotificationById(notificationId);
+      } else if (action === "snooze") {
+        const snoozeSeconds = Number(actionButton.dataset.notificationSnoozeSeconds || 0);
+        await clearNotificationById(notificationId, { snoozeSeconds });
+      }
+      return;
+    }
+
+    const link = target.closest("a");
+    if (link instanceof HTMLAnchorElement) {
+      setNotificationsMenuOpen(false);
+    }
+  });
 
   els.toolsMenuToggle?.addEventListener("click", (event) => {
     event.preventDefault();
+    setNotificationsMenuOpen(false);
     setToolsMenuOpen(!state.toolsMenu.open);
   });
 
@@ -23542,31 +24346,29 @@ function wireEvents() {
 
   els.interfaceBgImageEnabled?.addEventListener("change", () => {
     state.interface.backgroundImageEnabled = !!els.interfaceBgImageEnabled.checked;
-    state.interface.backgroundImageUrl = normalizeInterfaceBackgroundImageUrl(els.interfaceBgImageUrl?.value || "");
 
     persistInterfaceBackgroundImageSettings();
     applyInterfaceSettings();
     syncInterfaceBackgroundImageControls();
   });
 
-  els.interfaceBgImageApply?.addEventListener("click", () => {
-    state.interface.backgroundImageEnabled = !!els.interfaceBgImageEnabled?.checked;
-    state.interface.backgroundImageUrl = normalizeInterfaceBackgroundImageUrl(els.interfaceBgImageUrl?.value || "");
-    persistInterfaceBackgroundImageSettings();
-    applyInterfaceSettings();
+  els.interfaceBgImageApply?.addEventListener("click", async () => {
+    await applyInterfaceBackgroundImageFromLocalFileInput({ appendAppliedMessage: true });
+  });
+
+  els.interfaceBgImageUrl?.addEventListener("change", () => {
     syncInterfaceBackgroundImageControls();
-    appendConsole("Background image settings applied.", "info");
   });
 
-  els.interfaceBgImageUrl?.addEventListener("keydown", (event) => {
-    if (event.key !== "Enter") return;
-    event.preventDefault();
-    els.interfaceBgImageApply?.click();
-  });
-
-  els.interfaceBgImageClear?.addEventListener("click", () => {
+  els.interfaceBgImageClear?.addEventListener("click", async () => {
+    await clearInterfaceBackgroundLocalBlob();
+    revokeInterfaceBackgroundObjectUrl();
     state.interface.backgroundImageEnabled = false;
+    state.interface.backgroundImageSource = "none";
     state.interface.backgroundImageUrl = "";
+    if (els.interfaceBgImageUrl) {
+      els.interfaceBgImageUrl.value = "";
+    }
     persistInterfaceBackgroundImageSettings();
     applyInterfaceSettings();
     syncInterfaceBackgroundImageControls();
@@ -23923,7 +24725,17 @@ function wireEvents() {
     state.interface.compact = els.interfaceCompact.checked;
     state.interface.density = INTERFACE_DENSITIES.includes(els.interfaceDensity.value) ? els.interfaceDensity.value : "comfortable";
     state.interface.backgroundImageEnabled = !!els.interfaceBgImageEnabled?.checked;
-    state.interface.backgroundImageUrl = normalizeInterfaceBackgroundImageUrl(els.interfaceBgImageUrl?.value || "");
+    if (state.interface.backgroundImageEnabled) {
+      const selectedBgFile = els.interfaceBgImageUrl?.files?.[0] || null;
+      if (selectedBgFile) {
+        try {
+          await setInterfaceBackgroundFromLocalFile(selectedBgFile);
+        } catch (error) {
+          const message = error?.message || String(error);
+          appendConsole(`Background image load failed: ${message}`, "warn");
+        }
+      }
+    }
     state.warnings.warnOnCpuThrottled = !!els.settingsWarningCpuThrottled?.checked;
     state.warnings.warnOnStepperDriverOverheating = !!els.settingsWarningStepperDriverOverheating?.checked;
     state.dashboard.showPrintProgress = els.dashShowPrintProgress?.checked ?? state.dashboard.showPrintProgress;
@@ -24133,12 +24945,21 @@ function wireEvents() {
     if (!clickedHistoryToolbar && !clickedHistoryHead) {
       closePrintHistoryColumnsMenu();
     }
+
+    const clickedNotificationsToggle = target instanceof Element && !!target.closest("#notifications-toggle");
+    const clickedNotificationsMenu = target instanceof Element && !!target.closest("#notifications-menu");
+    if (!clickedNotificationsToggle && !clickedNotificationsMenu && state.notifications.open) {
+      setNotificationsMenuOpen(false);
+    }
   });
 
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
       closeJobsToolbarMenus();
       closePrintHistoryColumnsMenu();
+      if (state.notifications.open) {
+        setNotificationsMenuOpen(false);
+      }
       if (state.toolsMenu.open) {
         setToolsMenuOpen(false, { refresh: false });
       }
@@ -24150,6 +24971,20 @@ function wireEvents() {
       }
     }
   });
+
+  els.emergencyStop?.addEventListener("click", async (event) => {
+    const button = event.currentTarget instanceof HTMLButtonElement ? event.currentTarget : els.emergencyStop;
+    if (!button) return;
+    await runButtonPendingAction(button, () =>
+      executeGcodeAction("M112", {
+        actionLabel: "Emergency stop (M112)",
+        successMessage: "Emergency stop command sent.",
+      }), {
+      pendingText: "STOP",
+      minPendingMs: 150,
+    });
+  });
+
   els.quickGcode.forEach((btn) => {
     btn.addEventListener("click", async () => {
       const command = btn.dataset.gcode;
@@ -24462,6 +25297,7 @@ function wireEvents() {
 
 async function init() {
   els.moonrakerUrl.value = state.moonrakerUrl;
+  await restoreInterfaceBackgroundImageFromStorage();
   syncThemeEditorControls();
   els.interfaceCompact.checked = state.interface.compact;
   els.interfaceDensity.value = state.interface.density;
@@ -24594,6 +25430,7 @@ async function init() {
 
   initializeTemperaturePanel();
   applyInterfaceSettings();
+  syncHeaderEmergencyStopSizeToLogo();
   applyDashboardSettings();
   renderCameraCards();
   setControlDistance(state.controls.distance, { persist: false });
@@ -24602,6 +25439,7 @@ async function init() {
   renderStatusThermalsAndFan();
   renderManualProbeDialog();
   setToolsMenuOpen(false, { refresh: false });
+  setNotificationsMenuOpen(false);
 
   connectMoonraker().catch((error) => {
     const message = error?.message || String(error);
@@ -25260,7 +26098,16 @@ function renderTimelapseMediaList() {
       await requestTimelapseMediaFolderMove(entry.path);
     });
 
-    actions.append(openButton, moveButton);
+    const deleteButton = document.createElement("button");
+    deleteButton.type = "button";
+    deleteButton.className = "jobs-entry-btn danger";
+    deleteButton.textContent = "Delete";
+    deleteButton.disabled = busy;
+    deleteButton.addEventListener("click", async () => {
+      await requestTimelapseMediaFolderDelete(entry.path);
+    });
+
+    actions.append(openButton, moveButton, deleteButton);
     row.append(body, actions);
     list.appendChild(row);
   });
@@ -25310,7 +26157,16 @@ function renderTimelapseMediaList() {
       await requestTimelapseMediaFileDownload(entry.path);
     });
 
-    actions.append(moveButton, downloadButton);
+    const deleteButton = document.createElement("button");
+    deleteButton.type = "button";
+    deleteButton.className = "jobs-entry-btn danger";
+    deleteButton.textContent = "Delete";
+    deleteButton.disabled = busy;
+    deleteButton.addEventListener("click", async () => {
+      await requestTimelapseMediaFileDelete(entry.path);
+    });
+
+    actions.append(moveButton, downloadButton, deleteButton);
     row.append(body, actions);
     list.appendChild(row);
   });
@@ -25590,6 +26446,77 @@ async function requestTimelapseMediaFolderMove(path) {
   const targetParent = normalizeTimelapseMediaDirectory(requested);
   const destination = targetParent ? `${targetParent}/${folderName}` : folderName;
   return requestTimelapseMediaPathMove(normalizedPath, destination, { entryType: "directory", mode: "move" });
+}
+
+async function requestTimelapseMediaFileDelete(path) {
+  const normalizedPath = normalizeTimelapseMediaPath(path);
+  if (!normalizedPath || !state.client) return false;
+
+  const confirmed = window.confirm(`Delete video file ${formatTimelapseMediaRootPath(normalizedPath)}? This cannot be undone.`);
+  if (!confirmed) return false;
+
+  state.timelapseMedia.actionInFlight = true;
+  state.timelapseMedia.actionLabel = "delete";
+  state.timelapseMedia.activePath = normalizedPath;
+  renderTimelapseMediaCard();
+
+  try {
+    await state.client.deleteFile("timelapse", normalizedPath);
+    state.timelapseMedia.lastError = "";
+    appendConsole(`Deleted media file: ${formatTimelapseMediaRootPath(normalizedPath)}`, "warn");
+    await loadTimelapseMediaFiles({ source: "delete", silent: true });
+    return true;
+  } catch (error) {
+    const message = error?.message || String(error);
+    state.timelapseMedia.lastError = message;
+    appendConsole(`Media file delete failed (${normalizedPath}): ${message}`, "error");
+    renderTimelapseMediaCard();
+    return false;
+  } finally {
+    state.timelapseMedia.actionInFlight = false;
+    state.timelapseMedia.actionLabel = "";
+    state.timelapseMedia.activePath = "";
+    renderTimelapseMediaCard();
+  }
+}
+
+async function requestTimelapseMediaFolderDelete(path) {
+  const normalizedPath = normalizeTimelapseMediaDirectory(path);
+  if (!normalizedPath || !state.client) return false;
+
+  const confirmed = window.confirm(`Delete folder ${formatTimelapseMediaRootPath(normalizedPath)} and its contents? This cannot be undone.`);
+  if (!confirmed) return false;
+
+  state.timelapseMedia.actionInFlight = true;
+  state.timelapseMedia.actionLabel = "delete";
+  state.timelapseMedia.activePath = normalizedPath;
+  renderTimelapseMediaCard();
+
+  try {
+    await state.client.deleteDirectory("timelapse", normalizedPath, { force: true });
+
+    const currentDirectory = normalizeTimelapseMediaDirectory(state.timelapseMedia.currentDirectory);
+    if (currentDirectory === normalizedPath || currentDirectory.startsWith(`${normalizedPath}/`)) {
+      state.timelapseMedia.currentDirectory = getTimelapseMediaParentDirectory(normalizedPath);
+      persistTimelapseMediaViewState();
+    }
+
+    state.timelapseMedia.lastError = "";
+    appendConsole(`Deleted folder: ${formatTimelapseMediaRootPath(normalizedPath)}`, "warn");
+    await loadTimelapseMediaFiles({ source: "delete", silent: true });
+    return true;
+  } catch (error) {
+    const message = error?.message || String(error);
+    state.timelapseMedia.lastError = message;
+    appendConsole(`Video folder delete failed (${normalizedPath}): ${message}`, "error");
+    renderTimelapseMediaCard();
+    return false;
+  } finally {
+    state.timelapseMedia.actionInFlight = false;
+    state.timelapseMedia.actionLabel = "";
+    state.timelapseMedia.activePath = "";
+    renderTimelapseMediaCard();
+  }
 }
 
 async function requestTimelapseMediaFileDownload(path) {
