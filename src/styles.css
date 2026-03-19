@@ -1858,12 +1858,16 @@ button.is-pending,
   --status-disconnected: #f97316;
   --focus-ring: color-mix(in srgb, var(--accent) 76%, #ffffff 24%);
   --focus-ring-offset: #020617;
-  --button-primary-bg: var(--primary);
-  --button-primary-text: var(--text-on-primary);
-  --button-primary-hover: var(--primary-hover);
-  --button-secondary-bg: color-mix(in srgb, var(--bg-soft) 74%, rgba(2, 6, 23, 0.74));
-  --button-secondary-text: var(--text-primary);
-  --button-secondary-hover: color-mix(in srgb, var(--bg-soft) 82%, rgba(2, 6, 23, 0.9));
+  --button-primary-bg: var(--primary-hover);
+  --button-primary-text: #000000;
+  --button-primary-hover: color-mix(in srgb, var(--primary-hover) 86%, #ffffff 14%);
+  --button-secondary-bg: var(--primary-hover);
+  --button-secondary-text: #000000;
+  --button-secondary-hover: color-mix(in srgb, var(--primary-hover) 86%, #ffffff 14%);
+  --button-secondary-active: color-mix(in srgb, var(--primary-active) 78%, var(--primary-hover) 22%);
+  --button-secondary-border: color-mix(in srgb, var(--primary-hover) 72%, #000000 28%);
+  --button-secondary-disabled-bg: color-mix(in srgb, var(--primary-hover) 42%, var(--surface) 58%);
+  --button-secondary-disabled-text: #000000;
   --input-bg: color-mix(in srgb, var(--bg) 90%, rgba(2, 6, 23, 0.5));
   --input-border: color-mix(in srgb, var(--line) 80%, transparent);
   --input-focus: var(--focus-ring);
@@ -1953,12 +1957,16 @@ button.is-pending,
   /* Interactive tokens */
   --focus-ring: #f6cf61;
   --focus-ring-offset: #060607;
-  --button-primary-bg: #d4a017;
-  --button-primary-text: #161207;
-  --button-primary-hover: #e4b63b;
-  --button-secondary-bg: #1a1a1f;
-  --button-secondary-text: #f6f3ea;
-  --button-secondary-hover: #24242b;
+  --button-primary-bg: #e4b63b;
+  --button-primary-text: #000000;
+  --button-primary-hover: color-mix(in srgb, #e4b63b 84%, #ffffff 16%);
+  --button-secondary-bg: #e4b63b;
+  --button-secondary-text: #000000;
+  --button-secondary-hover: color-mix(in srgb, #e4b63b 84%, #ffffff 16%);
+  --button-secondary-active: color-mix(in srgb, #b98810 78%, #e4b63b 22%);
+  --button-secondary-border: color-mix(in srgb, #e4b63b 72%, #000000 28%);
+  --button-secondary-disabled-bg: color-mix(in srgb, #e4b63b 44%, #1a1a1f 56%);
+  --button-secondary-disabled-text: #000000;
   --input-bg: #0f1013;
   --input-border: rgba(212, 160, 23, 0.42);
   --input-focus: #f6cf61;
@@ -2105,7 +2113,7 @@ button.is-pending,
   background: linear-gradient(120deg, color-mix(in srgb, var(--primary) 34%, transparent), color-mix(in srgb, var(--accent) 20%, transparent));
 }
 
-:root[data-theme="raiders"] button:not(.emergency-stop-btn):not(.danger),
+:root[data-theme="raiders"] button:not(.emergency-stop-btn):not(.danger):not(.controls-jog-btn):not(.nav-item):not(.settings-subnav-item):not(.history-segmented-btn):not(#controls-motors-off),
 :root[data-theme="raiders"] .status-job-action,
 :root[data-theme="raiders"] .history-action-btn,
 :root[data-theme="raiders"] .tools-drawer-action,
@@ -2120,7 +2128,7 @@ button.is-pending,
   border-radius: 9px;
 }
 
-:root[data-theme="raiders"] button:not(.emergency-stop-btn):not(.danger):hover,
+:root[data-theme="raiders"] button:not(.emergency-stop-btn):not(.danger):not(.controls-jog-btn):not(.nav-item):not(.settings-subnav-item):not(.history-segmented-btn):not(#controls-motors-off):hover,
 :root[data-theme="raiders"] .status-job-action:hover,
 :root[data-theme="raiders"] .history-action-btn:hover,
 :root[data-theme="raiders"] .tools-drawer-action:hover,
@@ -2445,12 +2453,16 @@ button.is-pending,
   /* Interactive tokens */
   --focus-ring: #d56a79;
   --focus-ring-offset: #05060a;
-  --button-primary-bg: #7a1b27;
-  --button-primary-text: #fff7f8;
-  --button-primary-hover: #922433;
-  --button-secondary-bg: #171b25;
-  --button-secondary-text: #f5f7fb;
-  --button-secondary-hover: #1f2533;
+  --button-primary-bg: #922433;
+  --button-primary-text: #000000;
+  --button-primary-hover: color-mix(in srgb, #922433 84%, #ffffff 16%);
+  --button-secondary-bg: #922433;
+  --button-secondary-text: #000000;
+  --button-secondary-hover: color-mix(in srgb, #922433 84%, #ffffff 16%);
+  --button-secondary-active: color-mix(in srgb, #651520 78%, #922433 22%);
+  --button-secondary-border: color-mix(in srgb, #922433 72%, #000000 28%);
+  --button-secondary-disabled-bg: color-mix(in srgb, #922433 44%, #171b25 56%);
+  --button-secondary-disabled-text: #000000;
   --input-bg: #0d1017;
   --input-border: rgba(122, 27, 39, 0.42);
   --input-focus: #d56a79;
@@ -2597,7 +2609,7 @@ button.is-pending,
   background: linear-gradient(120deg, color-mix(in srgb, var(--primary) 34%, transparent), color-mix(in srgb, var(--accent) 20%, transparent));
 }
 
-:root[data-theme="pbhs"] button:not(.emergency-stop-btn):not(.danger),
+:root[data-theme="pbhs"] button:not(.emergency-stop-btn):not(.danger):not(.controls-jog-btn):not(.nav-item):not(.settings-subnav-item):not(.history-segmented-btn):not(#controls-motors-off),
 :root[data-theme="pbhs"] .status-job-action,
 :root[data-theme="pbhs"] .history-action-btn,
 :root[data-theme="pbhs"] .tools-drawer-action,
@@ -2612,7 +2624,7 @@ button.is-pending,
   border-radius: 9px;
 }
 
-:root[data-theme="pbhs"] button:not(.emergency-stop-btn):not(.danger):hover,
+:root[data-theme="pbhs"] button:not(.emergency-stop-btn):not(.danger):not(.controls-jog-btn):not(.nav-item):not(.settings-subnav-item):not(.history-segmented-btn):not(#controls-motors-off):hover,
 :root[data-theme="pbhs"] .status-job-action:hover,
 :root[data-theme="pbhs"] .history-action-btn:hover,
 :root[data-theme="pbhs"] .tools-drawer-action:hover,
@@ -2937,12 +2949,16 @@ button.is-pending,
   /* Interactive tokens */
   --focus-ring: #85c9ff;
   --focus-ring-offset: #060b17;
-  --button-primary-bg: #2f6fcf;
-  --button-primary-text: #f5f9ff;
-  --button-primary-hover: #4a89e8;
-  --button-secondary-bg: #172746;
-  --button-secondary-text: #f4f8ff;
-  --button-secondary-hover: #203458;
+  --button-primary-bg: #4a89e8;
+  --button-primary-text: #000000;
+  --button-primary-hover: color-mix(in srgb, #4a89e8 84%, #ffffff 16%);
+  --button-secondary-bg: #4a89e8;
+  --button-secondary-text: #000000;
+  --button-secondary-hover: color-mix(in srgb, #4a89e8 84%, #ffffff 16%);
+  --button-secondary-active: color-mix(in srgb, #2458a9 78%, #4a89e8 22%);
+  --button-secondary-border: color-mix(in srgb, #4a89e8 72%, #000000 28%);
+  --button-secondary-disabled-bg: color-mix(in srgb, #4a89e8 44%, #172746 56%);
+  --button-secondary-disabled-text: #000000;
   --input-bg: #0c1428;
   --input-border: rgba(74, 137, 232, 0.44);
   --input-focus: #85c9ff;
@@ -3089,7 +3105,7 @@ button.is-pending,
   background: linear-gradient(120deg, color-mix(in srgb, var(--primary) 34%, transparent), color-mix(in srgb, var(--accent) 20%, transparent));
 }
 
-:root[data-theme="royals"] button:not(.emergency-stop-btn):not(.danger),
+:root[data-theme="royals"] button:not(.emergency-stop-btn):not(.danger):not(.controls-jog-btn):not(.nav-item):not(.settings-subnav-item):not(.history-segmented-btn):not(#controls-motors-off),
 :root[data-theme="royals"] .status-job-action,
 :root[data-theme="royals"] .history-action-btn,
 :root[data-theme="royals"] .tools-drawer-action,
@@ -3104,7 +3120,7 @@ button.is-pending,
   border-radius: 9px;
 }
 
-:root[data-theme="royals"] button:not(.emergency-stop-btn):not(.danger):hover,
+:root[data-theme="royals"] button:not(.emergency-stop-btn):not(.danger):not(.controls-jog-btn):not(.nav-item):not(.settings-subnav-item):not(.history-segmented-btn):not(#controls-motors-off):hover,
 :root[data-theme="royals"] .status-job-action:hover,
 :root[data-theme="royals"] .history-action-btn:hover,
 :root[data-theme="royals"] .tools-drawer-action:hover,
@@ -3393,4 +3409,48 @@ button.is-pending,
   border-color: color-mix(in srgb, #2fbf3a 78%, #000000 22%);
   background: #88ee8a;
   color: #020617;
+}
+
+/* Standard/global button skin: lighter theme accent with black labels/icons. */
+:root button:not(.emergency-stop-btn):not(.danger):not(.controls-jog-btn):not(.nav-item):not(.settings-subnav-item):not(.history-segmented-btn):not(#controls-motors-off) {
+  background: var(--button-secondary-bg);
+  color: var(--button-secondary-text);
+  border-color: var(--button-secondary-border);
+}
+
+:root button:not(.emergency-stop-btn):not(.danger):not(.controls-jog-btn):not(.nav-item):not(.settings-subnav-item):not(.history-segmented-btn):not(#controls-motors-off):hover:not(:disabled) {
+  background: var(--button-secondary-hover);
+  border-color: color-mix(in srgb, var(--button-secondary-border) 64%, #ffffff 36%);
+}
+
+:root button:not(.emergency-stop-btn):not(.danger):not(.controls-jog-btn):not(.nav-item):not(.settings-subnav-item):not(.history-segmented-btn):not(#controls-motors-off):active:not(:disabled) {
+  background: var(--button-secondary-active);
+  border-color: color-mix(in srgb, var(--button-secondary-border) 72%, #000000 28%);
+}
+
+:root button:not(.emergency-stop-btn):not(.danger):not(.controls-jog-btn):not(.nav-item):not(.settings-subnav-item):not(.history-segmented-btn):not(#controls-motors-off):focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+:root button:not(.emergency-stop-btn):not(.danger):not(.controls-jog-btn):not(.nav-item):not(.settings-subnav-item):not(.history-segmented-btn):not(#controls-motors-off):disabled {
+  background: var(--button-secondary-disabled-bg);
+  color: var(--button-secondary-disabled-text);
+  border-color: color-mix(in srgb, var(--button-secondary-border) 56%, transparent);
+}
+
+:root button:not(.emergency-stop-btn):not(.danger):not(.controls-jog-btn):not(.nav-item):not(.settings-subnav-item):not(.history-segmented-btn):not(#controls-motors-off) svg {
+  fill: currentColor;
+  stroke: currentColor;
+}
+
+:root button:not(.emergency-stop-btn):not(.danger):not(.controls-jog-btn):not(.nav-item):not(.settings-subnav-item):not(.history-segmented-btn):not(#controls-motors-off) .card-collapse-icon {
+  border-right-color: currentColor;
+  border-bottom-color: currentColor;
+}
+
+:root button:not(.emergency-stop-btn):not(.danger):not(.controls-jog-btn):not(.nav-item):not(.settings-subnav-item):not(.history-segmented-btn):not(#controls-motors-off) .sidebar-toggle-icon,
+:root button:not(.emergency-stop-btn):not(.danger):not(.controls-jog-btn):not(.nav-item):not(.settings-subnav-item):not(.history-segmented-btn):not(#controls-motors-off) .sidebar-toggle-icon::before,
+:root button:not(.emergency-stop-btn):not(.danger):not(.controls-jog-btn):not(.nav-item):not(.settings-subnav-item):not(.history-segmented-btn):not(#controls-motors-off) .sidebar-toggle-icon::after {
+  background: currentColor;
 }
