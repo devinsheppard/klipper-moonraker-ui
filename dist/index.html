@@ -7,8 +7,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
-  <script type="module" crossorigin src="/assets/index-D20dVCz3.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-DdrDp7i_.css">
+  <script type="module" crossorigin src="/assets/index-s4Usgdhx.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-DtzZTtXI.css">
 </head>
 <body>
   <div class="app-layout">
@@ -23,42 +23,44 @@
             <button type="button" class="global-header-quick-btn global-header-restart-btn" data-gcode="RESTART">Restart</button>
             <button type="button" class="global-header-quick-btn global-header-firmware-btn" data-gcode="FIRMWARE_RESTART">Firmware Restart</button>
           </div>
-          <div class="global-header-file-actions">
-            <button type="button" id="header-upload-print-btn" class="global-header-file-btn">Upload &amp; Print</button>
-            <button type="button" class="global-header-file-btn" data-gcode="SAVE_CONFIG">Save Config</button>
-          </div>
         </div>
       </div>
       <button id="emergency-stop" class="emergency-stop-btn" type="button" data-gcode="M112" aria-label="Emergency stop" title="Emergency stop (M112)">STOP</button>
-      <button
-        id="notifications-toggle"
-        class="global-notifications-menu-toggle"
-        type="button"
-        aria-label="Open notifications"
-        aria-controls="notifications-menu"
-        aria-expanded="false"
-        title="Notifications"
-      >
-        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <path d="M12 22a2.3 2.3 0 0 0 2.3-2.3h-4.6A2.3 2.3 0 0 0 12 22Zm7-5.7v-6a7 7 0 0 0-5.4-6.8V3a1.6 1.6 0 1 0-3.2 0v.5A7 7 0 0 0 5 10.3v6l-1.7 1.7a.9.9 0 0 0 .6 1.6h16.2a.9.9 0 0 0 .6-1.6L19 16.3Z" fill="currentColor"></path>
-        </svg>
-        <span id="notifications-count" class="global-notifications-badge" hidden>0</span>
-      </button>
-      <button
-        id="tools-menu-toggle"
-        class="global-tools-menu-toggle"
-        type="button"
-        aria-label="Open tools menu"
-        aria-controls="tools-drawer"
-        aria-expanded="false"
-        title="Tools"
-      >
-        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <circle cx="12" cy="5.5" r="1.7"></circle>
-          <circle cx="12" cy="12" r="1.7"></circle>
-          <circle cx="12" cy="18.5" r="1.7"></circle>
-        </svg>
-      </button>
+      <div class="global-header-right-row">
+        <div class="global-header-file-actions">
+          <button type="button" id="header-upload-print-btn" class="global-header-file-btn">Upload &amp; Print</button>
+          <button type="button" class="global-header-file-btn" data-gcode="SAVE_CONFIG">Save Config</button>
+        </div>
+        <button
+          id="notifications-toggle"
+          class="global-notifications-menu-toggle"
+          type="button"
+          aria-label="Open notifications"
+          aria-controls="notifications-menu"
+          aria-expanded="false"
+          title="Notifications"
+        >
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M12 22a2.3 2.3 0 0 0 2.3-2.3h-4.6A2.3 2.3 0 0 0 12 22Zm7-5.7v-6a7 7 0 0 0-5.4-6.8V3a1.6 1.6 0 1 0-3.2 0v.5A7 7 0 0 0 5 10.3v6l-1.7 1.7a.9.9 0 0 0 .6 1.6h16.2a.9.9 0 0 0 .6-1.6L19 16.3Z" fill="currentColor"></path>
+          </svg>
+          <span id="notifications-count" class="global-notifications-badge" hidden>0</span>
+        </button>
+        <button
+          id="tools-menu-toggle"
+          class="global-tools-menu-toggle"
+          type="button"
+          aria-label="Open tools menu"
+          aria-controls="tools-drawer"
+          aria-expanded="false"
+          title="Tools"
+        >
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <circle cx="12" cy="5.5" r="1.7"></circle>
+            <circle cx="12" cy="12" r="1.7"></circle>
+            <circle cx="12" cy="18.5" r="1.7"></circle>
+          </svg>
+        </button>
+      </div>
       <section id="notifications-menu" class="notifications-menu" aria-hidden="true" hidden>
         <header class="notifications-menu-head">
           <h2>Notifications</h2>
@@ -217,27 +219,12 @@
           <span class="nav-item-label">Settings</span>
         </button>
       </nav>
-      <div id="settings-subnav" class="settings-subnav" hidden>
-        <p class="settings-subnav-title">Settings</p>
-        <div class="settings-subnav-list" role="navigation" aria-label="Settings sections">
-          <button type="button" class="settings-subnav-item" data-settings-anchor="general">General</button>
-          <button type="button" class="settings-subnav-item" data-settings-anchor="dashboard">Dashboard</button>
-          <button type="button" class="settings-subnav-item" data-settings-anchor="warnings">Warnings</button>
-          <button type="button" class="settings-subnav-item" data-settings-anchor="theme">Theme</button>
-          <button type="button" class="settings-subnav-item" data-settings-anchor="console">Console</button>
-          <button type="button" class="settings-subnav-item" data-settings-anchor="macros">Macros</button>
-          <button type="button" class="settings-subnav-item" data-settings-anchor="camera">Camera</button>
-          <button type="button" class="settings-subnav-item" data-settings-anchor="toolhead">Tool</button>
-          <button type="button" class="settings-subnav-item" data-settings-anchor="presets">Thermal Presets</button>
-          <button type="button" class="settings-subnav-item" data-settings-anchor="heightmap">Heightmap</button>
-          <button type="button" class="settings-subnav-item" data-settings-anchor="timelapse">Timelapse</button>
-          <button type="button" class="settings-subnav-item" data-settings-anchor="spoolman">Spoolman</button>
-          <button type="button" class="settings-subnav-item" data-settings-anchor="versions">Versions</button>
-        </div>
-      </div>
       <div class="status-block">
-        <div class="status-pill" id="connection-pill">Disconnected</div>
-        <small id="connection-text">Set Moonraker URL in Settings</small>
+        <div class="status-connection-row">
+          <div class="status-pill" id="connection-pill">Disconnected</div>
+          <small id="connection-text">Set Moonraker URL in Settings</small>
+        </div>
+        <small class="status-version">ForgeUI v0.1.60</small>
       </div>
     </aside>
 
@@ -2408,10 +2395,6 @@
               <p id="settings-spoolman-status" class="muted" data-level="info">Use Apply Selected Fields for card fields. Other Spoolman settings are saved with Save &amp; Connect.</p>
             </article>
 
-            <article class="card settings-placeholder-card" data-settings-section="versions">
-              <h3>Versions</h3>
-              <p class="muted">Forge placeholder for Fluidd-compatible settings navigation.</p>
-            </article>
           </div>
 
           <dialog id="settings-macro-dialog" class="settings-macro-dialog">
@@ -2497,9 +2480,10 @@
               </div>
             </div>
           </dialog>
-          <article class="card settings-actions">
-            <button type="submit">Save & Connect</button>
-          </article>
+          <div class="actions settings-inline-row">
+            <button type="submit">Save</button>
+            <button type="button" id="settings-reconnect">Reconnect</button>
+          </div>
         </form>
       </section>
     </main>

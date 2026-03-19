@@ -1278,6 +1278,7 @@ const els = {
   machineLogFilesList: document.getElementById("machine-log-files-list"),
   machineLogFilesStatus: document.getElementById("machine-log-files-status"),
   settingsForm: document.getElementById("settings-form"),
+  settingsReconnect: document.getElementById("settings-reconnect"),
   moonrakerUrl: document.getElementById("moonraker-url"),
   themeCommunityPreset: document.getElementById("theme-community-preset"),
   themeCommunityApply: document.getElementById("theme-community-apply"),
@@ -1450,6 +1451,7 @@ const els = {
   cameraDialogClose: document.getElementById("camera-fullscreen-close"),
   cameraDialogContent: document.getElementById("camera-fullscreen-content"),
   controlsCard: document.getElementById("card-motion"),
+  controlsAbsolutePosition: document.getElementById("controls-absolute-position"),
   controlsKeyboardSurface: document.getElementById("controls-keyboard-surface"),
   controlsJogButtons: [...document.querySelectorAll("[data-control-jog-axis]")],
   controlsHomeButtons: [...document.querySelectorAll("[data-control-home]")],
@@ -1508,6 +1510,7 @@ let statusCountdownTimer = null;
 let jobsColumnsDragKey = null;
 let printHistoryRefreshTimer = null;
 let settingsSubnavScrollRaf = null;
+let independentTwoColumnGridSyncRaf = null;
 let prettyGcodeSimulationTimer = null;
 let prettyGcodeThreeState = {
   renderer: null,
@@ -6560,7 +6563,8 @@ function syncHeaderEmergencyStopSizeToLogo() {
   if (!(logo instanceof HTMLImageElement)) return;
   const renderedHeight = Math.round(logo.getBoundingClientRect().height || 0);
   if (renderedHeight > 0) {
-    document.documentElement.style.setProperty("--global-header-stop-size", `${renderedHeight}px`);
+    const scaledStopSize = Math.round(renderedHeight * 0.64);
+    document.documentElement.style.setProperty("--global-header-stop-size", `${scaledStopSize}px`);
   }
 }
 
@@ -8002,7 +8006,7 @@ function renderSpoolmanSettingsCard() {
       : "warn";
   setSpoolmanStatusText(
     els.settingsSpoolmanStatus,
-    state.spoolman.statusMessage || "Use Apply Selected Fields for card fields. Other Spoolman settings are saved with Save & Connect.",
+    state.spoolman.statusMessage || "Use Apply Selected Fields for card fields. Other Spoolman settings are saved with Save.",
     level
   );
 }
@@ -11931,6 +11935,23 @@ function renderControlsPanel() {
   const xyHomed = xHomed && yHomed;
   const allAxesHomed = xyHomed && zHomed;
 
+  if (els.controlsAbsolutePosition) {
+    const gcodeMove = state.printStatus.lastGcodeMove || {};
+    const toolhead = state.printStatus.lastToolhead || {};
+    const toolheadPosition = Array.isArray(toolhead.position) ? toolhead.position : [];
+    const gcodePosition = Array.isArray(gcodeMove.gcode_position) ? gcodeMove.gcode_position : [];
+    const machinePosition = Array.isArray(gcodeMove.position) ? gcodeMove.position : [];
+
+    const x = readFiniteNumber(gcodePosition[0] ?? toolheadPosition[0] ?? machinePosition[0] ?? gcodeMove.gcode_x ?? toolhead.x);
+    const y = readFiniteNumber(gcodePosition[1] ?? toolheadPosition[1] ?? machinePosition[1] ?? gcodeMove.gcode_y ?? toolhead.y);
+    const z = readFiniteNumber(gcodePosition[2] ?? toolheadPosition[2] ?? machinePosition[2] ?? gcodeMove.gcode_z ?? toolhead.z);
+
+    const xText = Number.isFinite(x) ? x.toFixed(3) : "---";
+    const yText = Number.isFinite(y) ? y.toFixed(3) : "---";
+    const zText = Number.isFinite(z) ? z.toFixed(3) : "---";
+    els.controlsAbsolutePosition.textContent = `X: ${xText}, Y: ${yText}, Z: ${zText}`;
+  }
+
   renderControlDistanceButtons();
   renderControlToolOptions();
   renderControlsZOffsetStepButtons();
@@ -15136,6 +15157,118 @@ function setCardCollapsedState(card, toggle, storageKey, collapsed) {
   localStorage.setItem(storageKey, collapsed ? "1" : "0");
 }
 
+function getIndependentTwoColumnCardGrids() {
+  return [...document.querySelectorAll(".two-col")]
+    .filter((grid) => !grid.classList.contains("grid-independent-column"));
+}
+
+function consolidateSettingsTwoColumnGrids() {
+  if (!els.settingsForm) return;
+
+  const existingUnifiedGrid = els.settingsForm.querySelector(":scope > .grid.two-col.settings-unified-two-col");
+  const sourceGrids = [...els.settingsForm.querySelectorAll(":scope > .grid.two-col")]
+    .filter((grid) => grid !== existingUnifiedGrid);
+  if (!sourceGrids.length) return;
+
+  const cards = sourceGrids.flatMap((grid) => [...grid.querySelectorAll(":scope > .card")]);
+  if (!cards.length) return;
+
+  const unifiedGrid = existingUnifiedGrid || document.createElement("div");
+  if (!existingUnifiedGrid) {
+    unifiedGrid.className = "grid two-col settings-unified-two-col";
+    sourceGrids[0].before(unifiedGrid);
+  }
+
+  cards.forEach((card) => unifiedGrid.appendChild(card));
+  sourceGrids.forEach((grid) => grid.remove());
+}
+
+function getIndependentGridOrderIndex(card, fallbackIndex = 0) {
+  const rawValue = Number.parseInt(card.dataset.independentOrderIndex || "", 10);
+  if (Number.isFinite(rawValue) && rawValue >= 0) return rawValue;
+
+  const normalizedIndex = Number.isFinite(fallbackIndex) ? Math.max(0, Math.floor(fallbackIndex)) : 0;
+  card.dataset.independentOrderIndex = String(normalizedIndex);
+  return normalizedIndex;
+}
+
+function splitIndependentTwoColumnGrid(grid) {
+  const directElements = [...grid.children].filter((child) => !child.classList.contains("grid-independent-column"));
+  if (!directElements.length || !directElements.every((child) => child.classList.contains("card"))) return;
+
+  const cards = [...grid.querySelectorAll(":scope > .card")];
+  if (cards.length < 2) return;
+
+  cards.forEach((card, index) => {
+    getIndependentGridOrderIndex(card, index);
+  });
+
+  const leftColumn = document.createElement("div");
+  leftColumn.className = "grid-independent-column";
+
+  const rightColumn = document.createElement("div");
+  rightColumn.className = "grid-independent-column";
+
+  cards
+    .sort((left, right) => getIndependentGridOrderIndex(left) - getIndependentGridOrderIndex(right))
+    .forEach((card, index) => {
+      if (index % 2 === 0) {
+        leftColumn.appendChild(card);
+      } else {
+        rightColumn.appendChild(card);
+      }
+    });
+
+  grid.append(leftColumn, rightColumn);
+  grid.classList.add("grid-independent-columns");
+}
+
+function flattenIndependentTwoColumnGrid(grid) {
+  const cards = [...grid.querySelectorAll(":scope > .grid-independent-column > .card")];
+  if (!cards.length) {
+    grid.querySelectorAll(":scope > .grid-independent-column").forEach((column) => column.remove());
+    grid.classList.remove("grid-independent-columns");
+    return;
+  }
+
+  cards
+    .sort((left, right) => getIndependentGridOrderIndex(left) - getIndependentGridOrderIndex(right))
+    .forEach((card) => {
+      grid.appendChild(card);
+    });
+
+  grid.querySelectorAll(":scope > .grid-independent-column").forEach((column) => column.remove());
+  grid.classList.remove("grid-independent-columns");
+}
+
+function syncIndependentTwoColumnCardGrids() {
+  consolidateSettingsTwoColumnGrids();
+  const shouldSplitColumns = window.innerWidth > 980;
+
+  getIndependentTwoColumnCardGrids().forEach((grid) => {
+    const isSplit = grid.classList.contains("grid-independent-columns");
+    if (shouldSplitColumns) {
+      if (!isSplit) {
+        splitIndependentTwoColumnGrid(grid);
+      }
+      return;
+    }
+
+    if (isSplit) {
+      flattenIndependentTwoColumnGrid(grid);
+    }
+  });
+}
+
+function queueIndependentTwoColumnCardGridSync() {
+  if (independentTwoColumnGridSyncRaf !== null) return;
+
+  independentTwoColumnGridSyncRaf = window.requestAnimationFrame(() => {
+    independentTwoColumnGridSyncRaf = null;
+    syncIndependentTwoColumnCardGrids();
+  });
+}
+
 function setupCollapsibleCards() {
   const cards = [...document.querySelectorAll(".view .card")];
 
@@ -16262,13 +16395,14 @@ function renderMacroSettingsMacroList() {
     const title = document.createElement("strong");
     title.textContent = macro.name.toUpperCase();
 
-    const subtitle = document.createElement("span");
     const details = [];
     if (macro.alias) details.push(`Alias: ${macro.alias}`);
     if (macro.description) details.push(macro.description);
-    subtitle.textContent = details.length ? details.join(" | ") : "No description";
+    if (details.length) {
+      metaButton.title = details.join(" | ");
+    }
 
-    metaButton.append(title, subtitle);
+    metaButton.append(title);
     metaButton.addEventListener("click", () => {
       openMacroSettingsDialog(macro.nameLower);
     });
@@ -23603,6 +23737,7 @@ function wireEvents() {
   window.addEventListener("resize", () => {
     syncHeaderEmergencyStopSizeToLogo();
     handleDashboardViewportResize();
+    queueIndependentTwoColumnCardGridSync();
     if (state.activeView === "heightmap") {
       renderHeightmapView();
     }
@@ -24715,6 +24850,22 @@ function wireEvents() {
     void saveTimelapseSettingsPatch({ extraoutputparams: String(els.settingsTimelapseExtraOutputParams?.value || "") });
   });
 
+  els.settingsReconnect?.addEventListener("click", async (event) => {
+    const draftUrl = String(els.moonrakerUrl?.value || "").trim();
+    if (draftUrl) {
+      state.moonrakerUrl = draftUrl;
+    }
+    if (!state.moonrakerUrl) return;
+
+    const button = event.currentTarget instanceof HTMLButtonElement ? event.currentTarget : els.settingsReconnect;
+    if (!button) return;
+
+    await runButtonPendingAction(button, () => connectMoonraker(), {
+      pendingText: "Reconnecting...",
+      minPendingMs: 300,
+    });
+  });
+
   els.settingsForm.addEventListener("submit", async (event) => {
     event.preventDefault();
 
@@ -24816,7 +24967,6 @@ function wireEvents() {
       density: state.interface.density,
     });
 
-    await connectMoonraker();
   });
 
   getConsoleInstances().forEach((instance) => {
@@ -25410,6 +25560,7 @@ async function init() {
   setConfigStatus("Connect to Moonraker from Settings to manage configuration files.", "warn");
 
   applyDashboardLayout();
+  syncIndependentTwoColumnCardGrids();
   setupCollapsibleCards();
   renderMachineLoadsCard();
   renderUpdateManagerCard();
