@@ -1,6 +1,6 @@
 # Forge UI
 
-A custom-look Klipper + Moonraker frontend scaffold targeting Fluidd-level feature parity.
+A Klipper + Moonraker frontend combining the best of both Fluidd and Mainsail with some original ideas.
 
 ## Current State
 
@@ -107,6 +107,29 @@ If your Moonraker server serves this UI from built files, deploy from `dist/` on
 4. After deploy, hard refresh the browser once to clear old cached entry HTML.
 
 Tip: `npm run verify:dist` can be run by itself to validate `dist/index.html` -> `dist/assets/*` references before copying to your server.
+
+## Linux CLI Install
+
+Use the included installer to build and deploy from CLI on a Linux host:
+
+```bash
+cd /path/to/New\ project
+chmod +x scripts/install-linux.sh
+./scripts/install-linux.sh --target /var/www/forgeui --owner www-data:www-data
+```
+
+Equivalent via npm script:
+
+```bash
+npm run install:linux -- --target /var/www/forgeui --owner www-data:www-data
+```
+
+Notes:
+
+- The installer runs `npm ci` + `npm run build` by default, then copies `dist/` into the target directory.
+- Existing target content is backed up to `<target>.bak.<timestamp>` unless `--no-backup` is used.
+- If your web root is elsewhere, set `--target` accordingly (for example `/usr/share/nginx/html/forgeui`).
+- Use `./scripts/install-linux.sh --help` to see all options.
 
 
 
