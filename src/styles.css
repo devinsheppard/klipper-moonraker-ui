@@ -3380,3 +3380,17 @@ button.is-pending,
   font-weight: 600;
 }
 
+/* Preserve homing-state colors across custom themes. */
+:root[data-theme] .controls-card:not(.controls-motors-disabled) button.controls-jog-btn.controls-homing-pending,
+:root[data-theme] .controls-card:not(.controls-motors-disabled) #controls-motors-off.controls-homing-pending {
+  border-color: color-mix(in srgb, #ef4444 74%, #000000 26%);
+  background: #fca5a5;
+  color: #020617;
+}
+
+:root[data-theme] .controls-card:not(.controls-motors-disabled) button.controls-jog-btn.controls-homing-ready,
+:root[data-theme] .controls-card:not(.controls-motors-disabled) #controls-motors-off.controls-homing-ready {
+  border-color: color-mix(in srgb, #2fbf3a 78%, #000000 22%);
+  background: #88ee8a;
+  color: #020617;
+}
