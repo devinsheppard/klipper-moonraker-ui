@@ -1405,6 +1405,7 @@ const els = {
   settingsSpoolmanStatus: document.getElementById("settings-spoolman-status"),
   settingsDashboardViewportButtons: [...document.querySelectorAll(".settings-dashboard-viewport-btn")],
   settingsDashboardColumns: document.getElementById("settings-dashboard-columns"),
+  settingsDashboardApply: document.getElementById("settings-dashboard-apply"),
   settingsDashboardReset: document.getElementById("settings-dashboard-reset"),
   dashShowPrintProgress: document.getElementById("dash-show-print-progress"),
   dashShowTemperatures: document.getElementById("dash-show-temperatures"),
@@ -3450,6 +3451,31 @@ function resetDashboardLayoutForViewport(viewportCandidate) {
     applyDashboardLayout();
   }
 }
+
+function applySettingsDashboardViewportLayout({ appendMessage = false } = {}) {
+  const selectedViewport = normalizeDashboardViewport(state.dashboard.settingsViewport);
+  const autoViewport = normalizeDashboardViewport(runtimeDashboardViewport || getDashboardRuntimeViewport());
+  state.dashboard.runtimeViewportMode = selectedViewport === autoViewport
+    ? DASHBOARD_RUNTIME_VIEWPORT_MODE_AUTO
+    : selectedViewport;
+  state.dashboard.settingsViewportDirty = false;
+
+  persistDashboardLayoutsByViewport();
+  persistDashboardRuntimeViewportMode();
+
+  state.dashboard.layout = getRuntimeDashboardLegacyLayout();
+  localStorage.setItem(DASHBOARD_LAYOUT_LEGACY_STORAGE_KEY, JSON.stringify(state.dashboard.layout));
+  localStorage.setItem(DASHBOARD_LAYOUT_LEGACY_ORDER_STORAGE_KEY, JSON.stringify(flattenDashboardLayout(state.dashboard.layout)));
+
+  applyDashboardLayout();
+  applyDashboardSettings();
+  renderSettingsDashboardLayout();
+
+  if (appendMessage) {
+    appendConsole(`Applied dashboard layout for ${selectedViewport}.`, "info");
+  }
+}
+
 function handleDashboardViewportResize() {
   const nextViewport = getDashboardRuntimeViewport();
   const viewportChanged = nextViewport !== runtimeDashboardViewport;
@@ -24692,6 +24718,10 @@ function wireEvents() {
     });
   });
 
+  els.settingsDashboardApply?.addEventListener("click", () => {
+    applySettingsDashboardViewportLayout({ appendMessage: true });
+  });
+
   els.settingsDashboardReset?.addEventListener("click", () => {
     const viewport = normalizeDashboardViewport(state.dashboard.settingsViewport);
     resetDashboardLayoutForViewport(viewport);
@@ -24992,15 +25022,6 @@ function wireEvents() {
     state.spoolman.lastError = "";
     state.spoolman.statusMessage = "Spoolman settings saved. Use Refresh to verify.";
 
-    if (state.dashboard.settingsViewportDirty) {
-      const selectedViewport = normalizeDashboardViewport(state.dashboard.settingsViewport);
-      const autoViewport = normalizeDashboardViewport(runtimeDashboardViewport || getDashboardRuntimeViewport());
-      state.dashboard.runtimeViewportMode = selectedViewport === autoViewport
-        ? DASHBOARD_RUNTIME_VIEWPORT_MODE_AUTO
-        : selectedViewport;
-      state.dashboard.settingsViewportDirty = false;
-    }
-
     localStorage.setItem("moonraker_url", state.moonrakerUrl);
     persistInterfaceThemeSettings();
     persistInterfaceBackgroundImageSettings();
@@ -25010,11 +25031,7 @@ function wireEvents() {
     localStorage.setItem(MACHINE_SIDE_COLLAPSED_STORAGE_KEY, String(state.interface.machineSideCollapsed));
     persistWarningsSettings();
     persistDashboardVisibilityState();
-    persistDashboardLayoutsByViewport();
-    persistDashboardRuntimeViewportMode();
-    state.dashboard.layout = getRuntimeDashboardLegacyLayout();
-    localStorage.setItem(DASHBOARD_LAYOUT_LEGACY_STORAGE_KEY, JSON.stringify(state.dashboard.layout));
-    localStorage.setItem(DASHBOARD_LAYOUT_LEGACY_ORDER_STORAGE_KEY, JSON.stringify(flattenDashboardLayout(state.dashboard.layout)));
+    applySettingsDashboardViewportLayout({ appendMessage: false });
     localStorage.setItem("camera_enabled", String(state.camera.enabled));
     localStorage.setItem("camera_url", state.camera.url);
     localStorage.setItem("camera_render_mode", state.camera.renderMode);
