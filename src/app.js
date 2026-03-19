@@ -3119,10 +3119,14 @@ function persistDashboardLayoutsByViewport() {
 }
 
 function getDashboardAppliedViewport() {
+  return normalizeDashboardViewport(state.dashboard.settingsViewport || runtimeDashboardViewport || getDashboardRuntimeViewport());
+}
+
+function getDashboardRuntimeAppliedViewport() {
   return normalizeDashboardViewport(runtimeDashboardViewport || getDashboardRuntimeViewport());
 }
 
-function getRuntimeDashboardLegacyLayout(viewportCandidate = getDashboardAppliedViewport()) {
+function getRuntimeDashboardLegacyLayout(viewportCandidate = getDashboardRuntimeAppliedViewport()) {
   const viewport = normalizeDashboardViewport(viewportCandidate);
   const layout = getDashboardLayoutForViewport(viewport);
   return convertViewportLayoutToLegacyLayout(layout, viewport);
@@ -3364,7 +3368,7 @@ function renderSettingsDashboardLayout() {
         if (!DASHBOARD_CARD_IDS.includes(draggedCardId)) return;
 
         moveDashboardCardInViewportLayout(viewport, draggedCardId, columnIndex, cardId);
-        if (viewport === getDashboardAppliedViewport()) {
+        if (viewport === getDashboardRuntimeAppliedViewport()) {
           applyDashboardLayout();
         }
         renderSettingsDashboardLayout();
@@ -3397,7 +3401,7 @@ function renderSettingsDashboardLayout() {
       if (!DASHBOARD_CARD_IDS.includes(draggedCardId)) return;
 
       moveDashboardCardInViewportLayout(viewport, draggedCardId, columnIndex);
-      if (viewport === getDashboardAppliedViewport()) {
+      if (viewport === getDashboardRuntimeAppliedViewport()) {
         applyDashboardLayout();
       }
       renderSettingsDashboardLayout();
@@ -3420,7 +3424,7 @@ function resetDashboardLayoutForViewport(viewportCandidate) {
   const defaults = getDashboardDefaultLayoutForViewport(viewport);
   setDashboardLayoutForViewport(viewport, defaults, { persist: true });
 
-  if (viewport === getDashboardAppliedViewport()) {
+  if (viewport === getDashboardRuntimeAppliedViewport()) {
     applyDashboardLayout();
   }
 }
@@ -6286,7 +6290,7 @@ function syncPrettyGcodeCardPlacement() {
     return;
   }
 
-  const runtimeViewport = getDashboardAppliedViewport();
+  const runtimeViewport = getDashboardRuntimeAppliedViewport();
   const runtimeLayout = getDashboardLayoutForViewport(runtimeViewport);
   const expectedColumnCount = runtimeLayout.columns?.length || getDashboardViewportColumnCount(runtimeViewport);
   const runtimeColumns = getDashboardRuntimeColumns().length === expectedColumnCount
@@ -6303,7 +6307,7 @@ function syncPrettyGcodeCardPlacement() {
 function applyDashboardLayout() {
   if (!els.dashboardCards) return;
 
-  const runtimeViewport = getDashboardAppliedViewport();
+  const runtimeViewport = getDashboardRuntimeAppliedViewport();
   const runtimeLayout = getDashboardLayoutForViewport(runtimeViewport);
   const runtimeColumns = syncDashboardRuntimeColumns(runtimeLayout.columns?.length || getDashboardViewportColumnCount(runtimeViewport));
   const keepKlipperViewInViewer = state.activeView === "pretty-gcode";
@@ -6514,7 +6518,7 @@ function renderDashboardLayoutLists() {
 }
 
 function openDashboardLayoutDialog() {
-  state.dashboard.layout = getRuntimeDashboardLegacyLayout(getDashboardAppliedViewport());
+  state.dashboard.layout = getRuntimeDashboardLegacyLayout(getDashboardRuntimeAppliedViewport());
   renderDashboardLayoutLists();
   if (typeof els.dashboardLayoutDialog?.showModal === "function") {
     els.dashboardLayoutDialog.showModal();
@@ -6528,7 +6532,7 @@ function closeDashboardLayoutDialog() {
 }
 
 function persistDashboardLayoutDraft() {
-  const viewport = getDashboardAppliedViewport();
+  const viewport = getDashboardRuntimeAppliedViewport();
   state.dashboard.layout = normalizeDashboardLayout(state.dashboard.layout);
   const viewportLayout = convertLegacyLayoutToViewportLayout(state.dashboard.layout, viewport);
   setDashboardLayoutForViewport(viewport, viewportLayout, { persist: true });
@@ -6546,7 +6550,7 @@ function saveDashboardLayout() {
 }
 
 function resetDashboardLayout() {
-  const viewport = getDashboardAppliedViewport();
+  const viewport = getDashboardRuntimeAppliedViewport();
   const defaults = getDashboardDefaultLayoutForViewport(viewport);
   state.dashboard.layout = convertViewportLayoutToLegacyLayout(defaults, viewport);
   persistDashboardLayoutDraft();
