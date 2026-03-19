@@ -304,6 +304,8 @@ const DASHBOARD_LAYOUT_STORAGE_KEYS = Object.freeze({
 });
 const DASHBOARD_LAYOUT_LEGACY_STORAGE_KEY = "dashboard_layout";
 const DASHBOARD_LAYOUT_LEGACY_ORDER_STORAGE_KEY = "dashboard_layout_order";
+const DASHBOARD_RUNTIME_VIEWPORT_STORAGE_KEY = "dashboard_runtime_viewport_v1";
+const DASHBOARD_RUNTIME_VIEWPORT_MODE_AUTO = "auto";
 const DASHBOARD_VISIBILITY_STORAGE_KEYS = Object.freeze({
   "card-print-progress": "dashboard_show_print_progress",
   "card-temperatures": "dashboard_show_temperatures",
@@ -2881,6 +2883,22 @@ function normalizeDashboardViewport(viewportCandidate) {
   return DASHBOARD_VIEWPORTS.includes(normalized) ? normalized : "desktop";
 }
 
+function normalizeDashboardRuntimeViewportMode(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (DASHBOARD_VIEWPORTS.includes(normalized)) return normalized;
+  return DASHBOARD_RUNTIME_VIEWPORT_MODE_AUTO;
+}
+
+function loadStoredDashboardRuntimeViewportMode() {
+  return normalizeDashboardRuntimeViewportMode(localStorage.getItem(DASHBOARD_RUNTIME_VIEWPORT_STORAGE_KEY));
+}
+
+function persistDashboardRuntimeViewportMode() {
+  const mode = normalizeDashboardRuntimeViewportMode(state.dashboard.runtimeViewportMode);
+  state.dashboard.runtimeViewportMode = mode;
+  localStorage.setItem(DASHBOARD_RUNTIME_VIEWPORT_STORAGE_KEY, mode);
+}
+
 function getDashboardViewportColumnCount(viewportCandidate) {
   const viewport = normalizeDashboardViewport(viewportCandidate);
   return DASHBOARD_VIEWPORT_COLUMN_COUNT[viewport] || DASHBOARD_VIEWPORT_COLUMN_COUNT.desktop;
@@ -3123,6 +3141,10 @@ function getDashboardAppliedViewport() {
 }
 
 function getDashboardRuntimeAppliedViewport() {
+  const mode = normalizeDashboardRuntimeViewportMode(state.dashboard.runtimeViewportMode);
+  if (mode !== DASHBOARD_RUNTIME_VIEWPORT_MODE_AUTO) {
+    return mode;
+  }
   return normalizeDashboardViewport(runtimeDashboardViewport || getDashboardRuntimeViewport());
 }
 
@@ -3434,7 +3456,7 @@ function handleDashboardViewportResize() {
 
   if (viewportChanged) {
     runtimeDashboardViewport = nextViewport;
-    state.dashboard.layout = getRuntimeDashboardLegacyLayout(nextViewport);
+    state.dashboard.layout = getRuntimeDashboardLegacyLayout(getDashboardRuntimeAppliedViewport());
     applyDashboardLayout();
     applyDashboardSettings();
   }
@@ -4288,6 +4310,8 @@ const state = {
     showConsole: loadStoredBool(DASHBOARD_VISIBILITY_STORAGE_KEYS["card-dashboard-console"], true),
     showKlipperView: loadStoredBool(DASHBOARD_VISIBILITY_STORAGE_KEYS[KLIPPERVIEW_CARD_ID], true),
     layoutsByViewport: loadDashboardLayoutsByViewport(),
+    runtimeViewportMode: loadStoredDashboardRuntimeViewportMode(),
+    settingsViewportDirty: false,
     settingsViewport: "desktop",
     layout: loadDashboardLayout(),
   },
@@ -24663,6 +24687,7 @@ function wireEvents() {
     button.addEventListener("click", () => {
       const viewport = normalizeDashboardViewport(button.dataset.dashboardViewport);
       state.dashboard.settingsViewport = viewport;
+      state.dashboard.settingsViewportDirty = true;
       renderSettingsDashboardLayout();
     });
   });
@@ -24967,6 +24992,15 @@ function wireEvents() {
     state.spoolman.lastError = "";
     state.spoolman.statusMessage = "Spoolman settings saved. Use Refresh to verify.";
 
+    if (state.dashboard.settingsViewportDirty) {
+      const selectedViewport = normalizeDashboardViewport(state.dashboard.settingsViewport);
+      const autoViewport = normalizeDashboardViewport(runtimeDashboardViewport || getDashboardRuntimeViewport());
+      state.dashboard.runtimeViewportMode = selectedViewport === autoViewport
+        ? DASHBOARD_RUNTIME_VIEWPORT_MODE_AUTO
+        : selectedViewport;
+      state.dashboard.settingsViewportDirty = false;
+    }
+
     localStorage.setItem("moonraker_url", state.moonrakerUrl);
     persistInterfaceThemeSettings();
     persistInterfaceBackgroundImageSettings();
@@ -24977,6 +25011,7 @@ function wireEvents() {
     persistWarningsSettings();
     persistDashboardVisibilityState();
     persistDashboardLayoutsByViewport();
+    persistDashboardRuntimeViewportMode();
     state.dashboard.layout = getRuntimeDashboardLegacyLayout();
     localStorage.setItem(DASHBOARD_LAYOUT_LEGACY_STORAGE_KEY, JSON.stringify(state.dashboard.layout));
     localStorage.setItem(DASHBOARD_LAYOUT_LEGACY_ORDER_STORAGE_KEY, JSON.stringify(flattenDashboardLayout(state.dashboard.layout)));
@@ -25496,8 +25531,9 @@ async function init() {
   els.interfaceCompact.checked = state.interface.compact;
   els.interfaceDensity.value = state.interface.density;
   runtimeDashboardViewport = getDashboardRuntimeViewport();
-  state.dashboard.settingsViewport = runtimeDashboardViewport;
-  state.dashboard.layout = getRuntimeDashboardLegacyLayout(runtimeDashboardViewport);
+  state.dashboard.settingsViewport = getDashboardRuntimeAppliedViewport();
+  state.dashboard.settingsViewportDirty = false;
+  state.dashboard.layout = getRuntimeDashboardLegacyLayout(state.dashboard.settingsViewport);
   syncDashboardVisibilityInputs();
   syncWarningsSettingsControls();
   renderSettingsDashboardLayout();
