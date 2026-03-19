@@ -229,7 +229,12 @@ const CONTROL_Z_OFFSET_SAVE_OPTION_VALUES = ["Z_OFFSET_APPLY_ENDSTOP", "Z_OFFSET
 const MANUAL_PROBE_STEPS = Object.freeze([0.005, 0.01, 0.05, 0.1, 1]);
 const CARD_COLLAPSE_KEY_PREFIX = "card_collapsed_";
 const KLIPPERVIEW_CARD_ID = "card-klipperview";
+// Fluidd parity reference:
+// - _fluidd_ref/src/store/layout/state.ts (dashboard beacon-card registration)
+// - _fluidd_ref/src/views/Dashboard.vue (runtime visibility filtering)
+// - _fluidd_ref/src/components/widgets/beacon/BeaconCard.vue
 const BEACON_CARD_ID = "card-beacon";
+const AFC_CARD_ID = "card-afc";
 const RUNOUT_SENSOR_OBJECT_PREFIXES = Object.freeze([
   "filament_switch_sensor ",
   "filament_motion_sensor ",
@@ -242,6 +247,7 @@ const DASHBOARD_CARD_IDS = [
   "card-macros",
   "card-runout-sensors",
   BEACON_CARD_ID,
+  AFC_CARD_ID,
   "card-dashboard-console",
   "camera-main-card",
   "camera-toolhead-card",
@@ -250,7 +256,7 @@ const DASHBOARD_CARD_IDS = [
 
 const DASHBOARD_LAYOUT_DEFAULT = {
   left: ["card-print-progress", "card-motion", "camera-main-card", "card-macros", "card-runout-sensors"],
-  right: ["card-temperatures", "card-quick-commands", BEACON_CARD_ID, "card-dashboard-console", KLIPPERVIEW_CARD_ID, "camera-toolhead-card"],
+  right: ["card-temperatures", "card-quick-commands", BEACON_CARD_ID, AFC_CARD_ID, "card-dashboard-console", KLIPPERVIEW_CARD_ID, "camera-toolhead-card"],
 };
 
 const DASHBOARD_VIEWPORTS = ["mobile", "tablet", "desktop", "widescreen"];
@@ -273,7 +279,7 @@ const DASHBOARD_LAYOUT_DEFAULTS = Object.freeze({
   widescreen: Object.freeze({
     columns: [
       Object.freeze(["card-print-progress", "card-motion", "card-macros", "card-runout-sensors"]),
-      Object.freeze(["card-temperatures", "card-quick-commands", BEACON_CARD_ID, "card-dashboard-console"]),
+      Object.freeze(["card-temperatures", "card-quick-commands", BEACON_CARD_ID, AFC_CARD_ID, "card-dashboard-console"]),
       Object.freeze(["camera-main-card", "camera-toolhead-card", KLIPPERVIEW_CARD_ID]),
     ],
   }),
@@ -294,6 +300,7 @@ const DASHBOARD_VISIBILITY_STORAGE_KEYS = Object.freeze({
   "card-macros": "dashboard_show_macros",
   "card-runout-sensors": "dashboard_show_runout_sensors",
   [BEACON_CARD_ID]: "dashboard_show_beacon",
+  [AFC_CARD_ID]: "dashboard_show_afc",
   "camera-main-card": "dashboard_show_main_camera",
   "camera-toolhead-card": "dashboard_show_toolhead_camera",
   "card-dashboard-console": "dashboard_show_console",
@@ -307,6 +314,7 @@ const DASHBOARD_CARD_LABELS = {
   "card-macros": "Macros",
   "card-runout-sensors": "Runout Sensors",
   [BEACON_CARD_ID]: "Beacon",
+  [AFC_CARD_ID]: "AFC",
   "card-dashboard-console": "Console",
   "camera-main-card": "Main Camera",
   "camera-toolhead-card": "Toolhead Cam",
@@ -379,6 +387,16 @@ const SPOOLMAN_CARD_FIELDS_STORAGE_KEY = "spoolman_selected_card_fields_v1";
 const SPOOLMAN_CONNECTION_DIRECT = "direct";
 const SPOOLMAN_CONNECTION_PROXY = "moonraker-proxy";
 const SPOOLMAN_REMAINING_UNIT_VALUES = ["weight", "length"];
+const AFC_UI_SETTINGS_STORAGE_KEY = "afc_ui_settings_v1";
+const AFC_UI_SETTINGS_DEFAULTS = Object.freeze({
+  hiddenExtruders: Object.freeze([]),
+  hiddenUnits: Object.freeze([]),
+  showFilamentName: false,
+  showLaneInfinite: true,
+  showUnitIcons: true,
+  showTd1Color: true,
+});
+const AFC_OBJECT_KEY_PATTERN = /^AFC(?:$|[_\s])/i;
 const HEIGHTMAP_DEFAULT_ORIENTATION_STORAGE_KEY = "heightmap_default_orientation_v1";
 const HEIGHTMAP_COLOR_SCHEME_STORAGE_KEY = "heightmap_color_scheme_v1";
 const HEIGHTMAP_SHOW_PROBED_STORAGE_KEY = "heightmap_show_probed_v1";
@@ -1000,6 +1018,26 @@ const els = {
   beaconSaveDialogRemoveCurrent: document.getElementById("beacon-save-dialog-remove-current"),
   beaconSaveDialogRemoveLabel: document.getElementById("beacon-save-dialog-remove-label"),
   beaconSaveDialogHint: document.getElementById("beacon-save-dialog-hint"),
+  afcCommandRow: document.getElementById("afc-command-row"),
+  afcMessage: document.getElementById("afc-message"),
+  afcMessageText: document.getElementById("afc-message-text"),
+  afcMessageClear: document.getElementById("afc-message-clear"),
+  afcBypass: document.getElementById("afc-bypass"),
+  afcExtruderList: document.getElementById("afc-extruder-list"),
+  afcUnitList: document.getElementById("afc-unit-list"),
+  afcStatus: document.getElementById("afc-status"),
+  afcSettingsOpen: document.getElementById("afc-settings-open"),
+  afcRefresh: document.getElementById("afc-refresh"),
+  afcSettingsDialog: document.getElementById("afc-settings-dialog"),
+  afcSettingsClose: document.getElementById("afc-settings-close"),
+  afcSettingsCancel: document.getElementById("afc-settings-cancel"),
+  afcSettingsApply: document.getElementById("afc-settings-apply"),
+  afcSettingsShowFilamentName: document.getElementById("afc-settings-show-filament-name"),
+  afcSettingsShowLaneInfinite: document.getElementById("afc-settings-show-lane-infinite"),
+  afcSettingsShowUnitIcons: document.getElementById("afc-settings-show-unit-icons"),
+  afcSettingsShowTd1Color: document.getElementById("afc-settings-show-td1-color"),
+  afcSettingsExtruders: document.getElementById("afc-settings-extruders"),
+  afcSettingsUnits: document.getElementById("afc-settings-units"),
   statusClearFile: document.getElementById("status-clear-file"),
   statusPrintActions: document.getElementById("status-print-actions"),
   statusPrintPause: document.getElementById("status-print-pause"),
@@ -1352,6 +1390,7 @@ const els = {
   dashShowMacros: document.getElementById("dash-show-macros"),
   dashShowRunoutSensors: document.getElementById("dash-show-runout-sensors"),
   dashShowBeacon: document.getElementById("dash-show-beacon"),
+  dashShowAfc: document.getElementById("dash-show-afc"),
   dashShowMainCamera: document.getElementById("dash-show-main-camera"),
   dashShowToolheadCamera: document.getElementById("dash-show-toolhead-camera"),
   dashShowConsole: document.getElementById("dash-show-console"),
@@ -1373,6 +1412,7 @@ const els = {
   cardMacros: document.getElementById("card-macros"),
   cardRunoutSensors: document.getElementById("card-runout-sensors"),
   cardBeacon: document.getElementById(BEACON_CARD_ID),
+  cardAfc: document.getElementById(AFC_CARD_ID),
   cardDashboardConsole: document.getElementById("card-dashboard-console"),
   cardMainCamera: document.getElementById("camera-main-card"),
   cardToolheadCamera: document.getElementById("camera-toolhead-card"),
@@ -1676,6 +1716,45 @@ function loadStoredTimelapseMediaSort() {
 
 function loadStoredTimelapseMediaDirectory() {
   return normalizeTimelapseMediaDirectory(localStorage.getItem(TIMELAPSE_MEDIA_DIRECTORY_STORAGE_KEY));
+}
+
+function normalizeAfcUiSettings(value) {
+  const candidate = value && typeof value === "object" ? value : {};
+  const hiddenExtruders = [...new Set(
+    (Array.isArray(candidate.hiddenExtruders) ? candidate.hiddenExtruders : [])
+      .map((entry) => String(entry || "").trim())
+      .filter(Boolean)
+  )];
+  const hiddenUnits = [...new Set(
+    (Array.isArray(candidate.hiddenUnits) ? candidate.hiddenUnits : [])
+      .map((entry) => String(entry || "").trim())
+      .filter(Boolean)
+  )];
+  return {
+    hiddenExtruders,
+    hiddenUnits,
+    showFilamentName: candidate.showFilamentName === true,
+    showLaneInfinite: candidate.showLaneInfinite !== false,
+    showUnitIcons: candidate.showUnitIcons !== false,
+    showTd1Color: candidate.showTd1Color !== false,
+  };
+}
+
+function loadStoredAfcUiSettings() {
+  const raw = localStorage.getItem(AFC_UI_SETTINGS_STORAGE_KEY);
+  if (!raw) {
+    return normalizeAfcUiSettings(AFC_UI_SETTINGS_DEFAULTS);
+  }
+  try {
+    return normalizeAfcUiSettings(JSON.parse(raw));
+  } catch {
+    return normalizeAfcUiSettings(AFC_UI_SETTINGS_DEFAULTS);
+  }
+}
+
+function persistAfcUiSettings() {
+  state.afc.uiSettings = normalizeAfcUiSettings(state.afc.uiSettings);
+  localStorage.setItem(AFC_UI_SETTINGS_STORAGE_KEY, JSON.stringify(state.afc.uiSettings));
 }
 
 function normalizeHeightmapOrientation(value) {
@@ -3018,6 +3097,8 @@ function getDashboardCardVisibilityValue(cardId) {
       return !!state.dashboard.showRunoutSensors;
     case BEACON_CARD_ID:
       return !!state.dashboard.showBeacon;
+    case AFC_CARD_ID:
+      return !!state.dashboard.showAfc;
     case "camera-main-card":
       return !!state.dashboard.showMainCamera;
     case "camera-toolhead-card":
@@ -3056,6 +3137,9 @@ function setDashboardCardVisibilityValue(cardId, visible) {
     case BEACON_CARD_ID:
       state.dashboard.showBeacon = nextValue;
       break;
+    case AFC_CARD_ID:
+      state.dashboard.showAfc = nextValue;
+      break;
     case "camera-main-card":
       state.dashboard.showMainCamera = nextValue;
       break;
@@ -3087,6 +3171,7 @@ function syncDashboardVisibilityInputs() {
   if (els.dashShowMacros) els.dashShowMacros.checked = state.dashboard.showMacros;
   if (els.dashShowRunoutSensors) els.dashShowRunoutSensors.checked = state.dashboard.showRunoutSensors;
   if (els.dashShowBeacon) els.dashShowBeacon.checked = state.dashboard.showBeacon;
+  if (els.dashShowAfc) els.dashShowAfc.checked = state.dashboard.showAfc;
   if (els.dashShowMainCamera) els.dashShowMainCamera.checked = state.dashboard.showMainCamera;
   if (els.dashShowToolheadCamera) els.dashShowToolheadCamera.checked = state.dashboard.showToolheadCamera;
   if (els.dashShowConsole) els.dashShowConsole.checked = state.dashboard.showConsole;
@@ -4056,6 +4141,20 @@ function createDefaultBeaconState() {
   };
 }
 
+function createDefaultAfcState() {
+  return {
+    supported: false,
+    objectKeys: [],
+    objectsByKey: {},
+    commandHelp: {},
+    loading: false,
+    actionInFlight: "",
+    lastError: "",
+    lastUpdatedMs: null,
+    uiSettings: loadStoredAfcUiSettings(),
+  };
+}
+
 function createDefaultHeightmapState() {
   return {
     bedMesh: null,
@@ -4118,6 +4217,7 @@ const state = {
     showMacros: loadStoredBool(DASHBOARD_VISIBILITY_STORAGE_KEYS["card-macros"], true),
     showRunoutSensors: loadStoredBool(DASHBOARD_VISIBILITY_STORAGE_KEYS["card-runout-sensors"], true),
     showBeacon: loadStoredBool(DASHBOARD_VISIBILITY_STORAGE_KEYS[BEACON_CARD_ID], false),
+    showAfc: loadStoredBool(DASHBOARD_VISIBILITY_STORAGE_KEYS[AFC_CARD_ID], true),
     showMainCamera: loadStoredBool(DASHBOARD_VISIBILITY_STORAGE_KEYS["camera-main-card"], true),
     showToolheadCamera: loadStoredBool(DASHBOARD_VISIBILITY_STORAGE_KEYS["camera-toolhead-card"], true),
     showConsole: loadStoredBool(DASHBOARD_VISIBILITY_STORAGE_KEYS["card-dashboard-console"], true),
@@ -4179,6 +4279,7 @@ const state = {
   logFiles: createDefaultMachineLogFilesState(),
   runoutSensors: createDefaultRunoutSensorsState(),
   beacon: createDefaultBeaconState(),
+  afc: createDefaultAfcState(),
   heightmap: createDefaultHeightmapState(),
   jobs: createDefaultJobsState(),
   printHistory: createDefaultPrintHistoryState(),
@@ -5846,6 +5947,8 @@ function getDashboardCardElement(cardId) {
       return els.cardRunoutSensors;
     case BEACON_CARD_ID:
       return els.cardBeacon;
+    case AFC_CARD_ID:
+      return els.cardAfc;
     case "card-dashboard-console":
       return els.cardDashboardConsole;
     case "camera-main-card":
@@ -5947,6 +6050,7 @@ function applyDashboardLayout() {
 
 function applyDashboardSettings() {
   const beaconVisible = !!state.dashboard.showBeacon && !!state.beacon.supported;
+  const afcVisible = !!state.dashboard.showAfc && !!state.afc.supported;
   const visibilityMap = [
     [els.cardPrintProgress, state.dashboard.showPrintProgress],
     [els.cardTemperatures, state.dashboard.showTemperatures],
@@ -5955,6 +6059,7 @@ function applyDashboardSettings() {
     [els.cardMacros, state.dashboard.showMacros],
     [els.cardRunoutSensors, state.dashboard.showRunoutSensors],
     [els.cardBeacon, beaconVisible],
+    [els.cardAfc, afcVisible],
     [els.cardMainCamera, state.dashboard.showMainCamera],
     [els.cardToolheadCamera, state.dashboard.showToolheadCamera],
     [els.cardDashboardConsole, state.dashboard.showConsole],
@@ -8123,6 +8228,10 @@ function normalizeBeaconModelName(value) {
   return String(value || "").trim();
 }
 
+// Adapted from Fluidd Beacon logic (behavior parity, Forge-native rendering):
+// - _fluidd_ref/src/store/printer/getters.ts#getSupportsBeacon + #getBeaconModels
+// - _fluidd_ref/src/components/widgets/beacon/BeaconCard.vue
+// - _fluidd_ref/src/components/widgets/beacon/SaveModelDialog.vue
 function getBeaconConfigSettings(settingsCandidate = state.controls.configSettings) {
   return settingsCandidate && typeof settingsCandidate === "object"
     ? settingsCandidate
@@ -8134,7 +8243,7 @@ function getBeaconConfigModelNames(settingsCandidate = state.controls.configSett
   return [...new Set(
     Object.keys(settings)
       .map((key) => String(key || "").trim())
-      .filter((key) => key.toLowerCase().startsWith("beacon model "))
+      .filter((key) => key.startsWith("beacon model "))
       .map((key) => normalizeBeaconModelName(key.slice(13)))
       .filter(Boolean)
   )].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base", numeric: true }));
@@ -8153,7 +8262,8 @@ function syncBeaconModelsWithActive() {
 
 function updateBeaconSupportFromConfig(settingsCandidate = state.controls.configSettings) {
   const settings = getBeaconConfigSettings(settingsCandidate);
-  const supportsBeacon = Object.prototype.hasOwnProperty.call(settings, "beacon");
+  // Fluidd parity: _fluidd_ref/src/store/printer/getters.ts#getSupportsBeacon
+  const supportsBeacon = "beacon" in settings;
   const modelNames = supportsBeacon ? getBeaconConfigModelNames(settings) : [];
   const previousSignature = `${state.beacon.supported}|${(state.beacon.models || []).map((entry) => entry.name).join("|")}`;
   const nextSignature = `${supportsBeacon}|${modelNames.join("|")}`;
@@ -8222,7 +8332,17 @@ function getBeaconPrinterBusy() {
       || els.printerState?.dataset?.state
       || ""
   );
-  return printerState === "printing" || printerState === "paused";
+  return printerState === "printing" || printerState === "paused" || printerState === "busy";
+}
+
+function getBeaconPrinterPrinting() {
+  const printerState = normalizePrinterState(
+    state.printStatus.lastPrintStats?.state
+      || state.printStatus.lastPrintStats?.status
+      || els.printerState?.dataset?.state
+      || ""
+  );
+  return printerState === "printing";
 }
 
 function getBeaconCurrentModelName() {
@@ -8462,7 +8582,8 @@ async function requestBeaconLoadModel(modelName) {
   const name = normalizeBeaconModelName(modelName);
   if (!name) return false;
 
-  if (getBeaconPrinterBusy()) {
+  // Fluidd parity: confirm only while actively printing.
+  if (getBeaconPrinterPrinting()) {
     const confirmed = window.confirm("The printer is currently busy. Are you sure you want to change the beacon model?");
     if (!confirmed) return false;
   }
@@ -8506,10 +8627,20 @@ async function requestBeaconSaveModel() {
 
   const removeCurrent = !!els.beaconSaveDialogRemoveCurrent?.checked;
   const currentModel = normalizeBeaconModelName(state.beacon.activeModel);
-  const scripts = [`BEACON_MODEL_SAVE NAME=${encodeGcodeParamValue(modelName)}`];
+  const scripts = [];
+
+  // Fluidd parity: only save when target name differs from current active model.
+  if (modelName !== currentModel) {
+    scripts.push(`BEACON_MODEL_SAVE NAME=${encodeGcodeParamValue(modelName)}`);
+  }
 
   if (removeCurrent && currentModel) {
     scripts.push(`BEACON_MODEL_REMOVE NAME=${encodeGcodeParamValue(currentModel)}`);
+  }
+
+  if (!scripts.length) {
+    closeBeaconSaveDialog();
+    return true;
   }
 
   const sent = await runBeaconAction(scripts.join("\n"), {
@@ -23802,6 +23933,7 @@ function wireEvents() {
     state.dashboard.showMacros = els.dashShowMacros?.checked ?? state.dashboard.showMacros;
     state.dashboard.showRunoutSensors = els.dashShowRunoutSensors?.checked ?? state.dashboard.showRunoutSensors;
     state.dashboard.showBeacon = els.dashShowBeacon?.checked ?? state.dashboard.showBeacon;
+    state.dashboard.showAfc = els.dashShowAfc?.checked ?? state.dashboard.showAfc;
     state.dashboard.showMainCamera = els.dashShowMainCamera?.checked ?? state.dashboard.showMainCamera;
     state.dashboard.showToolheadCamera = els.dashShowToolheadCamera?.checked ?? state.dashboard.showToolheadCamera;
     state.dashboard.showConsole = els.dashShowConsole?.checked ?? state.dashboard.showConsole;
