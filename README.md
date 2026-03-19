@@ -130,10 +130,35 @@ Notes:
 
 - The installer bootstraps required system dependencies automatically (`node`, `npm`, `curl`, `gnupg`) when possible.
 - The installer runs `npm ci` + `npm run build` by default, then copies `dist/` into the target directory.
+- By default, the installer also creates/updates an nginx site on port `82` and reloads nginx.
 - Existing target content is backed up to `<target>.bak.<timestamp>` unless `--no-backup` is used.
 - If your web root is elsewhere, set `--target` accordingly (for example `/usr/share/nginx/html/forgeui`).
+- Use `--skip-nginx` to skip nginx changes, or `--port <number>` to use a different port.
 - Use `./scripts/install-linux.sh --help` to see all options.
 
+## Windows CLI Install
 
+Use the included PowerShell installer to build and deploy from CLI on a Windows host:
+
+```powershell
+cd $HOME
+git clone https://github.com/devinsheppard/klipper-moonraker-ui.git
+cd .\klipper-moonraker-ui
+powershell -ExecutionPolicy Bypass -File .\scripts\install-windows.ps1 -Target "C:\forgeui"
+```
+
+Equivalent via npm script:
+
+```powershell
+npm run install:windows -- -Target "C:\forgeui"
+```
+
+Notes:
+
+- The installer bootstraps required system dependencies automatically (`node`, `npm`) when possible (`winget`/`choco`).
+- The installer runs `npm ci` + `npm run build` by default, then copies `dist\` into the target directory.
+- Existing target content is backed up to `<target>.bak.<timestamp>` unless `-NoBackup` is used.
+- If deploying to protected locations such as `C:\inetpub\wwwroot`, run PowerShell as Administrator.
+- Use `powershell -ExecutionPolicy Bypass -File .\scripts\install-windows.ps1 -Help` to see all options.
 
 

@@ -7,6 +7,10 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 TARGET_DIR="/var/www/forgeui"
 OWNER_GROUP=""
 NODE_MAJOR="20"
+FORGE_PORT="82"
+FORGE_SERVER_NAME="_"
+CONFIGURE_NGINX=1
+NGINX_CONF_PATH=""
 SKIP_SYSTEM_DEPENDENCIES=0
 SKIP_DEPENDENCIES=0
 SKIP_BUILD=0
@@ -23,6 +27,10 @@ Options:
   --target <dir>          Install directory (default: /var/www/forgeui)
   --owner <user:group>    Optional ownership for installed files
   --node-major <version>  Node major version to install when missing (default: 20)
+  --port <number>         Nginx listen port for Forge UI (default: 82)
+  --server-name <name>    Nginx server_name value (default: _)
+  --nginx-conf <path>     Nginx config path (default: /etc/nginx/conf.d/forgeui-<port>.conf)
+  --skip-nginx            Skip automatic nginx configuration/reload
   --skip-system-deps      Skip system dependency bootstrap (node/npm, curl, gnupg)
   --skip-deps             Skip npm dependency install
   --skip-build            Skip npm build step (requires existing dist/)
@@ -32,6 +40,7 @@ Options:
 Examples:
   ./scripts/install-linux.sh --target /var/www/forgeui
   ./scripts/install-linux.sh --target /usr/share/nginx/html/forgeui --owner www-data:www-data
+  ./scripts/install-linux.sh --target /var/www/forgeui --port 82 --server-name cb1.local
 EOF
 }
 
@@ -58,6 +67,65 @@ run_as_root() {
 
 command_exists() {
   command -v "$1" >/dev/null 2>&1
+}
+
+configure_nginx() {
+  if [[ "$CONFIGURE_NGINX" -eq 0 ]]; then
+    log "Skipping nginx configuration (--skip-nginx)."
+    return
+  fi
+
+  command_exists nginx || fail "nginx is required for automatic port setup. Install nginx or use --skip-nginx."
+
+  local conf_path
+  conf_path="$NGINX_CONF_PATH"
+  if [[ -z "$conf_path" ]]; then
+    conf_path="/etc/nginx/conf.d/forgeui-${FORGE_PORT}.conf"
+  fi
+
+  local conf_dir
+  conf_dir="$(dirname "$conf_path")"
+  run_as_root mkdir -p "$conf_dir"
+
+  local include_line
+  include_line=""
+  if run_as_root test -f /etc/nginx/conf.d/moonraker.conf; then
+    include_line="  include /etc/nginx/conf.d/moonraker.conf;"
+  fi
+
+  local tmp_conf
+  tmp_conf="/tmp/forgeui-nginx-${FORGE_PORT}.conf"
+  cat >"$tmp_conf" <<EOF
+server {
+  listen ${FORGE_PORT};
+  listen [::]:${FORGE_PORT};
+  server_name ${FORGE_SERVER_NAME};
+  root ${TARGET_DIR};
+  index index.html;
+
+  location / {
+    try_files \$uri \$uri/ /index.html;
+  }
+${include_line}
+}
+EOF
+
+  log "Writing nginx site config: $conf_path"
+  run_as_root cp "$tmp_conf" "$conf_path"
+  rm -f "$tmp_conf"
+
+  log "Validating nginx configuration..."
+  run_as_root nginx -t
+
+  if command_exists systemctl; then
+    log "Reloading nginx via systemctl..."
+    run_as_root systemctl reload nginx
+  else
+    log "Reloading nginx via nginx -s reload..."
+    run_as_root nginx -s reload
+  fi
+
+  log "Nginx configured for Forge UI on port ${FORGE_PORT}."
 }
 
 node_major_version() {
@@ -150,6 +218,26 @@ while [[ $# -gt 0 ]]; do
       [[ "$NODE_MAJOR" =~ ^[0-9]+$ ]] || fail "--node-major must be numeric"
       shift 2
       ;;
+    --port)
+      [[ $# -ge 2 ]] || fail "Missing value for --port"
+      FORGE_PORT="$2"
+      [[ "$FORGE_PORT" =~ ^[0-9]+$ ]] || fail "--port must be numeric"
+      shift 2
+      ;;
+    --server-name)
+      [[ $# -ge 2 ]] || fail "Missing value for --server-name"
+      FORGE_SERVER_NAME="$2"
+      shift 2
+      ;;
+    --nginx-conf)
+      [[ $# -ge 2 ]] || fail "Missing value for --nginx-conf"
+      NGINX_CONF_PATH="$2"
+      shift 2
+      ;;
+    --skip-nginx)
+      CONFIGURE_NGINX=0
+      shift
+      ;;
     --skip-system-deps)
       SKIP_SYSTEM_DEPENDENCIES=1
       shift
@@ -232,9 +320,15 @@ if [[ -n "$OWNER_GROUP" ]]; then
   run_as_root chown -R "$OWNER_GROUP" "$TARGET_DIR"
 fi
 
+configure_nginx
+
 log "Install complete."
 log "Installed path: $TARGET_DIR"
 if [[ "$NO_BACKUP" -eq 0 ]]; then
   log "Backup path: $BACKUP_DIR (only created when a prior install existed)"
 fi
-log "Next step: point your web server or Moonraker UI path to $TARGET_DIR"
+if [[ "$CONFIGURE_NGINX" -eq 1 ]]; then
+  log "Forge UI URL: http://<host>:${FORGE_PORT}/"
+else
+  log "Next step: point your web server or Moonraker UI path to $TARGET_DIR"
+fi
