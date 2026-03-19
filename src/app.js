@@ -6424,6 +6424,7 @@ function renderDashboardLayoutColumn(column, listEl) {
       event.stopPropagation();
       const nextColumn = column === "left" ? "right" : "left";
       moveDashboardCard(cardId, nextColumn);
+      persistDashboardLayoutDraft();
       renderDashboardLayoutLists();
     });
 
@@ -6473,6 +6474,7 @@ function renderDashboardLayoutColumn(column, listEl) {
       if (!draggedCardId) return;
 
       moveDashboardCard(draggedCardId, column, cardId);
+      persistDashboardLayoutDraft();
       renderDashboardLayoutLists();
     });
 
@@ -6501,6 +6503,7 @@ function renderDashboardLayoutColumn(column, listEl) {
     if (!draggedCardId) return;
 
     moveDashboardCard(draggedCardId, column);
+    persistDashboardLayoutDraft();
     renderDashboardLayoutLists();
   };
 }
@@ -6524,18 +6527,20 @@ function closeDashboardLayoutDialog() {
   }
 }
 
-function saveDashboardLayout() {
+function persistDashboardLayoutDraft() {
   const viewport = getDashboardAppliedViewport();
   state.dashboard.layout = normalizeDashboardLayout(state.dashboard.layout);
   const viewportLayout = convertLegacyLayoutToViewportLayout(state.dashboard.layout, viewport);
   setDashboardLayoutForViewport(viewport, viewportLayout, { persist: true });
-
   localStorage.setItem(DASHBOARD_LAYOUT_LEGACY_STORAGE_KEY, JSON.stringify(state.dashboard.layout));
   localStorage.setItem(DASHBOARD_LAYOUT_LEGACY_ORDER_STORAGE_KEY, JSON.stringify(flattenDashboardLayout(state.dashboard.layout)));
-
   applyDashboardLayout();
   applyDashboardSettings();
   renderSettingsDashboardLayout();
+}
+
+function saveDashboardLayout() {
+  persistDashboardLayoutDraft();
   closeDashboardLayoutDialog();
   appendConsole("Dashboard layout saved.");
 }
@@ -6544,6 +6549,7 @@ function resetDashboardLayout() {
   const viewport = getDashboardAppliedViewport();
   const defaults = getDashboardDefaultLayoutForViewport(viewport);
   state.dashboard.layout = convertViewportLayoutToLegacyLayout(defaults, viewport);
+  persistDashboardLayoutDraft();
   renderDashboardLayoutLists();
 }
 
