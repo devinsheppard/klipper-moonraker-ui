@@ -116,6 +116,19 @@
           </span>
           <span class="nav-item-label">Machine</span>
         </button>
+        <button data-view="heightmap" class="nav-item" title="Heightmap">
+          <span class="nav-item-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 6h18"></path>
+              <path d="M3 12h18"></path>
+              <path d="M3 18h18"></path>
+              <path d="M6 3v18"></path>
+              <path d="M12 3v18"></path>
+              <path d="M18 3v18"></path>
+            </svg>
+          </span>
+          <span class="nav-item-label">Heightmap</span>
+        </button>
         <button data-view="files" class="nav-item" title="GCode Files">
           <span class="nav-item-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -190,6 +203,7 @@
           <button type="button" class="settings-subnav-item" data-settings-anchor="camera">Camera</button>
           <button type="button" class="settings-subnav-item" data-settings-anchor="toolhead">Tool</button>
           <button type="button" class="settings-subnav-item" data-settings-anchor="presets">Thermal Presets</button>
+          <button type="button" class="settings-subnav-item" data-settings-anchor="heightmap">Heightmap</button>
           <button type="button" class="settings-subnav-item" data-settings-anchor="timelapse">Timelapse</button>
           <button type="button" class="settings-subnav-item" data-settings-anchor="spoolman">Spoolman</button>
           <button type="button" class="settings-subnav-item" data-settings-anchor="versions">Versions</button>
@@ -528,6 +542,7 @@
                     <button type="button" id="controls-motors-off" class="controls-block-btn" data-gcode="M18">Motors Off</button>
                     <button type="button" id="controls-fan-on" class="controls-block-btn">Fan On</button>
                     <button type="button" id="controls-fan-off" class="controls-block-btn">Fan Off</button>
+                    <button type="button" id="controls-beacon-auto-calibrate" class="controls-block-btn" hidden>Beacon Auto Calibrate</button>
                   </div>
                   <div class="controls-fan-speed">
                     <label for="controls-fan-speed">
@@ -574,6 +589,31 @@
             <ul id="runout-sensor-list" class="runout-sensor-list" aria-label="Filament runout sensors"></ul>
             <p id="runout-sensor-status" class="muted runout-sensor-status" data-level="info" aria-live="polite">
               Connect to Moonraker to load runout sensors.
+            </p>
+          </article>
+
+          <article class="card beacon-card" id="card-beacon">
+            <div class="card-head beacon-card-head">
+              <h3 class="dashboard-title-with-icon">
+                <span class="dashboard-title-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none">
+                    <circle cx="12" cy="12" r="7.5" stroke="currentColor" stroke-width="1.8"></circle>
+                    <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.8"></circle>
+                    <path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path>
+                  </svg>
+                </span>
+                <span>Beacon</span>
+              </h3>
+              <div class="card-head-actions beacon-head-actions">
+                <button type="button" id="beacon-save-as" class="beacon-card-btn">Save As</button>
+                <button type="button" id="beacon-calibrate" class="beacon-card-btn">Calibrate</button>
+              </div>
+            </div>
+            <ul id="beacon-model-list" class="beacon-model-list" aria-label="Beacon model list">
+              <li class="beacon-model-empty">Connect to Moonraker to load beacon models.</li>
+            </ul>
+            <p id="beacon-status" class="muted beacon-status" data-level="info" aria-live="polite">
+              Connect to Moonraker to load beacon models.
             </p>
           </article>
 
@@ -1388,6 +1428,90 @@
         </article>
       </section>
 
+      <section id="view-heightmap" class="view">
+        <div class="grid two-col heightmap-grid">
+          <article class="card heightmap-map-card">
+            <div class="card-head heightmap-head">
+              <h3 class="dashboard-title-with-icon">
+                <span class="dashboard-title-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none">
+                    <path d="M3 6h18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path>
+                    <path d="M3 12h18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path>
+                    <path d="M3 18h18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path>
+                    <path d="M6 3v18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path>
+                    <path d="M12 3v18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path>
+                    <path d="M18 3v18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path>
+                  </svg>
+                </span>
+                <span>Heightmap</span>
+              </h3>
+              <div class="card-head-actions heightmap-head-actions">
+                <button type="button" id="heightmap-home-all" aria-label="Home all axes">Home All</button>
+                <button type="button" id="heightmap-clear-mesh" aria-label="Clear bed mesh">Clear</button>
+                <button type="button" id="heightmap-calibrate-mesh" aria-label="Calibrate bed mesh">Calibrate</button>
+                <button type="button" id="heightmap-refresh" aria-label="Refresh heightmap">Refresh</button>
+              </div>
+            </div>
+            <p id="heightmap-status" class="muted heightmap-status" data-level="info">Connect to Moonraker to load bed mesh data.</p>
+            <div id="heightmap-unavailable" class="heightmap-unavailable" hidden>
+              <p class="muted">Klipper is not ready for Heightmap.</p>
+            </div>
+            <div id="heightmap-empty" class="heightmap-empty" hidden>
+              <p class="muted">No bed mesh has been loaded yet.</p>
+            </div>
+            <div id="heightmap-content" class="heightmap-content">
+              <div class="heightmap-canvas-wrap">
+                <canvas id="heightmap-canvas" class="heightmap-canvas" width="960" height="580" aria-label="Bed mesh heightmap"></canvas>
+              </div>
+              <div class="heightmap-legend-wrap">
+                <span id="heightmap-legend-min" class="heightmap-legend-label">0.000 mm</span>
+                <div id="heightmap-legend-bar" class="heightmap-legend-bar" aria-hidden="true"></div>
+                <span id="heightmap-legend-max" class="heightmap-legend-label">0.000 mm</span>
+              </div>
+              <div class="heightmap-toggle-row" role="group" aria-label="Heightmap display controls">
+                <label class="checkbox-row" for="heightmap-show-probed">
+                  <input id="heightmap-show-probed" type="checkbox" />
+                  <span>Probed</span>
+                </label>
+                <label class="checkbox-row" for="heightmap-show-mesh">
+                  <input id="heightmap-show-mesh" type="checkbox" />
+                  <span>Mesh</span>
+                </label>
+                <label class="checkbox-row" for="heightmap-show-flat">
+                  <input id="heightmap-show-flat" type="checkbox" />
+                  <span>Flat</span>
+                </label>
+                <label class="checkbox-row" for="heightmap-wireframe">
+                  <input id="heightmap-wireframe" type="checkbox" />
+                  <span>Wireframe</span>
+                </label>
+                <label class="checkbox-row" for="heightmap-scale-gradient">
+                  <input id="heightmap-scale-gradient" type="checkbox" />
+                  <span>Scale Gradient</span>
+                </label>
+              </div>
+              <div class="heightmap-slider-row">
+                <label for="heightmap-scale-z-max">Scale Z Max</label>
+                <input id="heightmap-scale-z-max" type="range" min="0.1" max="2" step="0.1" />
+                <span id="heightmap-scale-z-max-value">0.5 mm</span>
+              </div>
+            </div>
+          </article>
+          <div class="heightmap-side">
+            <article class="card heightmap-current-card">
+              <h3>Current Mesh</h3>
+              <div id="heightmap-current-summary" class="heightmap-metric-list">
+                <p class="muted">No active mesh.</p>
+              </div>
+            </article>
+            <article class="card heightmap-profiles-card">
+              <h3>Profiles</h3>
+              <ul id="heightmap-profiles-list" class="heightmap-profiles-list" aria-label="Heightmap profiles"></ul>
+            </article>
+          </div>
+        </div>
+      </section>
+
             <section id="view-timelapse" class="view">
         <div class="grid two-col timelapse-grid">
           <article class="card timelapse-media-card" id="timelapse-media-card">
@@ -1773,6 +1897,27 @@
               <div id="settings-thermal-preset-list" class="settings-thermal-preset-list">
                 <p class="muted settings-presets-empty">No thermal presets configured.</p>
               </div>
+            </article>
+
+            <article class="card settings-heightmap-card" data-settings-section="heightmap">
+              <h3>Heightmap</h3>
+              <label for="settings-heightmap-orientation">Default Orientation</label>
+              <select id="settings-heightmap-orientation">
+                <option value="rightFront">Right Front</option>
+                <option value="leftFront">Left Front</option>
+                <option value="front">Front</option>
+                <option value="top">Top</option>
+              </select>
+
+              <label for="settings-heightmap-color-scheme">Color Scheme</label>
+              <select id="settings-heightmap-color-scheme">
+                <option value="portland">Portland (Default)</option>
+                <option value="spring">Spring</option>
+                <option value="hot">Hot</option>
+                <option value="hsv">HSV</option>
+                <option value="grayScale">GrayScale</option>
+              </select>
+              <p class="muted">These settings affect the Heightmap page immediately and are stored locally in Forge.</p>
             </article>
 
             <article class="card settings-timelapse-card" data-settings-section="timelapse">
@@ -2345,6 +2490,28 @@
         <button type="button" id="controls-zoffset-save-dialog-save-config">Save Config</button>
         <button type="button" id="controls-zoffset-save-dialog-later">Later</button>
         <button type="button" id="controls-zoffset-save-dialog-ok" hidden>OK</button>
+      </div>
+    </article>
+  </dialog>
+
+  <dialog id="beacon-save-dialog" class="beacon-save-dialog">
+    <article class="beacon-save-dialog-card">
+      <div class="beacon-save-dialog-head">
+        <h3>Save Beacon Model</h3>
+        <button type="button" id="beacon-save-dialog-close" class="beacon-save-dialog-close" aria-label="Close beacon save dialog">&times;</button>
+      </div>
+      <label for="beacon-save-dialog-name" class="beacon-save-dialog-label">Model Name</label>
+      <input id="beacon-save-dialog-name" type="text" autocomplete="off" spellcheck="false" placeholder="default" />
+      <label class="checkbox-row beacon-save-dialog-toggle" for="beacon-save-dialog-remove-current">
+        <input id="beacon-save-dialog-remove-current" type="checkbox" />
+        <span id="beacon-save-dialog-remove-label">Remove current model</span>
+      </label>
+      <p id="beacon-save-dialog-hint" class="muted beacon-save-dialog-hint">
+        Saving a new model can optionally remove the active one.
+      </p>
+      <div class="actions beacon-save-dialog-actions">
+        <button type="button" id="beacon-save-dialog-cancel">Cancel</button>
+        <button type="button" id="beacon-save-dialog-confirm">Save</button>
       </div>
     </article>
   </dialog>

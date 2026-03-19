@@ -300,7 +300,7 @@ export class MoonrakerClient {
 
     this.ws.addEventListener("open", () => {
       this.setConnectionState("connected");
-      this.send({ method: "printer.objects.subscribe", params: { objects: { print_stats: null, virtual_sdcard: null, gcode_move: null, motion_report: null, extruder: null, heater_bed: null, toolhead: null, manual_probe: null, stepper_enable: null } } });
+      this.send({ method: "printer.objects.subscribe", params: { objects: { print_stats: null, virtual_sdcard: null, gcode_move: null, motion_report: null, extruder: null, heater_bed: null, toolhead: null, manual_probe: null, stepper_enable: null, bed_mesh: null } } });
     });
 
     this.ws.addEventListener("close", () => this.setConnectionState("disconnected"));

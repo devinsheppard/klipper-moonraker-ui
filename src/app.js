@@ -229,6 +229,7 @@ const CONTROL_Z_OFFSET_SAVE_OPTION_VALUES = ["Z_OFFSET_APPLY_ENDSTOP", "Z_OFFSET
 const MANUAL_PROBE_STEPS = Object.freeze([0.005, 0.01, 0.05, 0.1, 1]);
 const CARD_COLLAPSE_KEY_PREFIX = "card_collapsed_";
 const KLIPPERVIEW_CARD_ID = "card-klipperview";
+const BEACON_CARD_ID = "card-beacon";
 const RUNOUT_SENSOR_OBJECT_PREFIXES = Object.freeze([
   "filament_switch_sensor ",
   "filament_motion_sensor ",
@@ -240,6 +241,7 @@ const DASHBOARD_CARD_IDS = [
   "card-quick-commands",
   "card-macros",
   "card-runout-sensors",
+  BEACON_CARD_ID,
   "card-dashboard-console",
   "camera-main-card",
   "camera-toolhead-card",
@@ -248,7 +250,7 @@ const DASHBOARD_CARD_IDS = [
 
 const DASHBOARD_LAYOUT_DEFAULT = {
   left: ["card-print-progress", "card-motion", "camera-main-card", "card-macros", "card-runout-sensors"],
-  right: ["card-temperatures", "card-quick-commands", "card-dashboard-console", KLIPPERVIEW_CARD_ID, "camera-toolhead-card"],
+  right: ["card-temperatures", "card-quick-commands", BEACON_CARD_ID, "card-dashboard-console", KLIPPERVIEW_CARD_ID, "camera-toolhead-card"],
 };
 
 const DASHBOARD_VIEWPORTS = ["mobile", "tablet", "desktop", "widescreen"];
@@ -271,7 +273,7 @@ const DASHBOARD_LAYOUT_DEFAULTS = Object.freeze({
   widescreen: Object.freeze({
     columns: [
       Object.freeze(["card-print-progress", "card-motion", "card-macros", "card-runout-sensors"]),
-      Object.freeze(["card-temperatures", "card-quick-commands", "card-dashboard-console"]),
+      Object.freeze(["card-temperatures", "card-quick-commands", BEACON_CARD_ID, "card-dashboard-console"]),
       Object.freeze(["camera-main-card", "camera-toolhead-card", KLIPPERVIEW_CARD_ID]),
     ],
   }),
@@ -291,6 +293,7 @@ const DASHBOARD_VISIBILITY_STORAGE_KEYS = Object.freeze({
   "card-quick-commands": "dashboard_show_quick_commands",
   "card-macros": "dashboard_show_macros",
   "card-runout-sensors": "dashboard_show_runout_sensors",
+  [BEACON_CARD_ID]: "dashboard_show_beacon",
   "camera-main-card": "dashboard_show_main_camera",
   "camera-toolhead-card": "dashboard_show_toolhead_camera",
   "card-dashboard-console": "dashboard_show_console",
@@ -303,6 +306,7 @@ const DASHBOARD_CARD_LABELS = {
   "card-quick-commands": "Quick Commands",
   "card-macros": "Macros",
   "card-runout-sensors": "Runout Sensors",
+  [BEACON_CARD_ID]: "Beacon",
   "card-dashboard-console": "Console",
   "camera-main-card": "Main Camera",
   "camera-toolhead-card": "Toolhead Cam",
@@ -325,6 +329,7 @@ const VIEW_TITLES = {
   dashboard: "Dashboard",
   console: "Console",
   configuration: "Machine",
+  heightmap: "Heightmap",
   files: "GCode Files",
   history: "Print History",
   timelapse: "Timelapse",
@@ -342,6 +347,7 @@ const SETTINGS_SUBNAV_ANCHORS = [
   "camera",
   "toolhead",
   "presets",
+  "heightmap",
   "timelapse",
   "spoolman",
   "versions",
@@ -373,6 +379,35 @@ const SPOOLMAN_CARD_FIELDS_STORAGE_KEY = "spoolman_selected_card_fields_v1";
 const SPOOLMAN_CONNECTION_DIRECT = "direct";
 const SPOOLMAN_CONNECTION_PROXY = "moonraker-proxy";
 const SPOOLMAN_REMAINING_UNIT_VALUES = ["weight", "length"];
+const HEIGHTMAP_DEFAULT_ORIENTATION_STORAGE_KEY = "heightmap_default_orientation_v1";
+const HEIGHTMAP_COLOR_SCHEME_STORAGE_KEY = "heightmap_color_scheme_v1";
+const HEIGHTMAP_SHOW_PROBED_STORAGE_KEY = "heightmap_show_probed_v1";
+const HEIGHTMAP_SHOW_MESH_STORAGE_KEY = "heightmap_show_mesh_v1";
+const HEIGHTMAP_SHOW_FLAT_STORAGE_KEY = "heightmap_show_flat_v1";
+const HEIGHTMAP_WIREFRAME_STORAGE_KEY = "heightmap_wireframe_v1";
+const HEIGHTMAP_SCALE_GRADIENT_STORAGE_KEY = "heightmap_scale_gradient_v1";
+const HEIGHTMAP_SCALE_Z_MAX_STORAGE_KEY = "heightmap_scale_z_max_v1";
+const HEIGHTMAP_ORIENTATION_VALUES = ["rightFront", "leftFront", "front", "top"];
+const HEIGHTMAP_COLOR_SCHEME_VALUES = ["portland", "spring", "hot", "hsv", "grayScale"];
+const HEIGHTMAP_COLOR_SCHEMES = Object.freeze({
+  portland: Object.freeze([
+    "#313695",
+    "#4575b4",
+    "#74add1",
+    "#abd9e9",
+    "#e0f3f8",
+    "#ffffbf",
+    "#fee090",
+    "#fdae61",
+    "#f46d43",
+    "#d73027",
+    "#a50026",
+  ]),
+  spring: Object.freeze(["#ff00ff", "#ffff00"]),
+  hot: Object.freeze(["#000000", "#ff0000", "#ffff00", "#ffffff"]),
+  hsv: Object.freeze(["#0000ff", "#00ffff", "#00ff00", "#ffff00", "#ff0000"]),
+  grayScale: Object.freeze(["#ffffff", "#000000"]),
+});
 const SPOOLMAN_CARD_FIELD_OPTIONS = [
   "id",
   "vendor",
@@ -821,6 +856,27 @@ const els = {
   timelapseMediaBreadcrumbs: document.getElementById("timelapse-media-breadcrumbs"),
   timelapseMediaFileList: document.getElementById("timelapse-media-file-list"),
   timelapseMediaStatus: document.getElementById("timelapse-media-status"),
+  heightmapRefresh: document.getElementById("heightmap-refresh"),
+  heightmapHomeAll: document.getElementById("heightmap-home-all"),
+  heightmapClearMesh: document.getElementById("heightmap-clear-mesh"),
+  heightmapCalibrateMesh: document.getElementById("heightmap-calibrate-mesh"),
+  heightmapStatus: document.getElementById("heightmap-status"),
+  heightmapUnavailable: document.getElementById("heightmap-unavailable"),
+  heightmapEmpty: document.getElementById("heightmap-empty"),
+  heightmapContent: document.getElementById("heightmap-content"),
+  heightmapCanvas: document.getElementById("heightmap-canvas"),
+  heightmapLegendMin: document.getElementById("heightmap-legend-min"),
+  heightmapLegendMax: document.getElementById("heightmap-legend-max"),
+  heightmapLegendBar: document.getElementById("heightmap-legend-bar"),
+  heightmapShowProbed: document.getElementById("heightmap-show-probed"),
+  heightmapShowMesh: document.getElementById("heightmap-show-mesh"),
+  heightmapShowFlat: document.getElementById("heightmap-show-flat"),
+  heightmapWireframe: document.getElementById("heightmap-wireframe"),
+  heightmapScaleGradient: document.getElementById("heightmap-scale-gradient"),
+  heightmapScaleZMax: document.getElementById("heightmap-scale-z-max"),
+  heightmapScaleZMaxValue: document.getElementById("heightmap-scale-z-max-value"),
+  heightmapCurrentSummary: document.getElementById("heightmap-current-summary"),
+  heightmapProfilesList: document.getElementById("heightmap-profiles-list"),
   jobsMoveFileDialog: document.getElementById("jobs-move-file-dialog"),
   jobsMoveFileTitle: document.getElementById("jobs-move-file-title"),
   jobsMoveFileSelect: document.getElementById("jobs-move-file-select"),
@@ -868,6 +924,18 @@ const els = {
   statusLayer: document.getElementById("status-layer"),
   runoutSensorList: document.getElementById("runout-sensor-list"),
   runoutSensorStatus: document.getElementById("runout-sensor-status"),
+  beaconModelList: document.getElementById("beacon-model-list"),
+  beaconStatus: document.getElementById("beacon-status"),
+  beaconSaveAs: document.getElementById("beacon-save-as"),
+  beaconCalibrate: document.getElementById("beacon-calibrate"),
+  beaconSaveDialog: document.getElementById("beacon-save-dialog"),
+  beaconSaveDialogClose: document.getElementById("beacon-save-dialog-close"),
+  beaconSaveDialogCancel: document.getElementById("beacon-save-dialog-cancel"),
+  beaconSaveDialogConfirm: document.getElementById("beacon-save-dialog-confirm"),
+  beaconSaveDialogName: document.getElementById("beacon-save-dialog-name"),
+  beaconSaveDialogRemoveCurrent: document.getElementById("beacon-save-dialog-remove-current"),
+  beaconSaveDialogRemoveLabel: document.getElementById("beacon-save-dialog-remove-label"),
+  beaconSaveDialogHint: document.getElementById("beacon-save-dialog-hint"),
   statusClearFile: document.getElementById("status-clear-file"),
   statusPrintActions: document.getElementById("status-print-actions"),
   statusPrintPause: document.getElementById("status-print-pause"),
@@ -1178,6 +1246,8 @@ const els = {
   settingsTimelapseRetractOptions: document.getElementById("settings-timelapse-retract-options"),
   settingsTimelapseVariableFpsOptions: document.getElementById("settings-timelapse-variable-fps-options"),
   settingsTimelapseStaticFpsOptions: document.getElementById("settings-timelapse-static-fps-options"),
+  settingsHeightmapOrientation: document.getElementById("settings-heightmap-orientation"),
+  settingsHeightmapColorScheme: document.getElementById("settings-heightmap-color-scheme"),
   settingsMacrosCategoryAdd: document.getElementById("settings-macros-category-add"),
   settingsMacrosCategoryList: document.getElementById("settings-macros-category-list"),
   settingsMacrosSelectedCategory: document.getElementById("settings-macros-selected-category"),
@@ -1217,6 +1287,7 @@ const els = {
   dashShowQuickCommands: document.getElementById("dash-show-quick-commands"),
   dashShowMacros: document.getElementById("dash-show-macros"),
   dashShowRunoutSensors: document.getElementById("dash-show-runout-sensors"),
+  dashShowBeacon: document.getElementById("dash-show-beacon"),
   dashShowMainCamera: document.getElementById("dash-show-main-camera"),
   dashShowToolheadCamera: document.getElementById("dash-show-toolhead-camera"),
   dashShowConsole: document.getElementById("dash-show-console"),
@@ -1237,6 +1308,7 @@ const els = {
   cardQuickCommands: document.getElementById("card-quick-commands"),
   cardMacros: document.getElementById("card-macros"),
   cardRunoutSensors: document.getElementById("card-runout-sensors"),
+  cardBeacon: document.getElementById(BEACON_CARD_ID),
   cardDashboardConsole: document.getElementById("card-dashboard-console"),
   cardMainCamera: document.getElementById("camera-main-card"),
   cardToolheadCamera: document.getElementById("camera-toolhead-card"),
@@ -1269,6 +1341,7 @@ const els = {
   controlsToolSelect: document.getElementById("controls-tool-select"),
   controlsToolSet: document.getElementById("controls-tool-set"),
   controlsMotorsOff: document.getElementById("controls-motors-off"),
+  controlsBeaconAutoCalibrate: document.getElementById("controls-beacon-auto-calibrate"),
   controlsFanOn: document.getElementById("controls-fan-on"),
   controlsFanOff: document.getElementById("controls-fan-off"),
   controlsFanSpeed: document.getElementById("controls-fan-speed"),
@@ -1329,6 +1402,16 @@ let prettyGcodeThreeState = {
   bedCenter: { x: 0, y: 0, z: 0 },
   bedSize: { x: 220, z: 220, y: 220 },
   lastInteractionMs: 0,
+};
+let heightmapThreeState = {
+  renderer: null,
+  scene: null,
+  camera: null,
+  controls: null,
+  canvas: null,
+  root: null,
+  webglUnavailable: false,
+  lastSceneKey: "",
 };
 
 function loadStoredBool(key, fallback) {
@@ -1528,6 +1611,42 @@ function loadStoredTimelapseMediaSort() {
 
 function loadStoredTimelapseMediaDirectory() {
   return normalizeTimelapseMediaDirectory(localStorage.getItem(TIMELAPSE_MEDIA_DIRECTORY_STORAGE_KEY));
+}
+
+function normalizeHeightmapOrientation(value) {
+  const raw = String(value || "").trim();
+  if (HEIGHTMAP_ORIENTATION_VALUES.includes(raw)) return raw;
+  const lowered = raw.toLowerCase();
+  const match = HEIGHTMAP_ORIENTATION_VALUES.find((entry) => entry.toLowerCase() === lowered);
+  return match || "rightFront";
+}
+
+function normalizeHeightmapColorScheme(value) {
+  const raw = String(value || "").trim();
+  if (HEIGHTMAP_COLOR_SCHEME_VALUES.includes(raw)) return raw;
+  const lowered = raw.toLowerCase();
+  if (lowered === "grayscale") return "grayScale";
+  if (HEIGHTMAP_COLOR_SCHEME_VALUES.some((entry) => entry.toLowerCase() === lowered)) {
+    return HEIGHTMAP_COLOR_SCHEME_VALUES.find((entry) => entry.toLowerCase() === lowered) || "portland";
+  }
+  return "portland";
+}
+
+function getHeightmapColorSchemeStops(colorScheme) {
+  const normalized = normalizeHeightmapColorScheme(colorScheme);
+  return HEIGHTMAP_COLOR_SCHEMES[normalized] || HEIGHTMAP_COLOR_SCHEMES.portland;
+}
+
+function loadStoredHeightmapOrientation() {
+  return normalizeHeightmapOrientation(localStorage.getItem(HEIGHTMAP_DEFAULT_ORIENTATION_STORAGE_KEY));
+}
+
+function loadStoredHeightmapColorScheme() {
+  return normalizeHeightmapColorScheme(localStorage.getItem(HEIGHTMAP_COLOR_SCHEME_STORAGE_KEY));
+}
+
+function loadStoredHeightmapScaleZMax() {
+  return loadStoredPositiveNumber(HEIGHTMAP_SCALE_Z_MAX_STORAGE_KEY, 0.5, { min: 0.1, max: 5 });
 }
 function normalizeJobsSort(value) {
   const normalized = String(value || "").trim().toLowerCase();
@@ -2832,6 +2951,8 @@ function getDashboardCardVisibilityValue(cardId) {
       return !!state.dashboard.showMacros;
     case "card-runout-sensors":
       return !!state.dashboard.showRunoutSensors;
+    case BEACON_CARD_ID:
+      return !!state.dashboard.showBeacon;
     case "camera-main-card":
       return !!state.dashboard.showMainCamera;
     case "camera-toolhead-card":
@@ -2867,6 +2988,9 @@ function setDashboardCardVisibilityValue(cardId, visible) {
     case "card-runout-sensors":
       state.dashboard.showRunoutSensors = nextValue;
       break;
+    case BEACON_CARD_ID:
+      state.dashboard.showBeacon = nextValue;
+      break;
     case "camera-main-card":
       state.dashboard.showMainCamera = nextValue;
       break;
@@ -2897,6 +3021,7 @@ function syncDashboardVisibilityInputs() {
   if (els.dashShowQuickCommands) els.dashShowQuickCommands.checked = state.dashboard.showQuickCommands;
   if (els.dashShowMacros) els.dashShowMacros.checked = state.dashboard.showMacros;
   if (els.dashShowRunoutSensors) els.dashShowRunoutSensors.checked = state.dashboard.showRunoutSensors;
+  if (els.dashShowBeacon) els.dashShowBeacon.checked = state.dashboard.showBeacon;
   if (els.dashShowMainCamera) els.dashShowMainCamera.checked = state.dashboard.showMainCamera;
   if (els.dashShowToolheadCamera) els.dashShowToolheadCamera.checked = state.dashboard.showToolheadCamera;
   if (els.dashShowConsole) els.dashShowConsole.checked = state.dashboard.showConsole;
@@ -3854,6 +3979,36 @@ function createDefaultRunoutSensorsState() {
   };
 }
 
+function createDefaultBeaconState() {
+  return {
+    supported: false,
+    models: [],
+    activeModel: "",
+    loading: false,
+    actionInFlight: "",
+    lastError: "",
+    lastUpdatedMs: null,
+  };
+}
+
+function createDefaultHeightmapState() {
+  return {
+    bedMesh: null,
+    loading: false,
+    actionInFlight: "",
+    lastError: "",
+    lastUpdatedMs: null,
+    showProbed: loadStoredBool(HEIGHTMAP_SHOW_PROBED_STORAGE_KEY, true),
+    showMesh: loadStoredBool(HEIGHTMAP_SHOW_MESH_STORAGE_KEY, true),
+    showFlat: loadStoredBool(HEIGHTMAP_SHOW_FLAT_STORAGE_KEY, true),
+    wireframe: loadStoredBool(HEIGHTMAP_WIREFRAME_STORAGE_KEY, true),
+    scaleGradient: loadStoredBool(HEIGHTMAP_SCALE_GRADIENT_STORAGE_KEY, false),
+    scaleZMax: loadStoredHeightmapScaleZMax(),
+    defaultOrientation: loadStoredHeightmapOrientation(),
+    colorScheme: loadStoredHeightmapColorScheme(),
+  };
+}
+
 const initialClearedStatusFilename = loadStoredStatusClearedFilename();
 
 const state = {
@@ -3894,6 +4049,7 @@ const state = {
     showQuickCommands: loadStoredBool(DASHBOARD_VISIBILITY_STORAGE_KEYS["card-quick-commands"], true),
     showMacros: loadStoredBool(DASHBOARD_VISIBILITY_STORAGE_KEYS["card-macros"], true),
     showRunoutSensors: loadStoredBool(DASHBOARD_VISIBILITY_STORAGE_KEYS["card-runout-sensors"], true),
+    showBeacon: loadStoredBool(DASHBOARD_VISIBILITY_STORAGE_KEYS[BEACON_CARD_ID], false),
     showMainCamera: loadStoredBool(DASHBOARD_VISIBILITY_STORAGE_KEYS["camera-main-card"], true),
     showToolheadCamera: loadStoredBool(DASHBOARD_VISIBILITY_STORAGE_KEYS["camera-toolhead-card"], true),
     showConsole: loadStoredBool(DASHBOARD_VISIBILITY_STORAGE_KEYS["card-dashboard-console"], true),
@@ -3954,6 +4110,8 @@ const state = {
   endstops: createDefaultEndstopsState(),
   logFiles: createDefaultMachineLogFilesState(),
   runoutSensors: createDefaultRunoutSensorsState(),
+  beacon: createDefaultBeaconState(),
+  heightmap: createDefaultHeightmapState(),
   jobs: createDefaultJobsState(),
   printHistory: createDefaultPrintHistoryState(),
   prettyGcode: createDefaultPrettyGcodeState(),
@@ -5584,6 +5742,7 @@ function applyInterfaceSettings() {
   updateSidebarToggleUi();
   updateMachineSideToggleUi();
   updateSettingsSubnavVisibility();
+  renderHeightmapView();
 }
 
 function isPrettyGcodeViewerVisible() {
@@ -5617,6 +5776,8 @@ function getDashboardCardElement(cardId) {
       return els.cardMacros;
     case "card-runout-sensors":
       return els.cardRunoutSensors;
+    case BEACON_CARD_ID:
+      return els.cardBeacon;
     case "card-dashboard-console":
       return els.cardDashboardConsole;
     case "camera-main-card":
@@ -5717,6 +5878,7 @@ function applyDashboardLayout() {
 }
 
 function applyDashboardSettings() {
+  const beaconVisible = !!state.dashboard.showBeacon && !!state.beacon.supported;
   const visibilityMap = [
     [els.cardPrintProgress, state.dashboard.showPrintProgress],
     [els.cardTemperatures, state.dashboard.showTemperatures],
@@ -5724,6 +5886,7 @@ function applyDashboardSettings() {
     [els.cardQuickCommands, state.dashboard.showQuickCommands],
     [els.cardMacros, state.dashboard.showMacros],
     [els.cardRunoutSensors, state.dashboard.showRunoutSensors],
+    [els.cardBeacon, beaconVisible],
     [els.cardMainCamera, state.dashboard.showMainCamera],
     [els.cardToolheadCamera, state.dashboard.showToolheadCamera],
     [els.cardDashboardConsole, state.dashboard.showConsole],
@@ -5734,6 +5897,8 @@ function applyDashboardSettings() {
     if (!card) return;
     card.classList.toggle("card-hidden", !visible);
   });
+
+  renderControlsPanel();
 }
 
 function clearDashboardLayoutDropTargets() {
@@ -7520,10 +7685,17 @@ function setConnectionUi(status) {
   renderToolsMenu();
   renderTimelapseControlView();
   renderTimelapseMediaCard();
+  renderHeightmapView();
+  renderHeightmapSettingsCard();
   renderTimelapseSettingsCard();
   renderSpoolmanView();
   renderSpoolmanSettingsCard();
   renderRunoutSensorsCard();
+  renderBeaconCard();
+  renderBeaconCard();
+  if (status === "connected" && state.activeView === "heightmap") {
+    void refreshHeightmapState({ source: "connect", silent: true });
+  }
   if (status === "connected" && state.activeView === "timelapse") {
     if (!state.timelapseMedia.files.length && !state.timelapseMedia.directories.length && !state.timelapseMedia.isLoading) {
       void loadTimelapseMediaFiles({ source: "connect", silent: true });
@@ -7534,6 +7706,7 @@ function setConnectionUi(status) {
     void refreshSpoolmanState({ source: "connect", silent: true });
   }
   if (status === "connected" && state.activeView === "settings") {
+    renderHeightmapSettingsCard();
     void refreshTimelapseSettings({ silent: true });
   }
 
@@ -7878,6 +8051,1510 @@ async function setRunoutSensorEnabled(objectKey, enabled) {
   return sent;
 }
 
+function normalizeBeaconModelName(value) {
+  return String(value || "").trim();
+}
+
+function getBeaconConfigSettings(settingsCandidate = state.controls.configSettings) {
+  return settingsCandidate && typeof settingsCandidate === "object"
+    ? settingsCandidate
+    : {};
+}
+
+function getBeaconConfigModelNames(settingsCandidate = state.controls.configSettings) {
+  const settings = getBeaconConfigSettings(settingsCandidate);
+  return [...new Set(
+    Object.keys(settings)
+      .map((key) => String(key || "").trim())
+      .filter((key) => key.toLowerCase().startsWith("beacon model "))
+      .map((key) => normalizeBeaconModelName(key.slice(13)))
+      .filter(Boolean)
+  )].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base", numeric: true }));
+}
+
+function syncBeaconModelsWithActive() {
+  const activeModel = normalizeBeaconModelName(state.beacon.activeModel);
+  state.beacon.models = (Array.isArray(state.beacon.models) ? state.beacon.models : [])
+    .map((entry) => normalizeBeaconModelName(entry?.name))
+    .filter(Boolean)
+    .map((name) => ({
+      name,
+      active: !!activeModel && name === activeModel,
+    }));
+}
+
+function updateBeaconSupportFromConfig(settingsCandidate = state.controls.configSettings) {
+  const settings = getBeaconConfigSettings(settingsCandidate);
+  const supportsBeacon = Object.prototype.hasOwnProperty.call(settings, "beacon");
+  const modelNames = supportsBeacon ? getBeaconConfigModelNames(settings) : [];
+  const previousSignature = `${state.beacon.supported}|${(state.beacon.models || []).map((entry) => entry.name).join("|")}`;
+  const nextSignature = `${supportsBeacon}|${modelNames.join("|")}`;
+
+  state.beacon.supported = supportsBeacon;
+
+  if (!supportsBeacon) {
+    state.beacon.activeModel = "";
+    state.beacon.models = [];
+    state.beacon.lastError = "";
+  } else {
+    state.beacon.models = modelNames.map((name) => ({
+      name,
+      active: !!state.beacon.activeModel && state.beacon.activeModel === name,
+    }));
+  }
+
+  syncBeaconModelsWithActive();
+
+  if (previousSignature !== nextSignature) {
+    applyDashboardSettings();
+  }
+
+  renderBeaconCard();
+  renderControlsPanel();
+}
+
+function mergeBeaconStatusSnapshot(statusSnapshot) {
+  const snapshot = statusSnapshot && typeof statusSnapshot === "object" ? statusSnapshot : {};
+  const beaconStatus = snapshot.beacon && typeof snapshot.beacon === "object" ? snapshot.beacon : null;
+  if (!beaconStatus) return false;
+
+  const nextActiveModel = normalizeBeaconModelName(beaconStatus.model);
+  const changed = nextActiveModel !== normalizeBeaconModelName(state.beacon.activeModel);
+
+  state.beacon.activeModel = nextActiveModel;
+  syncBeaconModelsWithActive();
+
+  if (changed) {
+    state.beacon.lastUpdatedMs = Date.now();
+  }
+
+  return changed;
+}
+
+function setBeaconStatusMessage(message, level = "info") {
+  if (!els.beaconStatus) return;
+  els.beaconStatus.textContent = String(message || "").trim();
+  els.beaconStatus.dataset.level = level;
+}
+
+function getBeaconXyHomed() {
+  const homedAxes = normalizeHomedAxes(state.printStatus.lastToolhead?.homed_axes);
+  return homedAxes.has("x") && homedAxes.has("y");
+}
+
+function getBeaconAllAxesHomed() {
+  const homedAxes = normalizeHomedAxes(state.printStatus.lastToolhead?.homed_axes);
+  return homedAxes.has("x") && homedAxes.has("y") && homedAxes.has("z");
+}
+
+function getBeaconPrinterBusy() {
+  const printerState = normalizePrinterState(
+    state.printStatus.lastPrintStats?.state
+      || state.printStatus.lastPrintStats?.status
+      || els.printerState?.dataset?.state
+      || ""
+  );
+  return printerState === "printing" || printerState === "paused";
+}
+
+function getBeaconCurrentModelName() {
+  return normalizeBeaconModelName(state.beacon.activeModel) || "default";
+}
+
+function syncBeaconSaveDialogContent() {
+  const currentModel = getBeaconCurrentModelName();
+  const enteredName = normalizeBeaconModelName(els.beaconSaveDialogName?.value || "");
+  const dialogLocked = state.connectionStatus !== "connected"
+    || !state.beacon.supported
+    || !!state.beacon.loading
+    || !!state.beacon.actionInFlight;
+
+  if (els.beaconSaveDialogName) {
+    els.beaconSaveDialogName.disabled = dialogLocked;
+  }
+
+  if (els.beaconSaveDialogRemoveLabel) {
+    els.beaconSaveDialogRemoveLabel.textContent = `Remove ${currentModel} model`;
+  }
+
+  if (els.beaconSaveDialogHint) {
+    els.beaconSaveDialogHint.textContent = `If saving as something other than ${currentModel}, you can choose to also remove the ${currentModel} model.`;
+  }
+
+  if (els.beaconSaveDialogRemoveCurrent) {
+    const disableRemove = dialogLocked || !enteredName || enteredName === currentModel;
+    els.beaconSaveDialogRemoveCurrent.disabled = disableRemove;
+    if (disableRemove) {
+      els.beaconSaveDialogRemoveCurrent.checked = false;
+    }
+  }
+
+  if (els.beaconSaveDialogConfirm) {
+    els.beaconSaveDialogConfirm.disabled = dialogLocked || !enteredName;
+  }
+}
+
+function openBeaconSaveDialog() {
+  if (!(els.beaconSaveDialog instanceof HTMLDialogElement)) return;
+  if (els.beaconSaveDialogName) {
+    els.beaconSaveDialogName.value = "default";
+  }
+  if (els.beaconSaveDialogRemoveCurrent) {
+    els.beaconSaveDialogRemoveCurrent.checked = false;
+  }
+  syncBeaconSaveDialogContent();
+  if (!els.beaconSaveDialog.open) {
+    els.beaconSaveDialog.showModal();
+  }
+  els.beaconSaveDialogName?.focus();
+}
+
+function closeBeaconSaveDialog() {
+  if (!(els.beaconSaveDialog instanceof HTMLDialogElement) || !els.beaconSaveDialog.open) return;
+  els.beaconSaveDialog.close();
+}
+
+function renderBeaconCard() {
+  if (!els.beaconModelList || !els.beaconStatus) return;
+
+  const connected = state.connectionStatus === "connected";
+  const supported = !!state.beacon.supported;
+  const loading = !!state.beacon.loading;
+  const actionInFlight = String(state.beacon.actionInFlight || "").trim();
+  const busy = loading || !!actionInFlight;
+  const printerBusy = getBeaconPrinterBusy();
+  const xyHomed = getBeaconXyHomed();
+  const models = Array.isArray(state.beacon.models) ? state.beacon.models : [];
+
+  els.beaconModelList.innerHTML = "";
+
+  if (!models.length) {
+    const emptyItem = document.createElement("li");
+    emptyItem.className = "beacon-model-empty";
+    emptyItem.textContent = "No existing beacon models found.";
+    els.beaconModelList.appendChild(emptyItem);
+  } else {
+    models.forEach((model) => {
+      const item = document.createElement("li");
+      item.className = "beacon-model-item";
+
+      const name = document.createElement("span");
+      name.className = "beacon-model-name";
+      name.textContent = model.name;
+
+      const activeChip = document.createElement("span");
+      activeChip.className = "beacon-model-chip";
+      activeChip.hidden = !model.active;
+      activeChip.textContent = "active";
+
+      const actions = document.createElement("div");
+      actions.className = "beacon-model-actions";
+
+      if (!model.active) {
+        const loadButton = document.createElement("button");
+        loadButton.type = "button";
+        loadButton.className = "beacon-model-action";
+        loadButton.dataset.beaconAction = "load";
+        loadButton.dataset.beaconModel = model.name;
+        loadButton.textContent = "Load";
+        loadButton.disabled = !connected || !supported || busy;
+        actions.appendChild(loadButton);
+      }
+
+      const removeButton = document.createElement("button");
+      removeButton.type = "button";
+      removeButton.className = "beacon-model-action";
+      removeButton.dataset.beaconAction = "remove";
+      removeButton.dataset.beaconModel = model.name;
+      removeButton.textContent = "Delete";
+      removeButton.disabled = !connected || !supported || busy;
+      actions.appendChild(removeButton);
+
+      item.append(name, activeChip, actions);
+      els.beaconModelList.appendChild(item);
+    });
+  }
+
+  if (els.beaconSaveAs) {
+    els.beaconSaveAs.disabled = !connected || !supported || busy;
+  }
+
+  if (els.beaconCalibrate) {
+    const canCalibrate = connected && supported && !busy && !printerBusy && xyHomed;
+    els.beaconCalibrate.disabled = !canCalibrate;
+    els.beaconCalibrate.textContent = actionInFlight === "calibrate" ? "Calibrating..." : "Calibrate";
+  }
+
+  syncBeaconSaveDialogContent();
+
+  if (!connected) {
+    setBeaconStatusMessage("Connect to Moonraker to load beacon models.", "warn");
+    return;
+  }
+
+  if (!supported) {
+    setBeaconStatusMessage("Beacon probe is not detected in printer config.", "info");
+    return;
+  }
+
+  if (loading) {
+    setBeaconStatusMessage("Loading beacon models...", "info");
+    return;
+  }
+
+  if (state.beacon.lastError) {
+    setBeaconStatusMessage(`Beacon update issue: ${state.beacon.lastError}`, "error");
+    return;
+  }
+
+  if (!models.length) {
+    setBeaconStatusMessage("No existing beacon models found.", "info");
+    return;
+  }
+
+  const activeModel = getBeaconCurrentModelName();
+  setBeaconStatusMessage(`Loaded ${models.length} model${models.length === 1 ? "" : "s"} (active: ${activeModel}).`, "info");
+}
+
+async function refreshBeaconState({ source = "manual", silent = false } = {}) {
+  if (!state.client || state.connectionStatus !== "connected") {
+    state.beacon.loading = false;
+    renderBeaconCard();
+    renderControlsPanel();
+    return [];
+  }
+
+  if (!state.beacon.supported) {
+    state.beacon.loading = false;
+    renderBeaconCard();
+    renderControlsPanel();
+    return [];
+  }
+
+  if (state.beacon.loading) {
+    return state.beacon.models;
+  }
+
+  state.beacon.loading = true;
+  if (!silent) {
+    state.beacon.lastError = "";
+  }
+  renderBeaconCard();
+  renderControlsPanel();
+
+  try {
+    const response = typeof state.client.queryPrinterObjects === "function"
+      ? await state.client.queryPrinterObjects(["beacon"])
+      : await state.client.call("/printer/objects/query?beacon");
+    const status = response?.result?.status || {};
+    mergeBeaconStatusSnapshot(status);
+    state.beacon.lastUpdatedMs = Date.now();
+    state.beacon.lastError = "";
+    log.info("Beacon state refreshed.", { source, models: state.beacon.models.length });
+    return state.beacon.models;
+  } catch (error) {
+    const message = error?.message || String(error);
+    state.beacon.lastError = message;
+    log.warn("Beacon refresh failed.", { source, error: message });
+    return state.beacon.models;
+  } finally {
+    state.beacon.loading = false;
+    renderBeaconCard();
+    renderControlsPanel();
+  }
+}
+
+async function runBeaconAction(script, { actionKey = "action", actionLabel = "Beacon action" } = {}) {
+  if (!script || !state.beacon.supported) return false;
+
+  state.beacon.actionInFlight = actionKey;
+  renderBeaconCard();
+  renderControlsPanel();
+
+  try {
+    const sent = await executeGcodeAction(script, { actionLabel });
+    if (sent) {
+      state.beacon.lastError = "";
+      state.beacon.lastUpdatedMs = Date.now();
+      window.setTimeout(() => {
+        void refreshBeaconState({ source: actionKey, silent: true });
+      }, 600);
+    } else {
+      state.beacon.lastError = `${actionLabel} failed.`;
+    }
+    return sent;
+  } finally {
+    state.beacon.actionInFlight = "";
+    renderBeaconCard();
+    renderControlsPanel();
+  }
+}
+
+async function requestBeaconLoadModel(modelName) {
+  const name = normalizeBeaconModelName(modelName);
+  if (!name) return false;
+
+  if (getBeaconPrinterBusy()) {
+    const confirmed = window.confirm("The printer is currently busy. Are you sure you want to change the beacon model?");
+    if (!confirmed) return false;
+  }
+
+  return runBeaconAction(
+    `BEACON_MODEL_SELECT NAME=${encodeGcodeParamValue(name)}`,
+    { actionKey: "load", actionLabel: `Load beacon model ${name}` }
+  );
+}
+
+async function requestBeaconRemoveModel(modelName) {
+  const name = normalizeBeaconModelName(modelName);
+  if (!name) return false;
+  return runBeaconAction(
+    `BEACON_MODEL_REMOVE NAME=${encodeGcodeParamValue(name)}`,
+    { actionKey: "remove", actionLabel: `Remove beacon model ${name}` }
+  );
+}
+
+async function requestBeaconCalibrate() {
+  return runBeaconAction("BEACON_CALIBRATE", {
+    actionKey: "calibrate",
+    actionLabel: "Beacon calibrate",
+  });
+}
+
+async function requestBeaconAutoCalibrate() {
+  return runBeaconAction("BEACON_AUTO_CALIBRATE", {
+    actionKey: "auto-calibrate",
+    actionLabel: "Beacon auto calibrate",
+  });
+}
+
+async function requestBeaconSaveModel() {
+  const modelName = normalizeBeaconModelName(els.beaconSaveDialogName?.value || "");
+  if (!modelName) {
+    setBeaconStatusMessage("Model name is required.", "warn");
+    els.beaconSaveDialogName?.focus();
+    return false;
+  }
+
+  const removeCurrent = !!els.beaconSaveDialogRemoveCurrent?.checked;
+  const currentModel = normalizeBeaconModelName(state.beacon.activeModel);
+  const scripts = [`BEACON_MODEL_SAVE NAME=${encodeGcodeParamValue(modelName)}`];
+
+  if (removeCurrent && currentModel) {
+    scripts.push(`BEACON_MODEL_REMOVE NAME=${encodeGcodeParamValue(currentModel)}`);
+  }
+
+  const sent = await runBeaconAction(scripts.join("\n"), {
+    actionKey: "save",
+    actionLabel: `Save beacon model ${modelName}`,
+  });
+
+  if (sent) {
+    closeBeaconSaveDialog();
+  }
+
+  return sent;
+}
+
+function persistHeightmapViewSettings() {
+  localStorage.setItem(HEIGHTMAP_SHOW_PROBED_STORAGE_KEY, String(!!state.heightmap.showProbed));
+  localStorage.setItem(HEIGHTMAP_SHOW_MESH_STORAGE_KEY, String(!!state.heightmap.showMesh));
+  localStorage.setItem(HEIGHTMAP_SHOW_FLAT_STORAGE_KEY, String(!!state.heightmap.showFlat));
+  localStorage.setItem(HEIGHTMAP_WIREFRAME_STORAGE_KEY, String(!!state.heightmap.wireframe));
+  localStorage.setItem(HEIGHTMAP_SCALE_GRADIENT_STORAGE_KEY, String(!!state.heightmap.scaleGradient));
+  localStorage.setItem(HEIGHTMAP_SCALE_Z_MAX_STORAGE_KEY, String(Number(state.heightmap.scaleZMax) || 0.5));
+}
+
+function persistHeightmapSettings() {
+  localStorage.setItem(HEIGHTMAP_DEFAULT_ORIENTATION_STORAGE_KEY, normalizeHeightmapOrientation(state.heightmap.defaultOrientation));
+  localStorage.setItem(HEIGHTMAP_COLOR_SCHEME_STORAGE_KEY, normalizeHeightmapColorScheme(state.heightmap.colorScheme));
+}
+
+function normalizeHeightmapMatrix(candidate) {
+  if (!Array.isArray(candidate)) return [];
+
+  return candidate
+    .map((row) => (Array.isArray(row) ? row.map((entry) => readFiniteNumber(entry) ?? 0) : []))
+    .filter((row) => row.length > 0);
+}
+
+function isHeightmapMeshActive(bedMesh) {
+  if (!bedMesh || typeof bedMesh !== "object") return false;
+
+  const profileName = String(bedMesh.profile_name || "").trim();
+  if (profileName) return true;
+
+  const hasMatrixData = (matrix) => {
+    const normalized = normalizeHeightmapMatrix(matrix);
+    return normalized.length > 0 && (normalized[0]?.length || 0) > 0;
+  };
+  if (hasMatrixData(bedMesh.mesh_matrix) || hasMatrixData(bedMesh.probed_matrix)) {
+    return true;
+  }
+
+  const meshMin = Array.isArray(bedMesh.mesh_min) ? bedMesh.mesh_min : [0, 0];
+  const meshMax = Array.isArray(bedMesh.mesh_max) ? bedMesh.mesh_max : [0, 0];
+  return [meshMin[0], meshMin[1], meshMax[0], meshMax[1]].some((value) => Math.abs(Number(value) || 0) > 0.000001);
+}
+
+function getHeightmapMeshBounds(bedMesh) {
+  const meshMin = Array.isArray(bedMesh?.mesh_min) ? bedMesh.mesh_min : [0, 0];
+  const meshMax = Array.isArray(bedMesh?.mesh_max) ? bedMesh.mesh_max : [0, 0];
+  const minX = readFiniteNumber(meshMin[0]) ?? 0;
+  const minY = readFiniteNumber(meshMin[1]) ?? 0;
+  const maxX = readFiniteNumber(meshMax[0]) ?? minX;
+  const maxY = readFiniteNumber(meshMax[1]) ?? minY;
+  return { minX, minY, maxX, maxY };
+}
+
+function flattenHeightmapPoints(matrix) {
+  const points = [];
+  normalizeHeightmapMatrix(matrix).forEach((row) => {
+    row.forEach((entry) => {
+      points.push(entry);
+    });
+  });
+  return points;
+}
+
+function getHeightmapStatsFromMatrix(matrix, bounds) {
+  const normalizedMatrix = normalizeHeightmapMatrix(matrix);
+  const rowCount = normalizedMatrix.length;
+  const colCount = normalizedMatrix[0]?.length || 0;
+  if (!rowCount || !colCount) return null;
+
+  const values = flattenHeightmapPoints(normalizedMatrix);
+  if (!values.length) return null;
+
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = Math.abs(max - min);
+  const minIndex = values.indexOf(min);
+  const maxIndex = values.indexOf(max);
+
+  const xStep = colCount > 1 ? (bounds.maxX - bounds.minX) / (colCount - 1) : 0;
+  const yStep = rowCount > 1 ? (bounds.maxY - bounds.minY) / (rowCount - 1) : 0;
+
+  const minRow = Math.floor(minIndex / colCount);
+  const minCol = minIndex % colCount;
+  const maxRow = Math.floor(maxIndex / colCount);
+  const maxCol = maxIndex % colCount;
+
+  return {
+    rows: rowCount,
+    cols: colCount,
+    min,
+    max,
+    range,
+    minX: bounds.minX + minCol * xStep,
+    minY: bounds.minY + minRow * yStep,
+    maxX: bounds.minX + maxCol * xStep,
+    maxY: bounds.minY + maxRow * yStep,
+  };
+}
+
+function getHeightmapProfileEntries(bedMesh) {
+  const profiles = bedMesh?.profiles && typeof bedMesh.profiles === "object" ? bedMesh.profiles : {};
+  return Object.entries(profiles)
+    .map(([name, profile]) => {
+      const points = normalizeHeightmapMatrix(profile?.points);
+      const stats = getHeightmapStatsFromMatrix(points, getHeightmapMeshBounds(bedMesh));
+      return {
+        name: String(name || "").trim(),
+        profile,
+        stats,
+      };
+    })
+    .filter((entry) => !!entry.name)
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function getHeightmapVisibleRange(bedMesh) {
+  const values = [];
+  if (state.heightmap.showProbed) {
+    values.push(...flattenHeightmapPoints(bedMesh?.probed_matrix));
+  }
+  if (state.heightmap.showMesh) {
+    values.push(...flattenHeightmapPoints(bedMesh?.mesh_matrix));
+  }
+
+  if (!values.length) {
+    const zMax = Math.max(0.1, Number(state.heightmap.scaleZMax) || 0.5);
+    return [-zMax, zMax];
+  }
+
+  if (state.heightmap.scaleGradient) {
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    if (Math.abs(max - min) < 0.000001) {
+      return [min - 0.05, max + 0.05];
+    }
+    return [min, max];
+  }
+
+  const zMax = Math.max(0.1, Number(state.heightmap.scaleZMax) || 0.5);
+  return [-zMax, zMax];
+}
+
+function orientHeightmapMatrix(matrix, orientation) {
+  const normalizedMatrix = normalizeHeightmapMatrix(matrix);
+  if (!normalizedMatrix.length) return normalizedMatrix;
+  const copy = normalizedMatrix.map((row) => [...row]);
+
+  switch (normalizeHeightmapOrientation(orientation)) {
+    case "leftFront":
+      return copy.map((row) => row.reverse());
+    case "front":
+      return copy.reverse();
+    case "top":
+      return copy.reverse().map((row) => row.reverse());
+    default:
+      return copy;
+  }
+}
+
+function parseHexColor(hexValue) {
+  const value = String(hexValue || "").trim().replace("#", "");
+  if (!/^[0-9a-f]{6}$/i.test(value)) {
+    return { r: 255, g: 255, b: 255 };
+  }
+  return {
+    r: parseInt(value.slice(0, 2), 16),
+    g: parseInt(value.slice(2, 4), 16),
+    b: parseInt(value.slice(4, 6), 16),
+  };
+}
+
+function mixColor(a, b, t) {
+  const clamped = Math.max(0, Math.min(1, Number(t) || 0));
+  return {
+    r: Math.round(a.r + (b.r - a.r) * clamped),
+    g: Math.round(a.g + (b.g - a.g) * clamped),
+    b: Math.round(a.b + (b.b - a.b) * clamped),
+  };
+}
+
+function getHeightmapColor(value, min, max, stops) {
+  const fallback = "rgb(255 255 255 / 1)";
+  if (!Array.isArray(stops) || !stops.length) return fallback;
+
+  const spread = max - min;
+  const normalized = spread > 0 ? Math.max(0, Math.min(1, (value - min) / spread)) : 0.5;
+  if (stops.length === 1) return stops[0];
+
+  const scaled = normalized * (stops.length - 1);
+  const leftIndex = Math.floor(scaled);
+  const rightIndex = Math.min(stops.length - 1, leftIndex + 1);
+  const blend = scaled - leftIndex;
+
+  const left = parseHexColor(stops[leftIndex]);
+  const right = parseHexColor(stops[rightIndex]);
+  const mixed = mixColor(left, right, blend);
+  return `rgb(${mixed.r} ${mixed.g} ${mixed.b})`;
+}
+
+function drawHeightmapMatrix(ctx, matrix, {
+  min = -0.5,
+  max = 0.5,
+  stroke = false,
+  alpha = 1,
+  colorStops = HEIGHTMAP_COLOR_SCHEMES.portland,
+} = {}) {
+  const oriented = orientHeightmapMatrix(matrix, state.heightmap.defaultOrientation);
+  const rowCount = oriented.length;
+  const colCount = oriented[0]?.length || 0;
+  if (!rowCount || !colCount) return false;
+
+  const width = ctx.canvas.width;
+  const height = ctx.canvas.height;
+  const paddingX = Math.max(14, Math.round(width * 0.03));
+  const paddingY = Math.max(14, Math.round(height * 0.04));
+  const drawWidth = Math.max(10, width - paddingX * 2);
+  const drawHeight = Math.max(10, height - paddingY * 2);
+  const cellWidth = drawWidth / colCount;
+  const cellHeight = drawHeight / rowCount;
+
+  ctx.save();
+  ctx.globalAlpha = Math.max(0.1, Math.min(1, Number(alpha) || 1));
+
+  for (let rowIndex = 0; rowIndex < rowCount; rowIndex += 1) {
+    const row = oriented[rowIndex];
+    for (let colIndex = 0; colIndex < colCount; colIndex += 1) {
+      const value = readFiniteNumber(row[colIndex]) ?? 0;
+      const x = paddingX + colIndex * cellWidth;
+      const y = paddingY + rowIndex * cellHeight;
+      ctx.fillStyle = getHeightmapColor(value, min, max, colorStops);
+      ctx.fillRect(x, y, Math.ceil(cellWidth + 1), Math.ceil(cellHeight + 1));
+    }
+  }
+
+  if (stroke) {
+    ctx.strokeStyle = getThemeColorValue("--line", "rgba(148, 163, 184, 0.38)");
+    ctx.lineWidth = 1;
+    for (let rowIndex = 0; rowIndex <= rowCount; rowIndex += 1) {
+      const y = paddingY + rowIndex * cellHeight;
+      ctx.beginPath();
+      ctx.moveTo(paddingX, y);
+      ctx.lineTo(paddingX + drawWidth, y);
+      ctx.stroke();
+    }
+
+    for (let colIndex = 0; colIndex <= colCount; colIndex += 1) {
+      const x = paddingX + colIndex * cellWidth;
+      ctx.beginPath();
+      ctx.moveTo(x, paddingY);
+      ctx.lineTo(x, paddingY + drawHeight);
+      ctx.stroke();
+    }
+  }
+
+  ctx.restore();
+  return true;
+}
+
+function syncHeightmapLegend(min, max) {
+  if (els.heightmapLegendMin) {
+    els.heightmapLegendMin.textContent = `${Number(min).toFixed(3)} mm`;
+  }
+  if (els.heightmapLegendMax) {
+    els.heightmapLegendMax.textContent = `${Number(max).toFixed(3)} mm`;
+  }
+
+  if (els.heightmapLegendBar) {
+    const stops = getHeightmapColorSchemeStops(state.heightmap.colorScheme);
+    els.heightmapLegendBar.style.background = `linear-gradient(90deg, ${stops.join(", ")})`;
+  }
+}
+
+function resizeHeightmapCanvasToDisplay(canvas) {
+  if (!(canvas instanceof HTMLCanvasElement)) return;
+  const rect = canvas.getBoundingClientRect();
+  const nextWidth = Math.max(300, Math.round(rect.width || canvas.clientWidth || canvas.width || 960));
+  const nextHeight = Math.max(220, Math.round(rect.height || canvas.clientHeight || canvas.height || 580));
+  if (canvas.width === nextWidth && canvas.height === nextHeight) return;
+  canvas.width = nextWidth;
+  canvas.height = nextHeight;
+}
+
+function resolveHeightmapLayerSelection(bedMesh) {
+  const probedMatrix = normalizeHeightmapMatrix(bedMesh?.probed_matrix);
+  const meshMatrix = normalizeHeightmapMatrix(bedMesh?.mesh_matrix);
+  const hasProbedData = probedMatrix.length > 0 && (probedMatrix[0]?.length || 0) > 0;
+  const hasMeshData = meshMatrix.length > 0 && (meshMatrix[0]?.length || 0) > 0;
+  let drawMeshLayer = !!state.heightmap.showMesh && hasMeshData;
+  let drawProbedLayer = !!state.heightmap.showProbed && hasProbedData;
+
+  if (!drawMeshLayer && !drawProbedLayer) {
+    if (hasMeshData) {
+      drawMeshLayer = true;
+    } else if (hasProbedData) {
+      drawProbedLayer = true;
+    }
+  }
+
+  return {
+    probedMatrix,
+    meshMatrix,
+    hasProbedData,
+    hasMeshData,
+    drawMeshLayer,
+    drawProbedLayer,
+  };
+}
+
+function getHeightmapColorComponents(value, min, max, stops) {
+  const fallback = [1, 1, 1];
+  if (!Array.isArray(stops) || !stops.length) return fallback;
+
+  const spread = max - min;
+  const normalized = spread > 0 ? Math.max(0, Math.min(1, (value - min) / spread)) : 0.5;
+  if (stops.length === 1) {
+    const c = parseHexColor(stops[0]);
+    return [c.r / 255, c.g / 255, c.b / 255];
+  }
+
+  const scaled = normalized * (stops.length - 1);
+  const leftIndex = Math.floor(scaled);
+  const rightIndex = Math.min(stops.length - 1, leftIndex + 1);
+  const blend = scaled - leftIndex;
+  const left = parseHexColor(stops[leftIndex]);
+  const right = parseHexColor(stops[rightIndex]);
+  const mixed = mixColor(left, right, blend);
+  return [mixed.r / 255, mixed.g / 255, mixed.b / 255];
+}
+
+function disposeHeightmapThreeObject(object) {
+  if (!object) return;
+  object.traverse((child) => {
+    if (child.geometry && typeof child.geometry.dispose === "function") {
+      child.geometry.dispose();
+    }
+
+    const materials = Array.isArray(child.material) ? child.material : [child.material];
+    materials.forEach((material) => {
+      if (material && typeof material.dispose === "function") {
+        material.dispose();
+      }
+    });
+  });
+}
+
+function disposeHeightmapThreeRoot() {
+  if (!heightmapThreeState.scene || !heightmapThreeState.root) return;
+  heightmapThreeState.scene.remove(heightmapThreeState.root);
+  disposeHeightmapThreeObject(heightmapThreeState.root);
+  heightmapThreeState.root = null;
+}
+
+function ensureHeightmapThreeContext(canvas) {
+  if (!(canvas instanceof HTMLCanvasElement)) return null;
+  if (heightmapThreeState.webglUnavailable) return null;
+
+  if (heightmapThreeState.canvas && heightmapThreeState.canvas !== canvas) {
+    disposeHeightmapThreeRoot();
+    heightmapThreeState.controls?.dispose?.();
+    heightmapThreeState.renderer?.dispose?.();
+    heightmapThreeState.renderer = null;
+    heightmapThreeState.scene = null;
+    heightmapThreeState.camera = null;
+    heightmapThreeState.controls = null;
+    heightmapThreeState.canvas = null;
+    heightmapThreeState.lastSceneKey = "";
+  }
+
+  if (heightmapThreeState.renderer && heightmapThreeState.scene && heightmapThreeState.camera && heightmapThreeState.controls) {
+    return heightmapThreeState;
+  }
+
+  try {
+    const renderer = new THREE.WebGLRenderer({
+      canvas,
+      antialias: true,
+      alpha: true,
+      preserveDrawingBuffer: false,
+    });
+    renderer.setClearColor(0x000000, 0);
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100000);
+    camera.up.set(0, 0, 1);
+    const controls = new OrbitControls(camera, canvas);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
+    controls.rotateSpeed = 0.5;
+    controls.panSpeed = 0.8;
+    controls.zoomSpeed = 0.95;
+    controls.addEventListener("change", () => {
+      if (heightmapThreeState.renderer && heightmapThreeState.scene && heightmapThreeState.camera) {
+        heightmapThreeState.renderer.render(heightmapThreeState.scene, heightmapThreeState.camera);
+      }
+    });
+
+    heightmapThreeState.renderer = renderer;
+    heightmapThreeState.scene = scene;
+    heightmapThreeState.camera = camera;
+    heightmapThreeState.controls = controls;
+    heightmapThreeState.canvas = canvas;
+    heightmapThreeState.webglUnavailable = false;
+    return heightmapThreeState;
+  } catch (error) {
+    const message = error?.message || String(error);
+    log.warn("Heightmap WebGL initialization failed; using 2D fallback.", { error: message });
+    heightmapThreeState.webglUnavailable = true;
+    return null;
+  }
+}
+
+function buildHeightmapSurfaceGeometry(matrix, bounds, colorRange, colorStops) {
+  const normalized = normalizeHeightmapMatrix(matrix);
+  const rows = normalized.length;
+  const cols = normalized[0]?.length || 0;
+  if (!rows || !cols) return null;
+
+  const minX = readFiniteNumber(bounds?.minX) ?? 0;
+  const minY = readFiniteNumber(bounds?.minY) ?? 0;
+  const maxX = readFiniteNumber(bounds?.maxX) ?? (minX + Math.max(1, cols - 1));
+  const maxY = readFiniteNumber(bounds?.maxY) ?? (minY + Math.max(1, rows - 1));
+  const stepX = cols > 1 ? (maxX - minX) / (cols - 1) : 0;
+  const stepY = rows > 1 ? (maxY - minY) / (rows - 1) : 0;
+
+  const vertexCount = rows * cols;
+  const positions = new Float32Array(vertexCount * 3);
+  const colors = new Float32Array(vertexCount * 3);
+  const indices = [];
+
+  const [colorMin, colorMax] = colorRange;
+
+  for (let rowIndex = 0; rowIndex < rows; rowIndex += 1) {
+    for (let colIndex = 0; colIndex < cols; colIndex += 1) {
+      const vertexIndex = rowIndex * cols + colIndex;
+      const offset = vertexIndex * 3;
+      const zValue = readFiniteNumber(normalized[rowIndex][colIndex]) ?? 0;
+      const x = minX + colIndex * stepX;
+      const y = minY + rowIndex * stepY;
+      const [r, g, b] = getHeightmapColorComponents(zValue, colorMin, colorMax, colorStops);
+
+      positions[offset] = x;
+      positions[offset + 1] = y;
+      positions[offset + 2] = zValue;
+      colors[offset] = r;
+      colors[offset + 1] = g;
+      colors[offset + 2] = b;
+    }
+  }
+
+  for (let rowIndex = 0; rowIndex < rows - 1; rowIndex += 1) {
+    for (let colIndex = 0; colIndex < cols - 1; colIndex += 1) {
+      const a = rowIndex * cols + colIndex;
+      const b = a + 1;
+      const c = (rowIndex + 1) * cols + colIndex;
+      const d = c + 1;
+      indices.push(a, c, b, b, c, d);
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setIndex(indices);
+  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+function getHeightmapCameraVector(orientation) {
+  switch (normalizeHeightmapOrientation(orientation)) {
+    case "leftFront":
+      return new THREE.Vector3(-1.15, -1.2, 0.75);
+    case "front":
+      return new THREE.Vector3(0, -1.55, 0.82);
+    case "top":
+      return new THREE.Vector3(0.01, 0.01, 1.85);
+    default:
+      return new THREE.Vector3(1.15, -1.2, 0.75);
+  }
+}
+
+function renderHeightmapCanvas3D() {
+  if (!(els.heightmapCanvas instanceof HTMLCanvasElement)) return false;
+  const context = ensureHeightmapThreeContext(els.heightmapCanvas);
+  if (!context) return false;
+
+  const bedMesh = state.heightmap.bedMesh || {};
+  if (!isHeightmapMeshActive(bedMesh)) {
+    disposeHeightmapThreeRoot();
+    context.renderer.clear();
+    syncHeightmapLegend(-0.5, 0.5);
+    return true;
+  }
+
+  const layers = resolveHeightmapLayerSelection(bedMesh);
+  if (!layers.hasMeshData && !layers.hasProbedData) {
+    disposeHeightmapThreeRoot();
+    context.renderer.clear();
+    syncHeightmapLegend(-0.5, 0.5);
+    return true;
+  }
+
+  resizeHeightmapCanvasToDisplay(els.heightmapCanvas);
+  context.renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+  context.renderer.setSize(els.heightmapCanvas.width, els.heightmapCanvas.height, false);
+
+  const [rangeMin, rangeMax] = getHeightmapVisibleRange(bedMesh);
+  const colorStops = getHeightmapColorSchemeStops(state.heightmap.colorScheme);
+  const bounds = getHeightmapMeshBounds(bedMesh);
+  const root = new THREE.Group();
+  const surfaceValues = [];
+
+  const addSurfaceLayer = (matrix, { opacity = 1 } = {}) => {
+    const geometry = buildHeightmapSurfaceGeometry(matrix, bounds, [rangeMin, rangeMax], colorStops);
+    if (!geometry) return;
+
+    const positions = geometry.getAttribute("position");
+    for (let i = 2; i < positions.array.length; i += 3) {
+      surfaceValues.push(positions.array[i]);
+    }
+
+    const material = new THREE.MeshStandardMaterial({
+      vertexColors: true,
+      side: THREE.DoubleSide,
+      transparent: opacity < 1,
+      opacity,
+      roughness: 0.74,
+      metalness: 0.06,
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    root.add(mesh);
+
+    if (state.heightmap.wireframe) {
+      const wire = new THREE.LineSegments(
+        new THREE.WireframeGeometry(geometry),
+        new THREE.LineBasicMaterial({
+          color: getThemeColorValue("--line", "#64748b"),
+          transparent: true,
+          opacity: 0.7,
+        })
+      );
+      root.add(wire);
+    }
+  };
+
+  if (layers.drawMeshLayer) {
+    addSurfaceLayer(layers.meshMatrix, { opacity: 0.96 });
+  }
+  if (layers.drawProbedLayer) {
+    addSurfaceLayer(layers.probedMatrix, { opacity: layers.drawMeshLayer ? 0.6 : 0.96 });
+  }
+
+  if (state.heightmap.showFlat) {
+    const source = layers.drawMeshLayer
+      ? layers.meshMatrix
+      : layers.drawProbedLayer
+        ? layers.probedMatrix
+        : layers.hasMeshData
+          ? layers.meshMatrix
+          : layers.probedMatrix;
+    const flatMatrix = normalizeHeightmapMatrix(source).map((row) => row.map(() => 0));
+    const flatGeometry = buildHeightmapSurfaceGeometry(flatMatrix, bounds, [rangeMin, rangeMax], colorStops);
+    if (flatGeometry) {
+      const flatMaterial = new THREE.MeshBasicMaterial({
+        color: getThemeColorValue("--text", "#f8fafc"),
+        transparent: true,
+        opacity: 0.16,
+        side: THREE.DoubleSide,
+      });
+      root.add(new THREE.Mesh(flatGeometry, flatMaterial));
+    }
+  }
+
+  const zMinData = surfaceValues.length ? Math.min(...surfaceValues) : -0.1;
+  const zMaxData = surfaceValues.length ? Math.max(...surfaceValues) : 0.1;
+  let zMin = Math.min(zMinData, state.heightmap.showFlat ? 0 : zMinData);
+  let zMax = Math.max(zMaxData, state.heightmap.showFlat ? 0 : zMaxData);
+  if (Math.abs(zMax - zMin) < 0.001) {
+    zMin -= 0.05;
+    zMax += 0.05;
+  }
+
+  const centerX = (bounds.minX + bounds.maxX) / 2;
+  const centerY = (bounds.minY + bounds.maxY) / 2;
+  const centerZ = (zMin + zMax) / 2;
+  const spanX = Math.max(1, bounds.maxX - bounds.minX);
+  const spanY = Math.max(1, bounds.maxY - bounds.minY);
+  const spanZ = Math.max(0.3, zMax - zMin);
+  const sceneSpan = Math.max(spanX, spanY, spanZ);
+
+  const gridDivisions = Math.max(4, Math.min(50, Math.max((layers.meshMatrix[0]?.length || 0) - 1, (layers.probedMatrix[0]?.length || 0) - 1)));
+  const grid = new THREE.GridHelper(sceneSpan, gridDivisions, getThemeColorValue("--line", "#64748b"), getThemeColorValue("--line", "#64748b"));
+  grid.rotation.x = Math.PI / 2;
+  grid.position.set(centerX, centerY, zMin);
+  if (Array.isArray(grid.material)) {
+    grid.material.forEach((material) => {
+      material.transparent = true;
+      material.opacity = 0.34;
+    });
+  } else if (grid.material) {
+    grid.material.transparent = true;
+    grid.material.opacity = 0.34;
+  }
+  root.add(grid);
+
+  const box = new THREE.Box3(
+    new THREE.Vector3(bounds.minX, bounds.minY, zMin),
+    new THREE.Vector3(bounds.maxX, bounds.maxY, zMax)
+  );
+  const boxHelper = new THREE.Box3Helper(box, new THREE.Color(getThemeColorValue("--line", "#64748b")));
+  root.add(boxHelper);
+
+  const axes = new THREE.AxesHelper(sceneSpan * 0.25);
+  axes.position.set(bounds.minX, bounds.minY, zMin);
+  root.add(axes);
+
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.9);
+  const keyLight = new THREE.DirectionalLight(0xffffff, 0.52);
+  keyLight.position.set(sceneSpan * 0.7, -sceneSpan * 0.8, sceneSpan * 1.5);
+  const fillLight = new THREE.DirectionalLight(0xffffff, 0.22);
+  fillLight.position.set(-sceneSpan, sceneSpan * 0.2, sceneSpan * 0.8);
+  root.add(ambientLight, keyLight, fillLight);
+
+  disposeHeightmapThreeRoot();
+  context.root = root;
+  context.scene.add(root);
+
+  const sceneKey = `${state.heightmap.defaultOrientation}|${bounds.minX.toFixed(3)}|${bounds.maxX.toFixed(3)}|${bounds.minY.toFixed(3)}|${bounds.maxY.toFixed(3)}|${zMin.toFixed(3)}|${zMax.toFixed(3)}`;
+  const shouldResetCamera = context.lastSceneKey !== sceneKey;
+  context.lastSceneKey = sceneKey;
+
+  context.camera.aspect = Math.max(0.1, els.heightmapCanvas.width / Math.max(1, els.heightmapCanvas.height));
+  context.camera.near = 0.1;
+  context.camera.far = Math.max(1000, sceneSpan * 40);
+  context.camera.updateProjectionMatrix();
+
+  if (shouldResetCamera) {
+    const lookTarget = new THREE.Vector3(centerX, centerY, centerZ);
+    const direction = getHeightmapCameraVector(state.heightmap.defaultOrientation).normalize();
+    const distance = Math.max(90, sceneSpan * 1.9);
+    context.camera.position.set(
+      lookTarget.x + direction.x * distance,
+      lookTarget.y + direction.y * distance,
+      lookTarget.z + direction.z * distance
+    );
+    context.controls.target.copy(lookTarget);
+  }
+
+  context.controls.update();
+  context.renderer.render(context.scene, context.camera);
+  syncHeightmapLegend(rangeMin, rangeMax);
+  return true;
+}
+
+function renderHeightmapCanvas2D() {
+  if (!(els.heightmapCanvas instanceof HTMLCanvasElement)) return;
+  resizeHeightmapCanvasToDisplay(els.heightmapCanvas);
+
+  const ctx = els.heightmapCanvas.getContext("2d");
+  if (!ctx) return;
+
+  const canvasWidth = els.heightmapCanvas.width;
+  const canvasHeight = els.heightmapCanvas.height;
+  ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+  ctx.fillStyle = getThemeColorValue("--bg-soft", "rgba(15, 23, 42, 0.84)");
+  ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+  const bedMesh = state.heightmap.bedMesh || {};
+  const hasMesh = isHeightmapMeshActive(bedMesh);
+  if (!hasMesh) {
+    syncHeightmapLegend(-0.5, 0.5);
+    return;
+  }
+
+  const probedMatrix = normalizeHeightmapMatrix(bedMesh.probed_matrix);
+  const meshMatrix = normalizeHeightmapMatrix(bedMesh.mesh_matrix);
+  const hasProbedData = probedMatrix.length > 0 && (probedMatrix[0]?.length || 0) > 0;
+  const hasMeshData = meshMatrix.length > 0 && (meshMatrix[0]?.length || 0) > 0;
+
+  if (!hasProbedData && !hasMeshData) {
+    syncHeightmapLegend(-0.5, 0.5);
+    return;
+  }
+
+  const [rangeMin, rangeMax] = getHeightmapVisibleRange(bedMesh);
+  const colorStops = getHeightmapColorSchemeStops(state.heightmap.colorScheme);
+  let drawMeshLayer = !!state.heightmap.showMesh && hasMeshData;
+  let drawProbedLayer = !!state.heightmap.showProbed && hasProbedData;
+
+  // Keep map visible like Mainsail even if both toggles are off.
+  if (!drawMeshLayer && !drawProbedLayer) {
+    if (hasMeshData) {
+      drawMeshLayer = true;
+    } else if (hasProbedData) {
+      drawProbedLayer = true;
+    }
+  }
+
+  let drewAny = false;
+  if (drawMeshLayer) {
+    drewAny = drawHeightmapMatrix(ctx, meshMatrix, {
+      min: rangeMin,
+      max: rangeMax,
+      stroke: !!state.heightmap.wireframe,
+      alpha: 0.96,
+      colorStops,
+    }) || drewAny;
+  }
+
+  if (drawProbedLayer) {
+    drewAny = drawHeightmapMatrix(ctx, probedMatrix, {
+      min: rangeMin,
+      max: rangeMax,
+      stroke: !!state.heightmap.wireframe,
+      alpha: drawMeshLayer ? 0.58 : 0.96,
+      colorStops,
+    }) || drewAny;
+  }
+
+  if (state.heightmap.showFlat) {
+    const matrix = drawMeshLayer
+      ? meshMatrix
+      : drawProbedLayer
+        ? probedMatrix
+        : hasMeshData
+          ? meshMatrix
+          : probedMatrix;
+    const normalized = normalizeHeightmapMatrix(matrix);
+    if (normalized.length && normalized[0]?.length) {
+      const flat = normalized.map((row) => row.map(() => 0));
+      drewAny = drawHeightmapMatrix(ctx, flat, {
+        min: rangeMin,
+        max: rangeMax,
+        stroke: true,
+        alpha: drewAny ? 0.24 : 0.45,
+        colorStops,
+      }) || drewAny;
+    }
+  }
+
+  syncHeightmapLegend(rangeMin, rangeMax);
+}
+
+function renderHeightmapCanvas() {
+  const rendered3d = renderHeightmapCanvas3D();
+  if (!rendered3d) {
+    renderHeightmapCanvas2D();
+  }
+}
+
+function setHeightmapStatusMessage(message, level = "info") {
+  if (!els.heightmapStatus) return;
+  els.heightmapStatus.textContent = String(message || "").trim();
+  els.heightmapStatus.dataset.level = level;
+}
+
+function getHeightmapPrinterState() {
+  return normalizePrinterState(state.printStatus.lastPrintStats?.state || state.printStatus.lastPrintStats?.status || els.printerState?.dataset?.state || "");
+}
+
+function isHeightmapKlipperReady() {
+  if (state.connectionStatus !== "connected") return false;
+  const printerState = getHeightmapPrinterState();
+  return !["disconnected", "connecting", "error"].includes(printerState);
+}
+
+function syncHeightmapInputControls() {
+  if (els.heightmapShowProbed) {
+    els.heightmapShowProbed.checked = !!state.heightmap.showProbed;
+  }
+  if (els.heightmapShowMesh) {
+    els.heightmapShowMesh.checked = !!state.heightmap.showMesh;
+  }
+  if (els.heightmapShowFlat) {
+    els.heightmapShowFlat.checked = !!state.heightmap.showFlat;
+  }
+  if (els.heightmapWireframe) {
+    els.heightmapWireframe.checked = !!state.heightmap.wireframe;
+  }
+  if (els.heightmapScaleGradient) {
+    els.heightmapScaleGradient.checked = !!state.heightmap.scaleGradient;
+  }
+  if (els.heightmapScaleZMax) {
+    els.heightmapScaleZMax.value = String(Math.max(0.1, Number(state.heightmap.scaleZMax) || 0.5));
+  }
+  if (els.heightmapScaleZMaxValue) {
+    els.heightmapScaleZMaxValue.textContent = `${Number(state.heightmap.scaleZMax || 0.5).toFixed(1)} mm`;
+  }
+}
+
+function renderHeightmapCurrentSummary() {
+  if (!els.heightmapCurrentSummary) return;
+
+  const bedMesh = state.heightmap.bedMesh;
+  if (!isHeightmapMeshActive(bedMesh)) {
+    els.heightmapCurrentSummary.innerHTML = '<p class="muted">No active mesh.</p>';
+    return;
+  }
+
+  const bounds = getHeightmapMeshBounds(bedMesh);
+  const activeMatrix = normalizeHeightmapMatrix(bedMesh?.probed_matrix);
+  const stats = getHeightmapStatsFromMatrix(activeMatrix, bounds);
+  const profileName = String(bedMesh?.profile_name || "").trim() || "Unknown";
+
+  if (!stats) {
+    els.heightmapCurrentSummary.innerHTML = `<p class="muted">Profile: ${profileName}</p>`;
+    return;
+  }
+
+  const rows = [
+    ["Name", profileName],
+    ["Size", `${stats.cols} x ${stats.rows}`],
+    ["Max", `${stats.max.toFixed(3)} mm @ [${stats.maxX.toFixed(1)}, ${stats.maxY.toFixed(1)}]`],
+    ["Min", `${stats.min.toFixed(3)} mm @ [${stats.minX.toFixed(1)}, ${stats.minY.toFixed(1)}]`],
+    ["Range", `${stats.range.toFixed(3)} mm`],
+  ];
+
+  els.heightmapCurrentSummary.innerHTML = rows
+    .map(([label, value]) => `<div class="heightmap-metric-row"><span>${label}</span><strong>${value}</strong></div>`)
+    .join("");
+}
+
+function renderHeightmapProfiles() {
+  if (!els.heightmapProfilesList) return;
+  const bedMesh = state.heightmap.bedMesh;
+  const profiles = getHeightmapProfileEntries(bedMesh);
+  const activeName = String(bedMesh?.profile_name || "").trim();
+  const busy = !!state.heightmap.loading || !!state.heightmap.actionInFlight || state.connectionStatus !== "connected";
+
+  els.heightmapProfilesList.innerHTML = "";
+
+  if (!profiles.length) {
+    const empty = document.createElement("li");
+    empty.className = "heightmap-profile-empty";
+    empty.innerHTML = '<p class="muted">No saved bed mesh profiles.</p>';
+    els.heightmapProfilesList.appendChild(empty);
+    return;
+  }
+
+  profiles.forEach((entry) => {
+    const item = document.createElement("li");
+    const isActive = activeName === entry.name;
+    item.className = `heightmap-profile-item${isActive ? " is-active" : ""}`;
+    item.dataset.heightmapProfile = entry.name;
+
+    const row = document.createElement("div");
+    row.className = "heightmap-profile-head";
+
+    const nameBtn = document.createElement("button");
+    nameBtn.type = "button";
+    nameBtn.className = "heightmap-profile-name";
+    nameBtn.dataset.heightmapAction = "load";
+    nameBtn.dataset.heightmapProfile = entry.name;
+    nameBtn.textContent = entry.name;
+    nameBtn.title = "Load profile";
+    nameBtn.disabled = busy;
+
+    const stats = document.createElement("span");
+    stats.className = "heightmap-profile-variance";
+    stats.textContent = entry.stats ? `${entry.stats.range.toFixed(3)} mm` : "--";
+    stats.title = entry.stats
+      ? `max ${entry.stats.max.toFixed(3)} mm, min ${entry.stats.min.toFixed(3)} mm`
+      : "No mesh stats available";
+
+    const actions = document.createElement("div");
+    actions.className = "heightmap-profile-actions";
+    const primaryAction = document.createElement("button");
+    primaryAction.type = "button";
+    primaryAction.dataset.heightmapAction = "rename";
+    primaryAction.dataset.heightmapProfile = entry.name;
+    primaryAction.setAttribute("aria-label", "Rename profile");
+    primaryAction.textContent = "Rename";
+    primaryAction.disabled = busy;
+
+    const deleteAction = document.createElement("button");
+    deleteAction.type = "button";
+    deleteAction.dataset.heightmapAction = "remove";
+    deleteAction.dataset.heightmapProfile = entry.name;
+    deleteAction.setAttribute("aria-label", "Delete profile");
+    deleteAction.textContent = "Delete";
+    deleteAction.disabled = busy;
+
+    actions.append(primaryAction, deleteAction);
+
+    row.append(nameBtn, stats, actions);
+    item.appendChild(row);
+    els.heightmapProfilesList.appendChild(item);
+  });
+}
+
+function renderHeightmapSettingsCard() {
+  if (els.settingsHeightmapOrientation) {
+    els.settingsHeightmapOrientation.value = normalizeHeightmapOrientation(state.heightmap.defaultOrientation);
+  }
+  if (els.settingsHeightmapColorScheme) {
+    els.settingsHeightmapColorScheme.value = normalizeHeightmapColorScheme(state.heightmap.colorScheme);
+  }
+}
+
+function renderHeightmapView() {
+  syncHeightmapInputControls();
+  renderHeightmapCurrentSummary();
+  renderHeightmapProfiles();
+  renderHeightmapCanvas();
+
+  const connected = state.connectionStatus === "connected";
+  const ready = isHeightmapKlipperReady();
+  const hasMesh = isHeightmapMeshActive(state.heightmap.bedMesh);
+  const printing = getHeightmapPrinterState() === "printing";
+  const busy = !!state.heightmap.loading || !!state.heightmap.actionInFlight;
+
+  if (els.heightmapUnavailable) {
+    els.heightmapUnavailable.hidden = !connected || ready;
+  }
+  if (els.heightmapEmpty) {
+    els.heightmapEmpty.hidden = !connected || !ready || hasMesh;
+  }
+  if (els.heightmapContent) {
+    els.heightmapContent.hidden = !connected || !ready || !hasMesh;
+  }
+
+  if (!connected) {
+    setHeightmapStatusMessage("Connect to Moonraker to load bed mesh data.", "warn");
+  } else if (!ready) {
+    setHeightmapStatusMessage("Klipper is not ready for Heightmap.", "warn");
+  } else if (state.heightmap.loading) {
+    setHeightmapStatusMessage("Loading bed mesh data...", "info");
+  } else if (state.heightmap.lastError) {
+    setHeightmapStatusMessage(`Heightmap load failed: ${state.heightmap.lastError}`, "error");
+  } else if (!hasMesh) {
+    setHeightmapStatusMessage("No bed mesh has been loaded yet.", "info");
+  } else if (state.heightmap.lastUpdatedMs) {
+    setHeightmapStatusMessage(`Last updated: ${new Date(state.heightmap.lastUpdatedMs).toLocaleTimeString()}`, "info");
+  } else {
+    setHeightmapStatusMessage("Heightmap ready.", "info");
+  }
+
+  if (els.heightmapRefresh) {
+    els.heightmapRefresh.disabled = !connected || busy;
+  }
+  if (els.heightmapHomeAll) {
+    els.heightmapHomeAll.disabled = !connected || !ready || printing || busy;
+  }
+  if (els.heightmapCalibrateMesh) {
+    els.heightmapCalibrateMesh.disabled = !connected || !ready || printing || busy;
+  }
+  if (els.heightmapClearMesh) {
+    els.heightmapClearMesh.disabled = !connected || !ready || !hasMesh || busy;
+  }
+}
+
+function mergeHeightmapStatusSnapshot(status) {
+  if (!status || typeof status !== "object") return false;
+  let changed = false;
+
+  if (Object.prototype.hasOwnProperty.call(status, "bed_mesh")) {
+    const snapshot = status.bed_mesh && typeof status.bed_mesh === "object" ? status.bed_mesh : null;
+    state.heightmap.bedMesh = snapshot;
+    changed = true;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(status, "toolhead")) {
+    const toolhead = status.toolhead && typeof status.toolhead === "object" ? status.toolhead : {};
+    state.printStatus.lastToolhead = {
+      ...state.printStatus.lastToolhead,
+      ...toolhead,
+    };
+    changed = true;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(status, "print_stats")) {
+    const printStats = status.print_stats && typeof status.print_stats === "object" ? status.print_stats : {};
+    state.printStatus.lastPrintStats = {
+      ...state.printStatus.lastPrintStats,
+      ...printStats,
+    };
+    changed = true;
+  }
+
+  return changed;
+}
+
+async function refreshHeightmapState({ source = "manual", silent = false } = {}) {
+  if (!state.client || state.connectionStatus !== "connected") {
+    state.heightmap.loading = false;
+    renderHeightmapView();
+    return null;
+  }
+
+  if (state.heightmap.loading) {
+    return state.heightmap.bedMesh;
+  }
+
+  state.heightmap.loading = true;
+  if (!silent) {
+    state.heightmap.lastError = "";
+  }
+  renderHeightmapView();
+
+  try {
+    const response = typeof state.client.queryPrinterObjects === "function"
+      ? await state.client.queryPrinterObjects(["bed_mesh", "toolhead", "print_stats"])
+      : await state.client.call("/printer/objects/query?bed_mesh&toolhead&print_stats");
+    const status = response?.result?.status || {};
+    mergeHeightmapStatusSnapshot(status);
+    state.heightmap.lastUpdatedMs = Date.now();
+    state.heightmap.lastError = "";
+    log.info("Heightmap refreshed.", { source });
+    return state.heightmap.bedMesh;
+  } catch (error) {
+    const message = error?.message || String(error);
+    state.heightmap.lastError = message;
+    log.warn("Heightmap refresh failed.", { source, error: message });
+    return state.heightmap.bedMesh;
+  } finally {
+    state.heightmap.loading = false;
+    renderHeightmapView();
+  }
+}
+
+async function runHeightmapGcodeAction(script, actionLabel) {
+  if (!script) return false;
+  state.heightmap.actionInFlight = actionLabel || "action";
+  renderHeightmapView();
+  try {
+    const sent = await executeGcodeAction(script, { actionLabel });
+    if (sent) {
+      state.heightmap.lastError = "";
+      window.setTimeout(() => {
+        void refreshHeightmapState({ source: actionLabel || "action", silent: true });
+      }, 700);
+    }
+    return sent;
+  } finally {
+    state.heightmap.actionInFlight = "";
+    renderHeightmapView();
+  }
+}
+
+function normalizeHeightmapProfileName(value) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) return "";
+  const asciiOnly = trimmed.replace(/[^\x00-\x7F]/g, "");
+  return asciiOnly.trim();
+}
+
+function formatHeightmapProfileScriptValue(name) {
+  return encodeGcodeParamValue(normalizeHeightmapProfileName(name));
+}
+
+async function requestHeightmapCalibrate() {
+  const current = "default";
+  const input = window.prompt("Enter bed mesh profile name for calibration:", current);
+  if (input == null) return false;
+
+  const name = normalizeHeightmapProfileName(input);
+  if (!name) {
+    appendConsole("Heightmap calibrate cancelled: profile name is required.", "warn");
+    return false;
+  }
+
+  return runHeightmapGcodeAction(`BED_MESH_CALIBRATE PROFILE=${formatHeightmapProfileScriptValue(name)}`, "Bed mesh calibrate");
+}
+
+async function requestHeightmapRenameProfile(profileName) {
+  const sourceName = normalizeHeightmapProfileName(profileName);
+  if (!sourceName) return false;
+
+  const input = window.prompt(`Rename profile "${sourceName}" to:`, sourceName);
+  if (input == null) return false;
+
+  const nextName = normalizeHeightmapProfileName(input);
+  if (!nextName || nextName === sourceName || nextName.toLowerCase() === "default" && sourceName.toLowerCase() !== "default") {
+    return false;
+  }
+
+  const existing = new Set(getHeightmapProfileEntries(state.heightmap.bedMesh).map((entry) => entry.name.toLowerCase()));
+  if (existing.has(nextName.toLowerCase()) && nextName.toLowerCase() !== sourceName.toLowerCase()) {
+    appendConsole(`Heightmap rename aborted: profile "${nextName}" already exists.`, "warn");
+    return false;
+  }
+
+  const script = `BED_MESH_PROFILE SAVE=${formatHeightmapProfileScriptValue(nextName)}\nBED_MESH_PROFILE REMOVE=${formatHeightmapProfileScriptValue(sourceName)}`;
+  return runHeightmapGcodeAction(script, `Rename bed mesh profile ${sourceName}`);
+}
+
+async function requestHeightmapLoadProfile(profileName) {
+  const name = normalizeHeightmapProfileName(profileName);
+  if (!name) return false;
+  const script = `BED_MESH_PROFILE LOAD=${formatHeightmapProfileScriptValue(name)}`;
+  return runHeightmapGcodeAction(script, `Load bed mesh profile ${name}`);
+}
+
+async function requestHeightmapRemoveProfile(profileName) {
+  const name = normalizeHeightmapProfileName(profileName);
+  if (!name) return false;
+  const confirmed = window.confirm(`Delete bed mesh profile "${name}"?`);
+  if (!confirmed) return false;
+  const script = `BED_MESH_PROFILE REMOVE=${formatHeightmapProfileScriptValue(name)}`;
+  return runHeightmapGcodeAction(script, `Remove bed mesh profile ${name}`);
+}
+
 function getDashboardStatusQueryObjects() {
   const baseObjects = [
     "extruder",
@@ -7889,7 +9566,11 @@ function getDashboardStatusQueryObjects() {
     "toolhead",
     "manual_probe",
     "fan",
+    "bed_mesh",
   ];
+  if (state.beacon.supported) {
+    baseObjects.push("beacon");
+  }
   const runoutObjects = Array.isArray(state.runoutSensors?.objectKeys) ? state.runoutSensors.objectKeys : [];
   return [...new Set([...baseObjects, ...runoutObjects])];
 }
@@ -9323,6 +11004,25 @@ function renderControlsPanel() {
   if (els.controlsFanOn) els.controlsFanOn.disabled = commandDisabled;
   if (els.controlsFanOff) els.controlsFanOff.disabled = commandDisabled;
 
+  if (els.controlsBeaconAutoCalibrate) {
+    const showBeaconAutoCalibrate = !!state.dashboard.showBeacon && !!state.beacon.supported;
+    const beaconBusy = !!state.beacon.loading || !!state.beacon.actionInFlight;
+    const printerBusy = getBeaconPrinterBusy();
+    const manualProbeActive = !!state.manualProbe.isActive;
+    const canAutoCalibrate = showBeaconAutoCalibrate
+      && !commandDisabled
+      && allAxesHomed
+      && !manualProbeActive
+      && !printerBusy
+      && !beaconBusy;
+
+    els.controlsBeaconAutoCalibrate.hidden = !showBeaconAutoCalibrate;
+    els.controlsBeaconAutoCalibrate.disabled = !canAutoCalibrate;
+    els.controlsBeaconAutoCalibrate.textContent = state.beacon.actionInFlight === "auto-calibrate"
+      ? "Auto Calibrating..."
+      : "Beacon Auto Calibrate";
+  }
+
   if (motionDisabled) {
     setControlsKeyboardActive(false);
   }
@@ -9792,6 +11492,10 @@ function startTemperaturePolling() {
       const runoutUpdated = mergeRunoutSensorStatusSnapshot(statusSnapshot);
       if (runoutUpdated) {
         renderRunoutSensorsCard();
+      }
+      const beaconUpdated = mergeBeaconStatusSnapshot(statusSnapshot);
+      if (beaconUpdated) {
+        renderBeaconCard();
       }
     } catch (error) {
       const message = error?.message || String(error);
@@ -12498,7 +14202,12 @@ async function connectMoonraker() {
       value && typeof value === "object" ? { ...value, pending: false } : value,
     ]))
   );
+  state.beacon = createDefaultBeaconState();
+  state.heightmap.loading = false;
+  state.heightmap.actionInFlight = "";
   renderRunoutSensorsCard();
+  renderBeaconCard();
+  renderHeightmapView();
 
   if (printHistoryRefreshTimer) {
     clearTimeout(printHistoryRefreshTimer);
@@ -12542,6 +14251,9 @@ async function connectMoonraker() {
       }
       if (state.activeView === "timelapse") {
         void loadTimelapseMediaFiles({ source: "connect", silent: true });
+      }
+      if (state.activeView === "heightmap") {
+        void refreshHeightmapState({ source: "connect", silent: true });
       }
         if (state.activeView === "spoolman") {
           void refreshSpoolmanState({ source: "connect", silent: true });
@@ -12597,17 +14309,23 @@ async function connectMoonraker() {
           value && typeof value === "object" ? { ...value, pending: false } : value,
         ]))
       );
+      state.beacon.loading = false;
+      state.beacon.actionInFlight = "";
+      state.heightmap.loading = false;
+      state.heightmap.actionInFlight = "";
       resetManualProbeState({ render: true });
       renderMachineLoadsCard();
       renderUpdateManagerCard();
       renderEndstopsCard();
       renderMachineLogFilesCard();
       renderJobsCard();
+      renderHeightmapView();
       renderTimelapseMediaCard();
       renderTimelapseSettingsCard();
       renderSpoolmanView();
       renderSpoolmanSettingsCard();
       renderRunoutSensorsCard();
+      renderBeaconCard();
       renderPrintHistoryCard();
       log.warn("Moonraker websocket disconnected.");
       return;
@@ -12658,17 +14376,23 @@ async function connectMoonraker() {
           value && typeof value === "object" ? { ...value, pending: false } : value,
         ]))
       );
+      state.beacon.loading = false;
+      state.beacon.actionInFlight = "";
+      state.heightmap.loading = false;
+      state.heightmap.actionInFlight = "";
       resetManualProbeState({ render: true });
       renderMachineLoadsCard();
       renderUpdateManagerCard();
       renderEndstopsCard();
       renderMachineLogFilesCard();
       renderJobsCard();
+      renderHeightmapView();
       renderTimelapseMediaCard();
       renderTimelapseSettingsCard();
       renderSpoolmanView();
       renderSpoolmanSettingsCard();
       renderRunoutSensorsCard();
+      renderBeaconCard();
       renderPrintHistoryCard();
       log.error("Moonraker websocket error.");
       return;
@@ -12727,6 +14451,15 @@ async function connectMoonraker() {
       if (runoutUpdated) {
         renderRunoutSensorsCard();
       }
+      const beaconUpdated = mergeBeaconStatusSnapshot(status);
+      if (beaconUpdated) {
+        renderBeaconCard();
+      }
+      const heightmapUpdated = mergeHeightmapStatusSnapshot(status);
+      if (heightmapUpdated && state.activeView === "heightmap") {
+        state.heightmap.lastUpdatedMs = Date.now();
+        renderHeightmapView();
+      }
 
       updateTemperatureSnapshotFromStatus(status);
       updateStatusFanSnapshot(status?.fan || null);
@@ -12784,6 +14517,12 @@ async function connectMoonraker() {
     updateStatusFanSnapshot(statusSnapshot.fan || null);
     mergeRunoutSensorStatusSnapshot(statusSnapshot);
     renderRunoutSensorsCard();
+    mergeBeaconStatusSnapshot(statusSnapshot);
+    renderBeaconCard();
+    mergeHeightmapStatusSnapshot(statusSnapshot);
+    if (state.activeView === "heightmap") {
+      renderHeightmapView();
+    }
     log.debug("Initial printer state loaded.", { printerState });
   } catch (error) {
     const message = error?.message || String(error);
@@ -12815,6 +14554,10 @@ async function connectMoonraker() {
     const settings = macroResponse?.result?.status?.configfile?.settings || {};
     state.controls.configSettings = settings && typeof settings === "object" ? settings : {};
     updateControlsToolsFromConfig(settings);
+    updateBeaconSupportFromConfig(settings);
+    if (state.beacon.supported) {
+      void refreshBeaconState({ source: "config-settings", silent: true });
+    }
 
     let macros = mergeMacroKeys(
       Object.keys(settings).filter((key) => String(key || "").toLowerCase().startsWith("gcode_macro "))
@@ -20163,6 +21906,16 @@ async function requestViewChange(viewName) {
 
     return;
   }
+  if (viewName === "heightmap") {
+    renderHeightmapView();
+
+    if (!state.client || state.connectionStatus !== "connected") {
+      return;
+    }
+
+    await refreshHeightmapState({ source: "view", silent: true });
+    return;
+  }
   if (viewName === "timelapse") {
     renderTimelapseControlView();
     renderTimelapseMediaCard();
@@ -20220,6 +21973,7 @@ async function requestViewChange(viewName) {
   }
 
   if (viewName === "settings") {
+    renderHeightmapSettingsCard();
     renderTimelapseSettingsCard();
 
     if (state.connectionStatus === "connected") {
@@ -20536,6 +22290,98 @@ function wireEvents() {
     });
   });
 
+  els.heightmapRefresh?.addEventListener("click", async () => {
+    await refreshHeightmapState({ source: "refresh" });
+  });
+
+  els.heightmapHomeAll?.addEventListener("click", async () => {
+    await runHeightmapGcodeAction("G28", "Home all axes");
+  });
+
+  els.heightmapClearMesh?.addEventListener("click", async () => {
+    await runHeightmapGcodeAction("BED_MESH_CLEAR", "Clear bed mesh");
+  });
+
+  els.heightmapCalibrateMesh?.addEventListener("click", async () => {
+    await requestHeightmapCalibrate();
+  });
+
+  els.heightmapShowProbed?.addEventListener("change", () => {
+    state.heightmap.showProbed = !!els.heightmapShowProbed?.checked;
+    persistHeightmapViewSettings();
+    renderHeightmapView();
+  });
+
+  els.heightmapShowMesh?.addEventListener("change", () => {
+    state.heightmap.showMesh = !!els.heightmapShowMesh?.checked;
+    persistHeightmapViewSettings();
+    renderHeightmapView();
+  });
+
+  els.heightmapShowFlat?.addEventListener("change", () => {
+    state.heightmap.showFlat = !!els.heightmapShowFlat?.checked;
+    persistHeightmapViewSettings();
+    renderHeightmapView();
+  });
+
+  els.heightmapWireframe?.addEventListener("change", () => {
+    state.heightmap.wireframe = !!els.heightmapWireframe?.checked;
+    persistHeightmapViewSettings();
+    renderHeightmapView();
+  });
+
+  els.heightmapScaleGradient?.addEventListener("change", () => {
+    state.heightmap.scaleGradient = !!els.heightmapScaleGradient?.checked;
+    persistHeightmapViewSettings();
+    renderHeightmapView();
+  });
+
+  els.heightmapScaleZMax?.addEventListener("input", () => {
+    const value = Number(els.heightmapScaleZMax?.value);
+    state.heightmap.scaleZMax = Math.max(0.1, Math.min(5, Number.isFinite(value) ? value : 0.5));
+    persistHeightmapViewSettings();
+    renderHeightmapView();
+  });
+
+  els.heightmapProfilesList?.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+
+    const actionBtn = target.closest("[data-heightmap-action]");
+    if (!(actionBtn instanceof HTMLElement)) return;
+
+    const action = String(actionBtn.dataset.heightmapAction || "").trim();
+    const profileName = String(actionBtn.dataset.heightmapProfile || "").trim();
+
+    if (action === "load") {
+      void requestHeightmapLoadProfile(profileName);
+      return;
+    }
+
+    if (action === "rename") {
+      void requestHeightmapRenameProfile(profileName);
+      return;
+    }
+
+    if (action === "remove") {
+      void requestHeightmapRemoveProfile(profileName);
+    }
+  });
+
+  els.settingsHeightmapOrientation?.addEventListener("change", () => {
+    state.heightmap.defaultOrientation = normalizeHeightmapOrientation(els.settingsHeightmapOrientation?.value);
+    persistHeightmapSettings();
+    renderHeightmapSettingsCard();
+    renderHeightmapView();
+  });
+
+  els.settingsHeightmapColorScheme?.addEventListener("change", () => {
+    state.heightmap.colorScheme = normalizeHeightmapColorScheme(els.settingsHeightmapColorScheme?.value);
+    persistHeightmapSettings();
+    renderHeightmapSettingsCard();
+    renderHeightmapView();
+  });
+
   els.timelapseServiceRefresh?.addEventListener("click", async () => {
     await refreshTimelapseControlState();
   });
@@ -20699,6 +22545,9 @@ function wireEvents() {
 
   window.addEventListener("resize", () => {
     handleDashboardViewportResize();
+    if (state.activeView === "heightmap") {
+      renderHeightmapView();
+    }
   });
 
   els.sidebarToggle?.addEventListener("click", toggleSidebar);
@@ -21789,6 +23638,7 @@ function wireEvents() {
     state.dashboard.showQuickCommands = els.dashShowQuickCommands?.checked ?? state.dashboard.showQuickCommands;
     state.dashboard.showMacros = els.dashShowMacros?.checked ?? state.dashboard.showMacros;
     state.dashboard.showRunoutSensors = els.dashShowRunoutSensors?.checked ?? state.dashboard.showRunoutSensors;
+    state.dashboard.showBeacon = els.dashShowBeacon?.checked ?? state.dashboard.showBeacon;
     state.dashboard.showMainCamera = els.dashShowMainCamera?.checked ?? state.dashboard.showMainCamera;
     state.dashboard.showToolheadCamera = els.dashShowToolheadCamera?.checked ?? state.dashboard.showToolheadCamera;
     state.dashboard.showConsole = els.dashShowConsole?.checked ?? state.dashboard.showConsole;
@@ -22242,6 +24092,69 @@ function wireEvents() {
     void setRunoutSensorEnabled(sensorKey, target.checked);
   });
 
+  els.beaconModelList?.addEventListener("click", async (event) => {
+    const target = event.target instanceof Element
+      ? event.target.closest("[data-beacon-action][data-beacon-model]")
+      : null;
+    if (!(target instanceof HTMLButtonElement) || target.disabled) return;
+
+    const action = String(target.dataset.beaconAction || "").trim().toLowerCase();
+    const modelName = normalizeBeaconModelName(target.dataset.beaconModel);
+    if (!modelName) return;
+
+    if (action === "load") {
+      await requestBeaconLoadModel(modelName);
+      return;
+    }
+
+    if (action === "remove") {
+      await requestBeaconRemoveModel(modelName);
+    }
+  });
+
+  els.beaconSaveAs?.addEventListener("click", () => {
+    if (els.beaconSaveAs?.disabled) return;
+    openBeaconSaveDialog();
+  });
+
+  els.beaconCalibrate?.addEventListener("click", async () => {
+    if (els.beaconCalibrate?.disabled) return;
+    await requestBeaconCalibrate();
+  });
+
+  els.controlsBeaconAutoCalibrate?.addEventListener("click", async () => {
+    if (els.controlsBeaconAutoCalibrate?.disabled || els.controlsBeaconAutoCalibrate?.hidden) return;
+    await requestBeaconAutoCalibrate();
+  });
+
+  els.beaconSaveDialogClose?.addEventListener("click", () => {
+    closeBeaconSaveDialog();
+  });
+
+  els.beaconSaveDialogCancel?.addEventListener("click", () => {
+    closeBeaconSaveDialog();
+  });
+
+  els.beaconSaveDialogConfirm?.addEventListener("click", async () => {
+    if (els.beaconSaveDialogConfirm?.disabled) return;
+    await requestBeaconSaveModel();
+  });
+
+  els.beaconSaveDialogName?.addEventListener("input", () => {
+    syncBeaconSaveDialogContent();
+  });
+
+  els.beaconSaveDialog?.addEventListener("click", (event) => {
+    if (event.target === els.beaconSaveDialog) {
+      closeBeaconSaveDialog();
+    }
+  });
+
+  els.beaconSaveDialog?.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    closeBeaconSaveDialog();
+  });
+
   els.mainCameraFullscreen.addEventListener("click", () => openCameraFullscreen(state.camera, "Main Camera"));
   els.toolheadCameraFullscreen.addEventListener("click", () => openCameraFullscreen(state.toolheadCamera, "Toolhead Cam"));
   els.cameraDialogClose.addEventListener("click", closeCameraFullscreen);
@@ -22264,6 +24177,8 @@ async function init() {
   syncWarningsSettingsControls();
   renderSettingsDashboardLayout();
   renderThermalPresetSettingsList();
+  renderHeightmapSettingsCard();
+  renderHeightmapView();
   renderTimelapseControlView();
   renderTimelapseMediaCard();
   renderTimelapseSettingsCard();
@@ -22370,6 +24285,7 @@ async function init() {
   renderEndstopsCard();
   renderMachineLogFilesCard();
   renderJobsCard();
+  renderHeightmapView();
   renderTimelapseMediaCard();
   renderPrintHistoryCard();
   renderPrettyGcodeView();
