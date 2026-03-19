@@ -14,6 +14,7 @@ const INTERFACE_DENSITIES = ["comfortable", "compact"];
 const INTERFACE_THEME_PALETTE_STORAGE_KEY = "interface_theme_palette_v1";
 const INTERFACE_THEME_PRESET_STORAGE_KEY = "interface_theme_preset_v1";
 const INTERFACE_THEME_PRESET_CUSTOM = "custom";
+const INTERFACE_THEME_BASE_PRESET_PREFIX = "base:";
 const INTERFACE_BACKGROUND_IMAGE_URL_STORAGE_KEY = "interface_background_image_url_v1";
 const INTERFACE_BACKGROUND_IMAGE_ENABLED_STORAGE_KEY = "interface_background_image_enabled_v1";
 const THEME_WATERMARK_LOGO_CANDIDATES = Object.freeze({
@@ -1089,7 +1090,6 @@ const els = {
   machineLogFilesStatus: document.getElementById("machine-log-files-status"),
   settingsForm: document.getElementById("settings-form"),
   moonrakerUrl: document.getElementById("moonraker-url"),
-  interfaceTheme: document.getElementById("interface-theme"),
   themeCommunityPreset: document.getElementById("theme-community-preset"),
   themeCommunityApply: document.getElementById("theme-community-apply"),
   themePaletteReset: document.getElementById("theme-palette-reset"),
@@ -1381,6 +1381,26 @@ function getThemeBasePalette(themeName) {
   const normalizedTheme = INTERFACE_THEMES.includes(themeName) ? themeName : DEFAULT_INTERFACE_THEME;
   const source = INTERFACE_THEME_BASE_PALETTES[normalizedTheme] || INTERFACE_THEME_BASE_PALETTES[DEFAULT_INTERFACE_THEME];
   return { ...source };
+}
+
+function getThemeBasePresetOptionId(themeName) {
+  const normalizedTheme = INTERFACE_THEMES.includes(themeName) ? themeName : DEFAULT_INTERFACE_THEME;
+  return `${INTERFACE_THEME_BASE_PRESET_PREFIX}${normalizedTheme}`;
+}
+
+function parseThemeBasePresetOptionId(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized.startsWith(INTERFACE_THEME_BASE_PRESET_PREFIX)) return null;
+  const themeName = normalized.slice(INTERFACE_THEME_BASE_PRESET_PREFIX.length);
+  return INTERFACE_THEMES.includes(themeName) ? themeName : null;
+}
+
+function isThemePaletteMatchingBaseTheme(themeName, palette) {
+  const basePalette = getThemeBasePalette(themeName);
+  const normalizedPalette = normalizeThemePalette(palette, themeName);
+  return INTERFACE_THEME_COLOR_FIELDS.every(
+    (field) => normalizedPalette[field.key] === basePalette[field.key]
+  );
 }
 
 function normalizeThemePalette(palette, themeName) {
@@ -5421,15 +5441,20 @@ function applyThemePaletteOverrides() {
 }
 
 function syncThemeEditorControls() {
-  if (els.interfaceTheme) {
-    els.interfaceTheme.value = state.interface.theme;
-  }
-
   if (els.themeCommunityPreset) {
-    const presetId = COMMUNITY_THEME_PRESET_IDS.includes(state.interface.themePreset)
+    let presetId = COMMUNITY_THEME_PRESET_IDS.includes(state.interface.themePreset)
       ? state.interface.themePreset
       : INTERFACE_THEME_PRESET_CUSTOM;
-    els.themeCommunityPreset.value = presetId;
+
+    if (
+      presetId === INTERFACE_THEME_PRESET_CUSTOM &&
+      isThemePaletteMatchingBaseTheme(state.interface.theme, state.interface.themePalette)
+    ) {
+      presetId = getThemeBasePresetOptionId(state.interface.theme);
+    }
+
+    const hasPresetOption = [...els.themeCommunityPreset.options].some((option) => option.value === presetId);
+    els.themeCommunityPreset.value = hasPresetOption ? presetId : INTERFACE_THEME_PRESET_CUSTOM;
   }
 
   INTERFACE_THEME_COLOR_FIELDS.forEach((field) => {
@@ -5476,6 +5501,22 @@ function resetThemePaletteToBaseTheme({ persist = true } = {}) {
 }
 
 function applyThemePresetById(presetId, { persist = true } = {}) {
+  const baseTheme = parseThemeBasePresetOptionId(presetId);
+  if (baseTheme) {
+    state.interface.theme = baseTheme;
+    state.interface.themePreset = INTERFACE_THEME_PRESET_CUSTOM;
+    state.interface.themePalette = getThemeBasePalette(baseTheme);
+
+    applyInterfaceSettings();
+    syncThemeEditorControls();
+
+    if (persist) {
+      persistInterfaceThemeSettings();
+    }
+
+    return true;
+  }
+
   if (presetId === INTERFACE_THEME_PRESET_CUSTOM) {
     resetThemePaletteToBaseTheme({ persist });
     return true;
@@ -21201,21 +21242,12 @@ function wireEvents() {
     }
   });
 
-  els.interfaceTheme?.addEventListener("change", () => {
-    const nextTheme = INTERFACE_THEMES.includes(els.interfaceTheme.value) ? els.interfaceTheme.value : DEFAULT_INTERFACE_THEME;
-    state.interface.theme = nextTheme;
-    resetThemePaletteToBaseTheme({ persist: false });
-    state.interface.themePreset = INTERFACE_THEME_PRESET_CUSTOM;
-    applyInterfaceSettings();
-    syncThemeEditorControls();
-    persistInterfaceThemeSettings();
-  });
-
   els.themeCommunityApply?.addEventListener("click", () => {
     const presetId = String(els.themeCommunityPreset?.value || "").trim();
     const applied = applyThemePresetById(presetId);
     if (applied) {
-      appendConsole(`Theme preset applied: ${presetId}`, "info");
+      const selectedLabel = String(els.themeCommunityPreset?.selectedOptions?.[0]?.textContent || presetId).trim();
+      appendConsole(`Theme preset applied: ${selectedLabel}`, "info");
     }
   });
 
@@ -21613,7 +21645,6 @@ function wireEvents() {
     if (!url) return;
 
     state.moonrakerUrl = url;
-    state.interface.theme = INTERFACE_THEMES.includes(els.interfaceTheme.value) ? els.interfaceTheme.value : DEFAULT_INTERFACE_THEME;
     state.interface.compact = els.interfaceCompact.checked;
     state.interface.density = INTERFACE_DENSITIES.includes(els.interfaceDensity.value) ? els.interfaceDensity.value : "comfortable";
     state.interface.backgroundImageEnabled = !!els.interfaceBgImageEnabled?.checked;
