@@ -97,6 +97,7 @@ server {
   server_name ${FORGE_SERVER_NAME};
   root ${TARGET_DIR};
   index index.html;
+  client_max_body_size 0;
 
   location / {
     try_files \$uri \$uri/ /index.html;
@@ -113,6 +114,7 @@ server {
   server_name ${FORGE_SERVER_NAME};
   root ${TARGET_DIR};
   index index.html;
+  client_max_body_size 0;
 
   # Moonraker websocket proxy
   location /websocket {

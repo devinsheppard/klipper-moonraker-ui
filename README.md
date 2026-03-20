@@ -131,6 +131,7 @@ Notes:
 - The installer bootstraps required system dependencies automatically (`node`, `npm`, `curl`, `gnupg`) when possible.
 - The installer runs `npm ci` + `npm run build` by default, then copies `dist/` into the target directory.
 - By default, the installer also creates/updates an nginx site on port `82` and reloads nginx.
+- The generated nginx site sets `client_max_body_size 0` so large G-code uploads are not blocked by nginx.
 - Existing target content is backed up to `<target>.bak.<timestamp>` unless `--no-backup` is used.
 - If your web root is elsewhere, set `--target` accordingly (for example `/usr/share/nginx/html/forgeui`).
 - Use `--skip-nginx` to skip nginx changes, or `--port <number>` to use a different port.
@@ -160,5 +161,4 @@ Notes:
 - Existing target content is backed up to `<target>.bak.<timestamp>` unless `-NoBackup` is used.
 - If deploying to protected locations such as `C:\inetpub\wwwroot`, run PowerShell as Administrator.
 - Use `powershell -ExecutionPolicy Bypass -File .\scripts\install-windows.ps1 -Help` to see all options.
-
 
