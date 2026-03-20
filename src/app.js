@@ -20495,6 +20495,48 @@ async function runJobsPrepareAndStartPrint(path, { startPrintAfterPrepare = true
   return true;
 }
 
+function isJobsPrintStartTimeoutError(error) {
+  if (!error) return false;
+  const status = Number(error?.status);
+  const message = String(error?.message || error || "");
+  const hasGatewayTimeout = Number.isFinite(status) ? status === 504 : /\b504\b/i.test(message);
+  if (!hasGatewayTimeout) return false;
+  return message.includes("/printer/gcode/script") || message.includes("/printer/print/start");
+}
+
+async function detectJobsActivePrintForPath(path, { attempts = 8, intervalMs = 260 } = {}) {
+  const expectedPath = normalizeGcodePath(path);
+  const maxAttempts = Math.max(1, Number(attempts) || 1);
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      const snapshot = await queryJobsPrepareStatusSnapshot();
+      applyJobsPrepareStatusSnapshot(snapshot);
+
+      const status = snapshot?.result?.status || {};
+      const printStats = status?.print_stats || {};
+      const printerState = normalizePrinterState(printStats?.state || printStats?.status || "unknown");
+      const selectedPath = extractJobsSelectedFilenameFromSnapshot(snapshot);
+      const hasActivePrint = printerState === "printing" || printerState === "paused";
+      const pathMatches = !expectedPath || (selectedPath && selectedPath === expectedPath);
+
+      if (hasActivePrint && pathMatches) {
+        return true;
+      }
+    } catch {
+      // Keep polling when Moonraker is transiently unavailable after timeout.
+    }
+
+    if (attempt < maxAttempts - 1) {
+      await new Promise((resolve) => {
+        setTimeout(resolve, Math.max(120, Number(intervalMs) || 260));
+      });
+    }
+  }
+
+  return false;
+}
+
 async function requestJobsFilePrint(path) {
   const normalizedPath = normalizeGcodePath(path);
   if (!normalizedPath || !state.client) return false;
@@ -20521,6 +20563,19 @@ async function requestJobsFilePrint(path) {
     clearJobsWorkflowStatus();
     return true;
   } catch (error) {
+    if (isJobsPrintStartTimeoutError(error)) {
+      const printActive = await detectJobsActivePrintForPath(normalizedPath);
+      if (printActive) {
+        state.jobs.lastError = "";
+        appendConsole(
+          `Print command timed out at the proxy, but printer state is active for ${formatJobsRootPath(normalizedPath)}.`,
+          "warn"
+        );
+        clearJobsWorkflowStatus();
+        return true;
+      }
+    }
+
     const message = error?.message || String(error);
     state.jobs.lastError = message;
     appendConsole(`Prepare and print failed (${normalizedPath}): ${message}`, "error");

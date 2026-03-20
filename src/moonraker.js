@@ -543,7 +543,11 @@ export class MoonrakerClient {
           return true;
         }
 
-        lastError = new Error(`Moonraker call failed: ${attempt.method} ${attempt.path}`);
+        const detailsText = await response.text().catch(() => "");
+        const details = detailsText ? `: ${detailsText.slice(0, 200)}` : "";
+        const error = new Error(`Moonraker call failed (${response.status}): ${attempt.path}${details}`);
+        error.status = response.status;
+        lastError = error;
       } catch (error) {
         lastError = error;
       }

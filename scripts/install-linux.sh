@@ -98,6 +98,9 @@ server {
   root ${TARGET_DIR};
   index index.html;
   client_max_body_size 0;
+  proxy_send_timeout 600;
+  proxy_read_timeout 600;
+  send_timeout 600;
 
   location / {
     try_files \$uri \$uri/ /index.html;
@@ -115,6 +118,9 @@ server {
   root ${TARGET_DIR};
   index index.html;
   client_max_body_size 0;
+  proxy_send_timeout 600;
+  proxy_read_timeout 600;
+  send_timeout 600;
 
   # Moonraker websocket proxy
   location /websocket {
